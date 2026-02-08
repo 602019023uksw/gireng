@@ -1,5 +1,6 @@
 import json
-from typing import Dict
+import re
+from typing import Dict, List, Any
 from langgraph.graph import StateGraph, END
 
 from ghidra_agent.llm import call_llm
@@ -22,7 +23,6 @@ from ghidra_agent.tools import (
 
 
 async def parse_intent(state: AgentState) -> AgentState:
-    import re
     query = state.get("user_query", "")
     intent = "reconnaissance"
     if any(term in query.lower() for term in ["vuln", "overflow", "format", "strcpy", "sprintf"]):
@@ -33,15 +33,24 @@ async def parse_intent(state: AgentState) -> AgentState:
         intent = "protocol"
     state["intent"] = intent
 
-    # Extract function names (FUN_xxxxx or known names) from the query
+    # B2 FIX: Extract function names (FUN_xxxxx or known names) from the query
     func_match = re.search(r'\b(FUN_[0-9a-fA-F]+|main|entry|_start)\b', query)
     if func_match:
-        state["current_function"] = func_match.group(1)
-        state["reasoning_trace"].append(f"target_function:{func_match.group(1)}")
+        func_name = func_match.group(1)
+        state["current_function"] = func_name
+        state["reasoning_trace"].append(f"target_function:{func_name}")
+        
+        # B2 FIX: Also extract address from FUN_xxx name for fallback
+        if func_name.startswith("FUN_"):
+            addr_match = re.search(r'[0-9a-fA-F]+', func_name[4:])
+            if addr_match:
+                addr = "0x" + addr_match.group(0).lower()
+                state["current_address"] = addr
+                state["reasoning_trace"].append(f"target_address:{addr}")
 
-    # Extract hex addresses (0x...) from the query
+    # Extract hex addresses (0x...) from the query (only if not already set from FUN_xxx)
     addr_match = re.search(r'\b(0x[0-9a-fA-F]+)\b', query)
-    if addr_match and not state.get("current_function"):
+    if addr_match and not state.get("current_address"):
         state["current_address"] = addr_match.group(1)
         state["reasoning_trace"].append(f"target_address:{addr_match.group(1)}")
 
@@ -76,13 +85,81 @@ async def discovery(state: AgentState) -> AgentState:
     except Exception as exc:
         logger.error("discovery_strings_failed", error=str(exc))
         strings = {"ok": False, "error": str(exc)}
+    
     state["analysis_results"]["binary"] = binary_info
     state["analysis_results"]["functions"] = functions
     state["analysis_results"]["strings"] = strings
+    
+    # B3 FIX + I1: Auto-decompile entry point and top functions on initial upload
+    await _auto_decompile_key_functions(state, binary_info, functions)
+    
     if not binary_info.get("ok"):
         state["analysis_results"].setdefault("errors", []).append("binary_structure_failed")
     state["reasoning_trace"].append("discovery_completed")
     return state
+
+
+async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, functions: Dict) -> None:
+    """B3 + I1: Auto-decompile entry point and top xref'd functions during discovery."""
+    if not functions.get("ok") or not functions.get("functions"):
+        return
+    
+    func_list = functions["functions"]
+    if not func_list:
+        return
+    
+    # Sort by xref count descending (I5 improvement)
+    sorted_funcs = sorted(func_list, key=lambda f: f.get("xrefs", 0), reverse=True)
+    
+    # Select functions to decompile: entry point + top 3 by xrefs
+    funcs_to_decompile = []
+    entry_point = None
+    
+    # Try to find entry point from binary info
+    if binary_info.get("ok") and binary_info.get("entry_points"):
+        entry_points = binary_info.get("entry_points", [])
+        if entry_points:
+            entry_point = entry_points[0]
+    
+    # Add entry point function first (B3 fix)
+    if entry_point:
+        for f in func_list:
+            if f.get("address") == entry_point:
+                funcs_to_decompile.append(f)
+                state["current_function"] = f.get("name")
+                state["current_address"] = entry_point
+                break
+    
+    # Add top 3 most referenced functions (I1 improvement)
+    top_funcs = [f for f in sorted_funcs[:5] if f not in funcs_to_decompile][:3]
+    funcs_to_decompile.extend(top_funcs)
+    
+    # Decompile selected functions
+    decompiled_count = 0
+    for func in funcs_to_decompile:
+        func_name = func.get("name")
+        func_addr = func.get("address")
+        if not func_name or func_name in state.get("decompilation_cache", {}):
+            continue
+        
+        try:
+            decomp = await decompile_function.ainvoke(
+                {
+                    "session_id": state["session_id"],
+                    "program_hash": state["program_hash"],
+                    "binary_path": state.get("binary_path"),
+                    "function_name": func_name,
+                    "address": func_addr,
+                }
+            )
+            if decomp.get("ok") and decomp.get("c"):
+                state["decompilation_cache"][func_name] = decomp.get("c")
+                decompiled_count += 1
+        except Exception as exc:
+            logger.error("auto_decompile_failed", function=func_name, error=str(exc))
+    
+    if decompiled_count > 0:
+        state["reasoning_trace"].append(f"auto_decompiled:{decompiled_count}_functions")
 
 
 async def focus_analysis(state: AgentState) -> AgentState:
@@ -170,41 +247,95 @@ async def cross_reference(state: AgentState) -> AgentState:
     return state
 
 
+def _prioritize_strings(strings_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """I4: Sort strings by relevance - IOCs and suspicious patterns first."""
+    def relevance_score(s: Dict[str, Any]) -> int:
+        val = s.get("value", "")
+        score = 0
+        # High priority: file paths in /proc, /dev, /bin, /etc
+        if re.search(r'/proc/|/dev/|/bin/|/etc/|/tmp/|/var/', val):
+            score += 100
+        # High priority: IP addresses
+        if re.search(r'\d+\.\d+\.\d+\.\d+', val):
+            score += 90
+        # High priority: URLs/domains
+        if re.search(r'https?://|\.com|\.net|\.org|\.io', val):
+            score += 80
+        # High priority: crypto-related
+        if re.search(r'crypt|aes|rsa|md5|sha|encrypt|decrypt', val, re.IGNORECASE):
+            score += 70
+        # High priority: network-related
+        if re.search(r'socket|connect|bind|listen|recv|send|http', val, re.IGNORECASE):
+            score += 60
+        # Medium priority: interesting API calls
+        if re.search(r'exec|system|popen|fork|clone|mmap', val, re.IGNORECASE):
+            score += 50
+        # Low priority: section names
+        if val.startswith('.') and len(val) < 10:
+            score -= 50
+        return score
+    
+    return sorted(strings_list, key=relevance_score, reverse=True)
+
+
 async def synthesize(state: AgentState) -> AgentState:
     user_query = state.get("user_query", "")
     results = state.get("analysis_results", {})
 
-    # Build a concise context for the LLM
+    # B4 + I5 FIX: Build enhanced context for the LLM
     context_parts = []
     binary = results.get("binary", {})
     if binary.get("ok"):
         context_parts.append(f"Architecture: {binary.get('architecture')}, Image base: {binary.get('image_base')}")
         context_parts.append(f"Segments: {', '.join(binary.get('segments', []))}")
+        # Include entry point info
+        if binary.get("entry_points"):
+            context_parts.append(f"Entry points: {', '.join(binary.get('entry_points', []))}")
 
+    # B4 + I5 FIX: Sort functions by xref count, include top 50
     funcs = results.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
-        func_names = [f.get("name") for f in funcs["functions"][:30]]
-        context_parts.append(f"Functions ({len(funcs['functions'])} total): {', '.join(func_names)}")
+        # Sort by xref count descending
+        sorted_funcs = sorted(funcs["functions"], key=lambda f: f.get("xrefs", 0), reverse=True)
+        
+        # Include top 50 most referenced functions with their xrefs
+        top_funcs = sorted_funcs[:50]
+        func_descriptions = [f"{f.get('name')}(xrefs:{f.get('xrefs', 0)})" for f in top_funcs]
+        context_parts.append(f"Top functions by references ({len(funcs['functions'])} total): {', '.join(func_descriptions)}")
 
+    # I4 FIX: Sort strings by relevance (IOCs first), not alphabetically
     strings_data = results.get("strings", {})
     if strings_data.get("ok") and strings_data.get("strings"):
-        str_vals = [s.get("value") for s in strings_data["strings"][:20]]
+        sorted_strings = _prioritize_strings(strings_data["strings"])
+        str_vals = [s.get("value") for s in sorted_strings[:30]]  # Increased from 20 to 30
         context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_vals)}")
 
+    # B5 + I2 + I3 FIX: Include decompilation_cache contents (the actual C code!)
+    decomp_cache = state.get("decompilation_cache", {})
+    if decomp_cache:
+        context_parts.append("\n=== DECOMPILED CODE ===")
+        for func_name, c_code in list(decomp_cache.items())[:5]:  # Top 5 decompiled
+            context_parts.append(f"\n--- Function: {func_name} ---")
+            context_parts.append(c_code[:3000])  # First 3000 chars per function
+        
+        if len(decomp_cache) > 5:
+            context_parts.append(f"\n... and {len(decomp_cache) - 5} more decompiled functions in cache")
+
+    # Include focused analysis result if available
     focus = results.get("focus", {})
     if focus.get("ok"):
         if focus.get("c"):
-            context_parts.append(f"Decompiled function:\n{focus['c'][:2000]}")
+            context_parts.append(f"\n=== FOCUSED DECOMPILE ===\n{focus['c'][:3000]}")
         elif focus.get("instructions"):
             instr_str = "\n".join(
                 f"  {i.get('address')}: {i.get('mnemonic')} {i.get('operands', '')}"
                 for i in focus["instructions"][:20]
             )
-            context_parts.append(f"Disassembly:\n{instr_str}")
+            context_parts.append(f"\n=== FOCUSED DISASSEMBLY ===\n{instr_str}")
 
     xrefs = results.get("xrefs", {})
     if xrefs.get("ok"):
-        context_parts.append(f"XRefs to: {xrefs.get('to', [])}, from: {xrefs.get('from', [])}")
+        context_parts.append(f"\nXRefs to: {xrefs.get('to', [])}, from: {xrefs.get('from', [])}")
 
     context = "\n".join(context_parts) if context_parts else "No analysis data available."
 
@@ -304,8 +435,8 @@ def _focus_next(state: AgentState) -> str:
 
 
 def _cross_next(state: AgentState) -> str:
-    if state.get("current_function"):
-        return "focus_analysis"
+    # Always proceed to synthesize after cross-reference to avoid infinite loops.
+    # (focus_analysis and cross_reference would loop if current_function is set)
     return "synthesize"
 
 

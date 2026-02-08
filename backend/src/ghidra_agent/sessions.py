@@ -48,6 +48,6 @@ store = SessionStore()
 
 async def run_graph(state: AgentState) -> AgentState:
     logger.info("graph_run_started", session_id=state.get("session_id"), program_hash=state.get("program_hash"))
-    result = await graph.ainvoke(state)
+    result = await graph.ainvoke(state, config={"recursion_limit": 50})
     logger.info("graph_run_completed", session_id=state.get("session_id"), status=result.get("status"))
     return result

@@ -4,7 +4,8 @@ from typing import Any, Dict, List
 
 from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse, HTMLResponse
+from fastapi.responses import Response as FastAPIResponse
 
 from ghidra_agent.config import settings
 from ghidra_agent.logging import configure_logging, logger
@@ -25,6 +26,7 @@ from ghidra_agent.ui_adapter import (
     build_report_content,
     build_similar_files,
 )
+from ghidra_agent.reporting import build_report_html, build_report_text
 from ghidra_agent.utils import ensure_directory, safe_basename
 
 
@@ -242,3 +244,55 @@ async def analysis_similar(program_hash: str) -> JSONResponse:
 @app.get("/api/models")
 async def models() -> JSONResponse:
     return JSONResponse(build_model_list())
+
+
+@app.get("/api/analysis/{program_hash}/export/html")
+async def export_html(program_hash: str) -> HTMLResponse:
+    """Export analysis report as HTML."""
+    for state in store.sessions.values():
+        if state["program_hash"] == program_hash:
+            html = build_report_html(state)
+            return HTMLResponse(content=html, headers={
+                "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.html"'
+            })
+    return HTMLResponse("<h1>Report not found</h1>", status_code=404)
+
+
+@app.get("/api/analysis/{program_hash}/export/text")
+async def export_text(program_hash: str) -> PlainTextResponse:
+    """Export analysis report as plain text."""
+    for state in store.sessions.values():
+        if state["program_hash"] == program_hash:
+            text = build_report_text(state)
+            return PlainTextResponse(content=text, headers={
+                "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.txt"'
+            })
+    return PlainTextResponse("Report not found", status_code=404)
+
+
+@app.get("/export/session/{session_id}/html")
+async def export_session_html(session_id: str) -> HTMLResponse:
+    """Export session report as HTML (convenience endpoint)."""
+    try:
+        state = store.get_session(session_id)
+        html = build_report_html(state)
+        program_hash = state.get("program_hash", "unknown")
+        return HTMLResponse(content=html, headers={
+            "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.html"'
+        })
+    except KeyError:
+        return HTMLResponse("<h1>Session not found</h1>", status_code=404)
+
+
+@app.get("/export/session/{session_id}/text")
+async def export_session_text(session_id: str) -> PlainTextResponse:
+    """Export session report as plain text (convenience endpoint)."""
+    try:
+        state = store.get_session(session_id)
+        text = build_report_text(state)
+        program_hash = state.get("program_hash", "unknown")
+        return PlainTextResponse(content=text, headers={
+            "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.txt"'
+        })
+    except KeyError:
+        return PlainTextResponse("Session not found", status_code=404)

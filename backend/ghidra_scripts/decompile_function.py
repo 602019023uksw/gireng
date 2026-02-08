@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from ghidra.app.decompiler import DecompInterface
@@ -14,6 +15,17 @@ def _write_log(path, message):
     log_path.write_text(message + "\n", encoding="utf-8")
 
 
+def _parse_address_from_func_name(name):
+    """Extract hex address from FUN_xxxxxxxx pattern."""
+    match = re.search(r'[0-9a-fA-F]{4,}', name)
+    if match:
+        try:
+            return "0x" + match.group(0).lower()
+        except ValueError:
+            pass
+    return None
+
+
 def main():
     args = getScriptArgs()
     input_path = args[0]
@@ -27,15 +39,30 @@ def main():
     monitor = ConsoleTaskMonitor()
 
     function = None
-    if payload.get("function_name"):
-        target_name = payload["function_name"]
-        for f in program.getFunctionManager().getFunctions(True):
-            if f.getName() == target_name:
-                function = f
-                break
-    if not function and payload.get("address"):
-        address = program.getAddressFactory().getAddress(payload["address"])
-        function = program.getFunctionManager().getFunctionContaining(address)
+    target_name = payload.get("function_name")
+    target_address = payload.get("address")
+    
+    # B1/B2 FIX: Use address-based lookup first (fast), fallback to name search
+    if target_address:
+        # Fast O(1) address lookup
+        addr = program.getAddressFactory().getAddress(target_address)
+        if addr:
+            function = program.getFunctionManager().getFunctionContaining(addr)
+    
+    if not function and target_name:
+        # Try to extract address from FUN_xxx name pattern for fast lookup
+        addr_from_name = _parse_address_from_func_name(target_name)
+        if addr_from_name:
+            addr = program.getAddressFactory().getAddress(addr_from_name)
+            if addr:
+                function = program.getFunctionManager().getFunctionContaining(addr)
+        
+        # Fallback to name search if address lookup failed
+        if not function:
+            for f in program.getFunctionManager().getFunctions(True):
+                if f.getName() == target_name:
+                    function = f
+                    break
 
     if not function:
         _write_output(output_path, {"ok": False, "error": "Function not found"})
