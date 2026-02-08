@@ -13,12 +13,45 @@ You are given extensive analysis data including:
 
 ## Analysis Requirements
 
-### 1. Executive Summary (MANDATORY)
-Provide a comprehensive 3-5 paragraph summary covering:
-- **Binary Type & Purpose**: What is this program designed to do?
-- **Threat Assessment**: Is it malicious? What is the confidence level?
-- **Key Findings**: 3-5 most important discoveries
-- **Risk Level**: Critical/High/Medium/Low with justification
+### 1. Executive Summary (MANDATORY - MINIMUM 300 WORDS)
+Write a comprehensive executive summary in 4-6 substantial paragraphs. This should be a STANDALONE analysis that covers:
+
+**Paragraph 1: Overview & Classification**
+- Binary type (ELF/PE), architecture (x86/x64/ARM), and size
+- Primary purpose: What does this program do at a high level?
+- Malware classification with confidence level (High/Medium/Low)
+- Comparison to known malware families if applicable
+
+**Paragraph 2: Command & Control / Communication**
+- All C2 channels identified (IPs, domains, cloud services)
+- Protocols used (HTTP/HTTPS, custom, etc.)
+- Authentication mechanisms (OAuth, hardcoded keys, etc.)
+- Data exfiltration methods
+
+**Paragraph 3: Key Technical Capabilities**
+- Cryptographic implementations (AES, RSA, custom)
+- Persistence mechanisms (registry, cron, services)
+- Anti-analysis techniques (packing, obfuscation, anti-debug)
+- Privilege escalation methods
+
+**Paragraph 4: Critical Functions & Code Analysis**
+- Most important functions by xref count and their roles
+- Unique code patterns discovered
+- Memory management or hooking techniques
+- Network packet/data processing logic
+
+**Paragraph 5: Impact & Risk Assessment**
+- What data/assets are at risk?
+- Potential damage (data theft, ransomware, botnet activity)
+- Difficulty of detection (stealth level)
+- Target environment (enterprise, IoT, personal)
+
+**Paragraph 6: IOC Summary & Recommendations**
+- Top 3-5 IOCs for immediate detection
+- Recommended investigation steps
+- Priority level for response (P0/P1/P2)
+
+DO NOT skimp on this section. The executive summary should give a complete picture without reading the technical details.
 
 ### 2. Technical Deep Dive
 For EACH decompiled function provided, analyze:

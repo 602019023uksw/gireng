@@ -351,7 +351,12 @@ Analysis data:
 
 User question: {user_query}
 
-Provide a clear, structured answer based on the analysis data above. If the data is insufficient to fully answer, say so and suggest what additional analysis could help."""
+Provide a COMPREHENSIVE, DETAILED answer based on ALL the analysis data provided. 
+- Analyze every decompiled function relevant to the question
+- Cite specific addresses and code patterns
+- Explain technical implementation details
+- Assess security implications thoroughly
+If the data is insufficient, say so and suggest what additional analysis could help."""
     else:
         prompt = f"""{SYSTEM_PROMPT}
 
@@ -360,7 +365,10 @@ Binary hash: {state.get('program_hash', 'unknown')}
 Analysis data:
 {context}
 
-Provide a brief executive summary of this binary based on the analysis data above. Include: architecture, notable functions, suspicious indicators (if any), and recommended next steps."""
+You MUST provide a COMPREHENSIVE executive summary (minimum 300 words) following the format in your instructions.
+This is the INITIAL ANALYSIS - make it thorough and detailed.
+Analyze ALL provided decompiled functions, ALL IOCs, and ALL strings.
+Do not skip any sections. The user expects a professional malware analysis report."""
 
     try:
         summary = await call_llm(prompt)
