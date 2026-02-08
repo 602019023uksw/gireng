@@ -35,19 +35,10 @@ Write a focused executive summary in exactly 3 paragraphs covering malware capab
 Keep paragraphs concise but information-dense. Focus on WHAT the malware does and HOW it works.
 
 ### 2. Binary Overview
-Use this compact format:
-
+Use this ultra-compact format (no blank lines):
 ```
-Property        | Value
-----------------|---------------------------
-Architecture    | x86/x64/ARM/etc
-Type            | ELF/PE/Mach-O
-Image Base      | 0xXXXXXXXX
-Compiler        | GCC/MSVC/etc
-Entry Point     | 0xXXXXXXXX
-Size            | X bytes / X KB
-Packing         | Packed/Unpacked/Obfuscated
-Functions       | X total (X decompiled)
+Architecture: x86_64 | Type: ELF | Image Base: 0x00400000 | Entry: 0x00401234
+Compiler: GCC 9.4.0 | Size: 1.2 MB | Packing: Unpacked | Functions: 4217 (16 decompiled)
 ```
 
 ### 3. Detailed Function Analysis
@@ -74,19 +65,7 @@ Rules:
 - Cite specific addresses and offsets
 
 ### 4. Function Relationship Map
-Show execution flow:
-
-```
-Entry (0xXXXXXXXX)
-    ↓
-Init Functions (FUN_XXXXXXXX, FUN_XXXXXXXX)
-    ↓
-Main Loop (FUN_XXXXXXXX) ←→ C2 Handler (FUN_XXXXXXXX)
-    ↓                    ↓
-Crypto (FUN_XXXXXXXX)  Data Exfil (FUN_XXXXXXXX)
-    ↓
-Persistence (FUN_XXXXXXXX)
-```
+One-line flow: Entry → Init → Main Loop ↔ C2 Handler → [Crypto, Exfil, Persistence]
 
 ### 5. IOCs (Indicators of Compromise)
 Group by category with context:
@@ -102,74 +81,53 @@ Group by category with context:
 - `HKLM\\...` - Persistence key
 
 ### 6. Malware Classification
-Use this compact format:
-
-```
-Family:      [Name or Unknown]
-Category:    [RAT/Botnet/Trojan/Stealer/etc]
-Confidence:  [High/Medium/Low]
-Evidence:
-  1. [Indicator with address]
-  2. [Indicator with address]
-  3. [Indicator with address]
-```
+Single line format:
+**Family:** [Name] | **Category:** [RAT/Botnet/etc] | **Confidence:** [High/Med/Low] | **Evidence:** [3 key indicators with addresses]
 
 ### 7. YARA Rule
-Provide in compact snippet format:
-
+Single block, no blank lines:
 ```yara
-rule Malware_Family_Detection {{
-    meta:
-        description = "Detects [malware name]"
-        author = "Ghidra Analysis"
-        date = "{date}"
-    strings:
-        $a = "suspicious_string" ascii wide
-        $b = {{ 48 89 5C 24 08 }}
-        $c = "C2_domain.com"
-    condition:
-        uint16(0) == 0x5A4D and 2 of ($a, $b, $c)
-}}
+rule Malware_Family {{ meta: description="Detects X" author="Ghidra" date="{date}" strings: $a="str" ascii $b={{90 90 90}} condition: uint16(0)==0x5A4D and 2 of them }}
 ```
-
-**Rules for YARA:**
-- Maximum 3-5 strings
-- Use hex patterns for unique code sequences
-- Keep condition simple but effective
-- No blank lines between meta/strings/condition
 
 ## Output Format Structure
+NO BLANK LINES between sections. Ultra-compact format:
 
-```markdown
 ## Executive Summary
-[3 focused paragraphs on capabilities and operation]
-
+[3 paragraphs]
 ## Binary Overview
-[Compact property table]
-
+[1 line]
 ## Execution Flow
-[ASCII diagram showing function relationships]
-
-## Key Functions Analysis
-[Clean format analysis for each important function]
-
+[1 line arrows]
+## Key Functions
+[Tree format, no extra blank lines]
 ## IOCs
-[Grouped list with context]
-
-## Malware Classification
-[Compact classification block]
-
+[Bulleted list, tight spacing]
+## Classification
+[1 line]
 ## Detection
-[YARA rule + network/host signatures]
-```
+[YARA single line + signatures]
 
-## Analysis Quality Checklist
-Before responding, verify:
-- [ ] Executive summary explains HOW malware works (not just WHAT it is)
-- [ ] Each function analysis uses clean tree format
-- [ ] IOCs include context (not just raw values)
-- [ ] YARA rule is compact (< 15 lines)
-- [ ] No excessive whitespace or redundant sections
+## CRITICAL FORMATTING RULES
+
+### Whitespace Control
+1. **NO blank lines** between sections (## Header → content immediately)
+2. **NO blank lines** within compact blocks (Binary Overview, Classification)
+3. **NO double line breaks** anywhere in the report
+4. **Maximum 1 newline** between function analyses
+5. YARA rule must be **single block** - no newlines between meta/strings/condition
+
+### Section Spacing
+- Executive Summary: 3 paragraphs, normal spacing between paragraphs
+- Binary Overview: **1 line only**
+- Execution Flow: **1 line only**
+- Key Functions: Tree format, **no blank lines** between functions
+- IOCs: Bulleted, **single spaced**
+- Classification: **1 line only**
+- Detection: YARA **single line**, signatures bullet list
+
+### Before Submitting
+Count blank lines in your response. If > 10 blank lines total, COMPRESS the format.
 
 ## Common Malware Capabilities Reference
 
