@@ -1,0 +1,297 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Glass Terminal Theme - Dark & Readable */
+    --background: 220 25% 4%;
+    --foreground: 0 0% 95%;
+    --card: 220 20% 6% / 0.7;
+    --card-foreground: 0 0% 95%;
+    --popover: 220 20% 6% / 0.85;
+    --popover-foreground: 0 0% 95%;
+    --primary: 265 89% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 220 15% 12% / 0.6;
+    --secondary-foreground: 0 0% 95%;
+    --muted: 220 15% 12% / 0.5;
+    --muted-foreground: 220 10% 55%;
+    --accent: 265 89% 65%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 15% 20% / 0.4;
+    --input: 220 15% 20% / 0.4;
+    --ring: 265 89% 65%;
+    --radius: 0.75rem;
+
+    /* Custom Glass Terminal Colors */
+    --bg-primary: #0a0a0f;
+    --bg-secondary: rgba(15, 15, 25, 0.7);
+    --bg-tertiary: rgba(25, 25, 40, 0.5);
+    --bg-hover: rgba(40, 40, 60, 0.6);
+    --bg-glass: rgba(20, 20, 35, 0.4);
+    --bg-glass-strong: rgba(15, 15, 25, 0.85);
+    
+    /* Accent Colors - Purple/Cyan theme */
+    --accent-purple: #a855f7;
+    --accent-cyan: #22d3ee;
+    --accent-green: #4ade80;
+    --accent-red: #f87171;
+    --accent-orange: #fb923c;
+    --accent-yellow: #facc15;
+    
+    /* Text Colors - High contrast */
+    --text-primary: #f8fafc;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    
+    /* Border Colors */
+    --border-default: rgba(100, 100, 150, 0.15);
+    --border-subtle: rgba(100, 100, 150, 0.08);
+    --border-glow: rgba(168, 85, 247, 0.3);
+    
+    /* Terminal Window Colors */
+    --terminal-red: #ff5f56;
+    --terminal-yellow: #ffbd2e;
+    --terminal-green: #27c93f;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  html {
+    scroll-behavior: smooth;
+  }
+  
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: 
+      radial-gradient(ellipse at 20% 20%, rgba(168, 85, 247, 0.08) 0%, transparent 50%),
+      radial-gradient(ellipse at 80% 80%, rgba(34, 211, 238, 0.05) 0%, transparent 50%),
+      linear-gradient(180deg, #0a0a0f 0%, #0d0d14 100%);
+    min-height: 100vh;
+  }
+}
+
+@layer components {
+  /* Glass morphism card styles */
+  .glass-card {
+    @apply backdrop-blur-xl rounded-xl;
+    background: linear-gradient(135deg, rgba(25, 25, 40, 0.6) 0%, rgba(15, 15, 25, 0.4) 100%);
+    border: 1px solid rgba(100, 100, 150, 0.12);
+    box-shadow: 
+      0 4px 24px -1px rgba(0, 0, 0, 0.4),
+      0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+  }
+  
+  .glass-card-strong {
+    @apply backdrop-blur-2xl rounded-xl;
+    background: linear-gradient(135deg, rgba(20, 20, 35, 0.85) 0%, rgba(12, 12, 20, 0.75) 100%);
+    border: 1px solid rgba(100, 100, 150, 0.15);
+    box-shadow: 
+      0 8px 32px -4px rgba(0, 0, 0, 0.5),
+      0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+  }
+  
+  .glass-panel {
+    @apply backdrop-blur-xl;
+    background: rgba(15, 15, 25, 0.7);
+    border: 1px solid rgba(100, 100, 150, 0.1);
+  }
+  
+  .glass-input {
+    @apply backdrop-blur-md rounded-lg;
+    background: rgba(10, 10, 18, 0.7);
+    border: 1px solid rgba(100, 100, 150, 0.15);
+    transition: all 0.2s ease;
+  }
+  
+  .glass-input:focus {
+    border-color: rgba(168, 85, 247, 0.5);
+    box-shadow: 0 0 0 2px rgba(168, 85, 247, 0.1);
+  }
+  
+  .glass-button {
+    @apply backdrop-blur-md rounded-lg;
+    background: rgba(40, 40, 60, 0.5);
+    border: 1px solid rgba(100, 100, 150, 0.15);
+    transition: all 0.15s ease;
+  }
+  
+  .glass-button:hover {
+    background: rgba(50, 50, 75, 0.6);
+    border-color: rgba(168, 85, 247, 0.3);
+    transform: translateY(-1px);
+  }
+  
+  .glass-tag {
+    @apply backdrop-blur-sm rounded-full px-2.5 py-1 text-xs font-medium;
+    background: rgba(168, 85, 247, 0.1);
+    border: 1px solid rgba(168, 85, 247, 0.2);
+    color: #a855f7;
+  }
+  
+  .glass-tag:hover {
+    background: rgba(168, 85, 247, 0.15);
+    border-color: rgba(168, 85, 247, 0.35);
+  }
+  
+  /* Terminal window dots */
+  .terminal-dots {
+    @apply flex items-center gap-1.5;
+  }
+  
+  .terminal-dot {
+    @apply w-3 h-3 rounded-full;
+  }
+  
+  .terminal-dot-red {
+    background: var(--terminal-red);
+    box-shadow: 0 0 6px var(--terminal-red);
+  }
+  
+  .terminal-dot-yellow {
+    background: var(--terminal-yellow);
+    box-shadow: 0 0 6px var(--terminal-yellow);
+  }
+  
+  .terminal-dot-green {
+    background: var(--terminal-green);
+    box-shadow: 0 0 6px var(--terminal-green);
+  }
+  
+  /* Glow effects */
+  .glow-purple {
+    box-shadow: 0 0 20px rgba(168, 85, 247, 0.25);
+  }
+  
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.25);
+  }
+  
+  .glow-green {
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.25);
+  }
+  
+  .glow-red {
+    box-shadow: 0 0 20px rgba(248, 113, 113, 0.25);
+  }
+  
+  /* Sidebar glass style */
+  .glass-sidebar {
+    @apply backdrop-blur-xl;
+    background: rgba(10, 10, 18, 0.9);
+    border-right: 1px solid rgba(100, 100, 150, 0.1);
+  }
+  
+  /* Header glass style */
+  .glass-header {
+    @apply backdrop-blur-xl;
+    background: rgba(8, 8, 14, 0.85);
+    border-bottom: 1px solid rgba(100, 100, 150, 0.1);
+  }
+  
+  /* Active state */
+  .glass-active {
+    background: rgba(168, 85, 247, 0.12);
+    border: 1px solid rgba(168, 85, 247, 0.25);
+  }
+  
+  /* Code block style */
+  .code-block {
+    @apply rounded-lg font-mono text-sm;
+    background: rgba(8, 8, 14, 0.8);
+    border: 1px solid rgba(100, 100, 150, 0.12);
+  }
+  
+  /* Status badges */
+  .status-clean {
+    @apply px-2 py-0.5 rounded-full text-xs font-medium;
+    background: rgba(74, 222, 128, 0.12);
+    border: 1px solid rgba(74, 222, 128, 0.25);
+    color: #4ade80;
+  }
+  
+  .status-malware {
+    @apply px-2 py-0.5 rounded-full text-xs font-medium;
+    background: rgba(248, 113, 113, 0.12);
+    border: 1px solid rgba(248, 113, 113, 0.25);
+    color: #f87171;
+  }
+  
+  .status-suspicious {
+    @apply px-2 py-0.5 rounded-full text-xs font-medium;
+    background: rgba(251, 146, 60, 0.12);
+    border: 1px solid rgba(251, 146, 60, 0.25);
+    color: #fb923c;
+  }
+}
+
+@layer utilities {
+  /* Custom scrollbar */
+  .scrollbar-dark::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .scrollbar-dark::-webkit-scrollbar-track {
+    background: rgba(15, 15, 25, 0.3);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-dark::-webkit-scrollbar-thumb {
+    background: rgba(100, 100, 150, 0.2);
+    border-radius: 3px;
+  }
+  
+  .scrollbar-dark::-webkit-scrollbar-thumb:hover {
+    background: rgba(100, 100, 150, 0.35);
+  }
+  
+  /* Hide scrollbar */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Animations */
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out forwards;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.4s ease-out forwards;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Progress ring animation */
+@keyframes progress-ring {
+  from { stroke-dashoffset: var(--circumference); }
+  to { stroke-dashoffset: var(--offset); }
+}

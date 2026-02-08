@@ -1,0 +1,34 @@
+# Environment and secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Node
+node_modules/
+app/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Sample binaries (large files)
+sample-binary/
+
+# Docker volumes
+ghidra_projects/
+ghidra_shared/
+
+# Reports (generated)
+sample_report_*.html
