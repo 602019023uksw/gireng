@@ -119,7 +119,7 @@ def _format_functions_html(functions: List[Dict]) -> str:
     if not functions:
         return '<p class="no-data">No function data available.</p>'
     
-    sorted_funcs = sorted(functions, key=lambda f: f.get("xrefs", 0), reverse=True)[:30]
+    sorted_funcs = sorted(functions, key=lambda f: f.get("xrefs", 0), reverse=True)[:10]
     
     rows = []
     for i, f in enumerate(sorted_funcs, 1):

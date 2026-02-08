@@ -130,8 +130,8 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
                 state["current_address"] = entry_point
                 break
     
-    # Add top 3 most referenced functions (I1 improvement)
-    top_funcs = [f for f in sorted_funcs[:5] if f not in funcs_to_decompile][:3]
+    # Add top 15 most referenced functions (I1 improvement - increased from 3)
+    top_funcs = [f for f in sorted_funcs[:20] if f not in funcs_to_decompile][:15]
     funcs_to_decompile.extend(top_funcs)
     
     # Decompile selected functions
@@ -298,8 +298,8 @@ async def synthesize(state: AgentState) -> AgentState:
         # Sort by xref count descending
         sorted_funcs = sorted(funcs["functions"], key=lambda f: f.get("xrefs", 0), reverse=True)
         
-        # Include top 50 most referenced functions with their xrefs
-        top_funcs = sorted_funcs[:50]
+        # Include top 100 most referenced functions with their xrefs
+        top_funcs = sorted_funcs[:100]
         func_descriptions = [f"{f.get('name')}(xrefs:{f.get('xrefs', 0)})" for f in top_funcs]
         context_parts.append(f"Top functions by references ({len(funcs['functions'])} total): {', '.join(func_descriptions)}")
 
@@ -307,18 +307,19 @@ async def synthesize(state: AgentState) -> AgentState:
     strings_data = results.get("strings", {})
     if strings_data.get("ok") and strings_data.get("strings"):
         sorted_strings = _prioritize_strings(strings_data["strings"])
-        str_vals = [s.get("value") for s in sorted_strings[:30]]  # Increased from 20 to 30
+        str_vals = [s.get("value") for s in sorted_strings[:75]]  # Increased from 30 to 75
         context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_vals)}")
 
     # B5 + I2 + I3 FIX: Include decompilation_cache contents (the actual C code!)
     decomp_cache = state.get("decompilation_cache", {})
     if decomp_cache:
-        context_parts.append("\n=== DECOMPILED CODE ===")
-        for func_name, c_code in list(decomp_cache.items())[:5]:  # Top 5 decompiled
-            context_parts.append(f"\n--- Function: {func_name} ---")
-            context_parts.append(c_code[:3000])  # First 3000 chars per function
+        context_parts.append(f"\n=== DECOMPILED CODE ({len(decomp_cache)} functions) ===")
+        context_parts.append("YOU MUST ANALYZE EACH FUNCTION BELOW IN DETAIL:")
+        for i, (func_name, c_code) in enumerate(list(decomp_cache.items())[:10], 1):
+            context_parts.append(f"\n--- Function {i}: {func_name} ---")
+            context_parts.append(c_code[:5000])  # First 5000 chars per function
         
-        if len(decomp_cache) > 5:
+        if len(decomp_cache) > 10:
             context_parts.append(f"\n... and {len(decomp_cache) - 5} more decompiled functions in cache")
 
     # Include focused analysis result if available
