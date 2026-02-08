@@ -1,4 +1,4 @@
-"""Enhanced HTML report generation with professional formatting."""
+"""Enhanced HTML report generation matching professional template format."""
 
 import json
 import re
@@ -9,19 +9,37 @@ from typing import Any, Dict, List
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, IOCs, calculate_verdict
 
 
-def _simple_markdown_to_html(text: str) -> str:
-    """Convert simple markdown to HTML."""
+def _extract_section(text: str, section_name: str) -> str:
+    """Extract a section from markdown text."""
     if not text:
         return ""
+    
+    patterns = [
+        rf'##\s*\d*\.?\s*{re.escape(section_name)}\s*\n(.*?)(?=##|\Z)',
+        rf'###\s*{re.escape(section_name)}\s*\n(.*?)(?=###|##|\Z)',
+        rf'\*\*{re.escape(section_name)}\*\*[:\s]*\n(.*?)(?=\*\*|##|\Z)',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    
+    return ""
+
+
+def _markdown_to_html(text: str) -> str:
+    """Convert markdown to HTML for template rendering."""
+    if not text:
+        return "<p>No information available.</p>"
     
     # Escape HTML first
     text = escape(text)
     
     # Headers
-    text = re.sub(r'^#### (.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
-    text = re.sub(r'^### (.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
-    text = re.sub(r'^## (.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
-    text = re.sub(r'^# (.+)$', r'<h1>\1</h1>', text, flags=re.MULTILINE)
+    text = re.sub(r'####\s+(.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
+    text = re.sub(r'###\s+(.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
+    text = re.sub(r'##\s+(.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
     
     # Bold and italic
     text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', text)
@@ -29,8 +47,46 @@ def _simple_markdown_to_html(text: str) -> str:
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
     
     # Code blocks
-    text = re.sub(r'```(\w+)?\n(.*?)```', r'<pre class="code-block"><code>\2</code></pre>', text, flags=re.DOTALL)
+    text = re.sub(r'```(\w+)?\n(.*?)```', r'<pre><code>\2</code></pre>', text, flags=re.DOTALL)
     text = re.sub(r'`(.+?)`', r'<code>\1</code>', text)
+    
+    # Tables
+    lines = text.split('\n')
+    result = []
+    i = 0
+    in_table = False
+    table_html = []
+    
+    while i < len(lines):
+        line = lines[i]
+        if '|' in line and not line.strip().startswith('#') and not line.strip().startswith('<'):
+            if not in_table:
+                in_table = True
+                table_html = ['<table class="w-full text-left border-collapse">']
+                if i + 1 < len(lines) and re.match(r'^[\|\-\s]+$', lines[i + 1]):
+                    i += 1
+            
+            cells = [c.strip() for c in line.split('|') if c.strip()]
+            if cells:
+                row_tag = 'th' if len(table_html) == 1 else 'td'
+                table_html.append('<tr>')
+                for cell in cells:
+                    table_html.append(f'<{row_tag}>{cell}</{row_tag}>')
+                table_html.append('</tr>')
+        else:
+            if in_table:
+                table_html.append('</table>')
+                result.append(''.join(table_html))
+                in_table = False
+                table_html = []
+            result.append(line)
+        i += 1
+    
+    if in_table:
+        table_html.append('</table>')
+        result.append(''.join(table_html))
+    
+    text = '\n'.join(result)
     
     # Bullet lists
     lines = text.split('\n')
@@ -38,14 +94,15 @@ def _simple_markdown_to_html(text: str) -> str:
     in_list = False
     
     for line in lines:
-        if line.strip().startswith('• ') or line.strip().startswith('- '):
+        stripped = line.strip()
+        if stripped.startswith('- ') or stripped.startswith('* '):
             if not in_list:
-                result.append('<ul>')
+                result.append('<ul class="list-disc pl-6 mb-4">')
                 in_list = True
-            item = line.strip()[2:]
-            result.append(f'<li>{item}</li>')
+            item = stripped[2:]
+            result.append(f'<li class="mb-2">{item}</li>')
         else:
-            if in_list:
+            if in_list and stripped and not stripped.startswith('<'):
                 result.append('</ul>')
                 in_list = False
             result.append(line)
@@ -55,140 +112,103 @@ def _simple_markdown_to_html(text: str) -> str:
     
     text = '\n'.join(result)
     
-    # Paragraphs (wrap non-tag lines)
+    # Paragraphs
     lines = text.split('\n')
     result = []
     for line in lines:
         stripped = line.strip()
-        if stripped and not stripped.startswith('<') and not stripped.startswith('---'):
-            result.append(f'<p>{stripped}</p>')
+        if stripped and not stripped.startswith('<') and not stripped.startswith('|'):
+            result.append(f'<p class="mb-3">{stripped}</p>')
         else:
             result.append(line)
     
     return '\n'.join(result)
 
 
-def _format_iocs_html(iocs: IOCs) -> str:
-    """Format IOCs as categorized HTML."""
-    sections = []
+def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
+    """Parse IOCs into template format."""
+    results = []
     
-    if iocs.ips:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">IP</span>{escape(ip)}</li>' for ip in iocs.ips[:20]])
-        sections.append(f'<div class="ioc-category"><h4>IP Addresses & Ports</h4><ul class="ioc-list">{items}</ul></div>')
+    for ip in iocs.ips[:10]:
+        results.append({"type": "IP/Domain", "value": ip})
+    for domain in iocs.domains[:10]:
+        results.append({"type": "Domain", "value": domain})
+    for url in iocs.urls[:5]:
+        results.append({"type": "URL", "value": url})
+    for path in iocs.file_paths[:10]:
+        results.append({"type": "File Path", "value": path})
+    for email in iocs.emails[:5]:
+        results.append({"type": "Email", "value": email})
+    for reg in iocs.registry_keys[:5]:
+        results.append({"type": "Registry", "value": reg})
+    for mutex in iocs.mutexes[:5]:
+        results.append({"type": "Mutex", "value": mutex})
     
-    if iocs.domains:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">Domain</span>{escape(d)}</li>' for d in iocs.domains[:15]])
-        sections.append(f'<div class="ioc-category"><h4>Domains</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if iocs.urls:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">URL</span><a href="{escape(url)}" target="_blank">{escape(url[:80])}{"..." if len(url) > 80 else ""}</a></li>' for url in iocs.urls[:10]])
-        sections.append(f'<div class="ioc-category"><h4>URLs</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if iocs.file_paths:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">Path</span><code>{escape(p)}</code></li>' for p in iocs.file_paths[:15]])
-        sections.append(f'<div class="ioc-category"><h4>File Paths</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if iocs.emails:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">Email</span>{escape(e)}</li>' for e in iocs.emails[:10]])
-        sections.append(f'<div class="ioc-category"><h4>Email Addresses</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if iocs.registry_keys:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">Registry</span><code>{escape(r)}</code></li>' for r in iocs.registry_keys[:10]])
-        sections.append(f'<div class="ioc-category"><h4>Windows Registry Keys</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if iocs.mutexes:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">Mutex</span><code>{escape(m)}</code></li>' for m in iocs.mutexes[:10]])
-        sections.append(f'<div class="ioc-category"><h4>Mutex/Event Names</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if iocs.crypto_materials:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">Crypto</span>{escape(c)}</li>' for c in iocs.crypto_materials[:10]])
-        sections.append(f'<div class="ioc-category"><h4>Cryptographic Materials</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if iocs.suspicious_strings:
-        items = ''.join([f'<li class="ioc-item"><span class="ioc-type">Suspicious</span>{escape(s)}</li>' for s in iocs.suspicious_strings[:15]])
-        sections.append(f'<div class="ioc-category"><h4>Suspicious Indicators</h4><ul class="ioc-list">{items}</ul></div>')
-    
-    if not sections:
-        return '<p class="no-data">No IOCs extracted.</p>'
-    
-    return '\n'.join(sections)
+    return results
 
 
-def _format_functions_html(functions: List[Dict]) -> str:
-    """Format function list as HTML table."""
-    if not functions:
-        return '<p class="no-data">No function data available.</p>'
-    
-    sorted_funcs = sorted(functions, key=lambda f: f.get("xrefs", 0), reverse=True)[:10]
-    
-    rows = []
-    for i, f in enumerate(sorted_funcs, 1):
-        name = escape(f.get("name", "unknown"))
-        addr = escape(f.get("address", "?"))
-        xrefs = f.get("xrefs", 0)
-        size = f.get("size", 0)
-        
-        xref_class = "high" if xrefs > 50 else "medium" if xrefs > 10 else "low"
-        
-        rows.append(
-            f'<tr>'
-            f'<td>{i}</td>'
-            f'<td><code class="func-name">{name}</code></td>'
-            f'<td><code>{addr}</code></td>'
-            f'<td><span class="badge {xref_class}">{xrefs}</span></td>'
-            f'<td>{size:,}</td>'
-            f'</tr>'
-        )
-    
-    return (
-        '<table class="data-table">'
-        '<thead><tr><th>#</th><th>Function Name</th><th>Address</th><th>XRefs</th><th>Size</th></tr></thead>'
-        '<tbody>' + '\n'.join(rows) + '</tbody>'
-        '</table>'
-    )
+def _extract_recommendations(summary: str) -> List[str]:
+    """Extract recommendations from summary."""
+    recs = []
+    matches = re.findall(r'\d+\.\s+(.+?)(?=\d+\.\s+|\Z)', summary, re.DOTALL)
+    for match in matches:
+        cleaned = match.strip()
+        if cleaned and len(cleaned) > 10:
+            recs.append(cleaned)
+    return recs if recs else ["Conduct dynamic analysis in sandbox environment", "Monitor network traffic for C2 communications"]
 
 
-def _format_code_html(decomp_cache: Dict[str, str]) -> str:
-    """Format decompiled code sections."""
-    if not decomp_cache:
-        return '<p class="no-data">No decompiled code available.</p>'
+def _extract_evidence(summary: str) -> List[str]:
+    """Extract evidence items from summary."""
+    evidence = []
+    # Look for evidence patterns
+    match = re.search(r'Evidence:\s*\n((?:(?:.+\n)+))', summary, re.IGNORECASE)
+    if not match:
+        match = re.search(r'Key Evidence:\s*\n((?:(?:.+\n)+))', summary, re.IGNORECASE)
+    if not match:
+        match = re.search(r'Indicators:\s*\n((?:(?:.+\n)+))', summary, re.IGNORECASE)
     
-    sections = []
-    for func_name, c_code in list(decomp_cache.items())[:5]:
-        # Simple syntax highlighting for C code
-        highlighted = escape(c_code[:4000])
-        
-        # Highlight common C keywords
-        keywords = ['void', 'int', 'char', 'return', 'if', 'else', 'while', 'for', 'do', 'break', 'continue', 
-                   'switch', 'case', 'default', 'struct', 'union', 'typedef', 'static', 'const', 'sizeof']
-        for kw in keywords:
-            highlighted = re.sub(rf'\b{kw}\b', f'<span class="kw">{kw}</span>', highlighted)
-        
-        # Highlight function calls
-        highlighted = re.sub(r'(\w+)\s*\(', r'<span class="func">\1</span>(', highlighted)
-        
-        # Highlight strings
-        highlighted = re.sub(r'"([^"]*)"', r'<span class="str">"\1"</span>', highlighted)
-        
-        # Highlight comments
-        highlighted = re.sub(r'(/\*.*?\*/)', r'<span class="comment">\1</span>', highlighted, flags=re.DOTALL)
-        highlighted = re.sub(r'(//.*?)$', r'<span class="comment">\1</span>', highlighted, flags=re.MULTILINE)
-        
-        sections.append(
-            f'<div class="code-section">'
-            f'<div class="code-header">{escape(func_name)}</div>'
-            f'<pre class="code-content">{highlighted}</pre>'
-            f'</div>'
-        )
-    
-    if len(decomp_cache) > 5:
-        sections.append(f'<p class="more">... and {len(decomp_cache) - 5} more decompiled functions</p>')
-    
-    return '\n'.join(sections)
+    if match:
+        text = match.group(1)
+        for line in text.split('\n'):
+            line = line.strip()
+            if line and (line.startswith('-') or line.startswith('*') or re.match(r'\d+\.', line)):
+                evidence.append(re.sub(r'^[-*\d.\s]+', '', line))
+    return evidence
+
+
+def _render_evidence(evidence: List[str]) -> str:
+    """Render evidence items as HTML."""
+    if not evidence:
+        return '<div class="text-gray-500 italic">Evidence extracted from analysis data. Review summary for details.</div>'
+    html = ''
+    for i, item in enumerate(evidence, 1):
+        html += f'<div class="finding-item"><div class="finding-title">Evidence {i}</div><div class="finding-desc text-sm leading-relaxed pl-4">{escape(item)}</div></div>'
+    return html
+
+
+def _render_recommendations(recommendations: List[str]) -> str:
+    """Render recommendations as HTML."""
+    if not recommendations:
+        return '<div class="text-gray-500 italic">No specific recommendations available.</div>'
+    html = ''
+    for i, rec in enumerate(recommendations, 1):
+        html += f'<div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0 w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs font-bold">{i}</div><div class="text-sm pt-0.5 text-gray-800">{escape(rec)}</div></div>'
+    return html
+
+
+def _render_iocs(iocs: List[Dict[str, str]]) -> str:
+    """Render IOCs as table rows."""
+    if not iocs:
+        return '<tr><td colspan="2" class="text-gray-500 italic">No IOCs extracted.</td></tr>'
+    html = ''
+    for ioc in iocs:
+        html += f'<tr><td class="font-bold text-xs text-gray-500 uppercase">{escape(ioc["type"])}</td><td class="font-mono text-sm break-all">{escape(ioc["value"])}</td></tr>'
+    return html
 
 
 def build_report_html(state: Dict[str, Any]) -> str:
-    """Build professional HTML report."""
+    """Build HTML report matching professional template format."""
     
     iocs = extract_iocs_from_state(state)
     verdict, verdict_class, indicators, score = calculate_verdict(iocs, state)
@@ -197,519 +217,217 @@ def build_report_html(state: Dict[str, Any]) -> str:
     binary = analysis_results.get("binary", {})
     funcs = analysis_results.get("functions", {})
     strings_data = analysis_results.get("strings", {})
-    decomp_cache = state.get("decompilation_cache", {})
     
-    # Build metadata
     program_hash = state.get("program_hash", "unknown")
-    architecture = binary.get("architecture", "unknown")
-    compiler = binary.get("compiler", "unknown")
-    image_base = binary.get("image_base", "unknown")
-    entry_points = binary.get("entry_points", [])
-    segments = binary.get("segments", [])
-    function_count = len(funcs.get("functions", []))
-    string_count = len(strings_data.get("strings", [])) if strings_data.get("ok") else 0
+    summary_text = state.get("summary", "")
     
-    # Build capabilities
-    caps = []
-    if strings_data.get("ok"):
-        strings_vals = " ".join([s.get("value", "").lower() for s in strings_data.get("strings", [])])
-        cap_map = [
-            ("Network", ["socket", "connect", "recv", "send", "http", "tcp", "udp"]),
-            ("Command Exec", ["exec", "system", "popen", "shell", "/bin/sh"]),
-            ("Crypto", ["encrypt", "aes", "rsa", "sha", "md5", "cipher"]),
-            ("Persistence", ["registry", "startup", "cron", "systemd", "init.d"]),
-            ("Anti-Analysis", ["debugger", "vmware", "virtualbox", "sandbox"]),
-            ("Info Gathering", ["gethost", "uname", "sysinfo", "cpuinfo", "/proc"]),
-        ]
-        for name, keywords in cap_map:
-            if any(kw in strings_vals for kw in keywords):
-                caps.append(name)
+    report_data = {
+        "file_name": escape(state.get("binary_path", "unknown").split("/")[-1]),
+        "summary": _markdown_to_html(summary_text),
+        "malware_capabilities": _markdown_to_html(_extract_section(summary_text, "Malware Capabilities")),
+        "binary_info": _markdown_to_html(f"""| Property | Value |
+|----------|-------|
+| SHA256 | {program_hash} |
+| Architecture | {binary.get('architecture', 'unknown')} |
+| Type | ELF/PE (inferred) |
+| Image Base | {binary.get('image_base', 'unknown')} |
+| Entry Point | {', '.join(binary.get('entry_points', ['unknown']))} |
+| Compiler | {binary.get('compiler', 'unknown')} |
+| Functions | {len(funcs.get('functions', []))} total ({len(state.get('decompilation_cache', {}))} decompiled) |
+| Strings | {len(strings_data.get('strings', []))} extracted |"""),
+        "technical_analysis": _markdown_to_html(_extract_section(summary_text, "Technical Analysis")),
+        "functions_analysis": _markdown_to_html(_extract_section(summary_text, "Functions Analysis")),
+        "how_it_works": _markdown_to_html(_extract_section(summary_text, "Operational Flow")),
+        "c2_analysis": _markdown_to_html(_extract_section(summary_text, "C2 & Networking")),
+        "evidence": _extract_evidence(summary_text),
+        "recommendations": _extract_recommendations(summary_text),
+        "iocs": _parse_iocs_for_template(iocs),
+        "conclusion": _markdown_to_html(_extract_section(summary_text, "Conclusion")),
+    }
     
-    cap_badges = ''.join([f'<span class="cap-badge">{c}</span>' for c in caps]) if caps else '<span class="none">None detected</span>'
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    task_id = state.get("session_id", "unknown")[:8]
     
-    # Format summary with markdown
-    summary_html = _simple_markdown_to_html(state.get("summary", "No summary available."))
+    risk_class = {
+        "malicious": "risk-critical",
+        "suspicious": "risk-high",
+        "clean": "risk-low",
+        "unknown": "risk-clean"
+    }.get(verdict_class, "risk-clean")
     
-    # Build indicators text
-    indicators_text = '<ul>' + ''.join([f'<li>{escape(ind)}</li>' for ind in indicators[:10]]) + '</ul>' if indicators else '<p>No suspicious indicators detected.</p>'
+    # Build HTML sections
+    sections_html = f'''
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">1. Executive Summary</h2>
+            <div class="markdown-content">{report_data['summary']}</div>
+        </div>
+
+        <!-- Malware Capabilities -->
+        <div>
+            <h2 class="section-header">2. Malware Capabilities</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
+            <div class="markdown-content">{report_data['malware_capabilities'] if report_data['malware_capabilities'] else '<p>Capabilities analysis not available.</p>'}</div>
+        </div>
+
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">3. Binary Information</h2>
+            <div class="markdown-content">{report_data['binary_info']}</div>
+        </div>
+
+        <!-- Technical Analysis -->
+        <div>
+            <h2 class="section-header">4. Technical Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
+            <div class="markdown-content">{report_data['technical_analysis'] if report_data['technical_analysis'] else '<p>Detailed technical analysis not available.</p>'}</div>
+        </div>
+
+        <!-- Functions Analysis -->
+        <div>
+            <h2 class="section-header">5. Functions Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
+            <div class="markdown-content">{report_data['functions_analysis'] if report_data['functions_analysis'] else '<p>Function analysis not available.</p>'}</div>
+        </div>
+
+        <!-- Evidence -->
+        <div>
+            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
+            <div>{_render_evidence(report_data['evidence'])}</div>
+        </div>
+
+        <!-- Operational Flow -->
+        <div>
+            <h2 class="section-header">7. Operational Flow</h2>
+            <div class="markdown-content">{report_data['how_it_works'] if report_data['how_it_works'] else '<p>Operational flow analysis not available.</p>'}</div>
+        </div>
+
+        <!-- C2 & Networking -->
+        <div>
+            <h2 class="section-header">8. C2 & Networking</h2>
+            <div class="markdown-content">{report_data['c2_analysis'] if report_data['c2_analysis'] else '<p>C2 analysis not available.</p>'}</div>
+        </div>
+
+        <!-- Recommendations -->
+        <div>
+            <h2 class="section-header">9. Recommendations</h2>
+            <div class="space-y-4">{_render_recommendations(report_data['recommendations'])}</div>
+        </div>
+
+        <!-- IOCs -->
+        <div>
+            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
+                    <tbody>{_render_iocs(report_data['iocs'])}</tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conclusion -->
+        <div>
+            <h2 class="section-header">11. Conclusion</h2>
+            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                {report_data['conclusion'] if report_data['conclusion'] else f'<p>This binary has been classified as <strong>{verdict}</strong> with a risk score of {score}/100. Review the technical analysis and IOCs above for detection and response guidance.</p>'}
+            </div>
+        </div>
+    '''
     
+    # CSS styles
+    css_styles = '''
+        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
+        .font-mono { font-family: 'Roboto Mono', monospace; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
+        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
+        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
+        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
+        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
+        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
+        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
+        .markdown-content li { margin-bottom: 6px; }
+        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
+        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
+        .markdown-content pre code { color: #374151; background: none; padding: 0; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
+        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
+        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
+        .finding-desc { color: #4b5563; }
+        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
+    '''
+    
+    # Complete HTML document
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analysis Report - {program_hash[:16]}...</title>
-    <style>
-        :root {{
-            --bg: #f8f9fa;
-            --card: #ffffff;
-            --text: #212529;
-            --text-muted: #6c757d;
-            --border: #dee2e6;
-            --primary: #2563eb;
-            --primary-light: #dbeafe;
-            --success: #059669;
-            --success-light: #d1fae5;
-            --warning: #d97706;
-            --warning-light: #fef3c7;
-            --danger: #dc2626;
-            --danger-light: #fee2e2;
-            --code-bg: #1e1e2e;
-            --code-text: #cdd6f4;
-        }}
-        
-        * {{ box-sizing: border-box; }}
-        
-        body {{
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-            background: var(--bg);
-            color: var(--text);
-            line-height: 1.6;
-            margin: 0;
-            padding: 20px;
-        }}
-        
-        .container {{
-            max-width: 1400px;
-            margin: 0 auto;
-        }}
-        
-        header {{
-            background: var(--card);
-            border-radius: 12px;
-            padding: 30px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        
-        h1 {{
-            margin: 0 0 10px 0;
-            font-size: 28px;
-            font-weight: 700;
-        }}
-        
-        .subtitle {{
-            color: var(--text-muted);
-            font-size: 14px;
-        }}
-        
-        .grid {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 20px;
-            margin-bottom: 20px;
-        }}
-        
-        .card {{
-            background: var(--card);
-            border-radius: 12px;
-            padding: 24px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }}
-        
-        .card h2 {{
-            margin: 0 0 16px 0;
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--text);
-            padding-bottom: 8px;
-            border-bottom: 2px solid var(--border);
-        }}
-        
-        .card h3 {{
-            margin: 20px 0 12px 0;
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }}
-        
-        .verdict {{
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-size: 18px;
-            font-weight: 700;
-        }}
-        
-        .verdict.malicious {{
-            background: var(--danger-light);
-            color: var(--danger);
-        }}
-        
-        .verdict.suspicious {{
-            background: var(--warning-light);
-            color: var(--warning);
-        }}
-        
-        .verdict.clean {{
-            background: var(--success-light);
-            color: var(--success);
-        }}
-        
-        .score {{
-            font-size: 14px;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-top: 8px;
-        }}
-        
-        .meta-grid {{
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }}
-        
-        .meta-item {{
-            padding: 12px;
-            background: var(--bg);
-            border-radius: 8px;
-        }}
-        
-        .meta-label {{
-            font-size: 12px;
-            color: var(--text-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 4px;
-        }}
-        
-        .meta-value {{
-            font-size: 14px;
-            font-weight: 500;
-            word-break: break-all;
-        }}
-        
-        .stats {{
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-        }}
-        
-        .stat {{
-            text-align: center;
-            padding: 16px 24px;
-            background: var(--bg);
-            border-radius: 8px;
-            min-width: 100px;
-        }}
-        
-        .stat-value {{
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--primary);
-        }}
-        
-        .stat-label {{
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-top: 4px;
-        }}
-        
-        .cap-badge {{
-            display: inline-block;
-            padding: 4px 12px;
-            background: var(--primary-light);
-            color: var(--primary);
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 500;
-            margin: 4px;
-        }}
-        
-        .badge {{
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 12px;
-            font-weight: 600;
-        }}
-        
-        .badge.high {{
-            background: var(--danger-light);
-            color: var(--danger);
-        }}
-        
-        .badge.medium {{
-            background: var(--warning-light);
-            color: var(--warning);
-        }}
-        
-        .badge.low {{
-            background: var(--success-light);
-            color: var(--success);
-        }}
-        
-        .data-table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 13px;
-        }}
-        
-        .data-table th,
-        .data-table td {{
-            padding: 10px 12px;
-            text-align: left;
-            border-bottom: 1px solid var(--border);
-        }}
-        
-        .data-table th {{
-            font-weight: 600;
-            color: var(--text-muted);
-            font-size: 12px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            background: var(--bg);
-        }}
-        
-        .data-table tr:hover {{
-            background: var(--bg);
-        }}
-        
-        .func-name {{
-            color: var(--primary);
-            font-weight: 500;
-        }}
-        
-        .ioc-category {{
-            margin-bottom: 20px;
-        }}
-        
-        .ioc-category h4 {{
-            margin: 0 0 12px 0;
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-muted);
-        }}
-        
-        .ioc-list {{
-            list-style: none;
-            padding: 0;
-            margin: 0;
-        }}
-        
-        .ioc-item {{
-            padding: 8px 12px;
-            background: var(--bg);
-            border-radius: 6px;
-            margin-bottom: 6px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }}
-        
-        .ioc-type {{
-            display: inline-block;
-            padding: 2px 8px;
-            background: var(--danger-light);
-            color: var(--danger);
-            border-radius: 4px;
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-            min-width: 60px;
-            text-align: center;
-        }}
-        
-        .code-section {{
-            margin-bottom: 20px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            overflow: hidden;
-        }}
-        
-        .code-header {{
-            background: var(--code-bg);
-            color: var(--code-text);
-            padding: 10px 16px;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 13px;
-            font-weight: 600;
-        }}
-        
-        .code-content {{
-            background: var(--code-bg);
-            color: var(--code-text);
-            padding: 16px;
-            margin: 0;
-            overflow-x: auto;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 13px;
-            line-height: 1.5;
-        }}
-        
-        .code-content .kw {{ color: #c792ea; }}
-        .code-content .func {{ color: #82aaff; }}
-        .code-content .str {{ color: #c3e88d; }}
-        .code-content .comment {{ color: #676e95; font-style: italic; }}
-        
-        .summary {{
-            line-height: 1.8;
-        }}
-        
-        .summary h2 {{
-            font-size: 20px;
-            margin-top: 24px;
-            margin-bottom: 12px;
-            color: var(--text);
-        }}
-        
-        .summary h3 {{
-            font-size: 16px;
-            margin-top: 20px;
-            color: var(--text-muted);
-        }}
-        
-        .summary ul {{
-            padding-left: 20px;
-        }}
-        
-        .summary li {{
-            margin-bottom: 8px;
-        }}
-        
-        .summary code {{
-            background: var(--bg);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Consolas', 'Monaco', monospace;
-            font-size: 0.9em;
-        }}
-        
-        .no-data {{
-            color: var(--text-muted);
-            font-style: italic;
-            padding: 20px;
-            text-align: center;
-        }}
-        
-        .more {{
-            color: var(--text-muted);
-            font-style: italic;
-            text-align: center;
-            padding: 10px;
-        }}
-        
-        .download-btn {{
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background: var(--primary);
-            color: white;
-            text-decoration: none;
-            border-radius: 8px;
-            font-size: 14px;
-            font-weight: 500;
-            margin-top: 16px;
-        }}
-        
-        .download-btn:hover {{
-            background: #1d4ed8;
-        }}
-        
-        @media print {{
-            body {{ background: white; }}
-            .card {{ box-shadow: none; border: 1px solid var(--border); }}
-        }}
-    </style>
+    <title>Malware Analysis Report - {report_data['file_name']}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>{css_styles}</style>
 </head>
 <body>
-    <div class="container">
-        <header>
-            <h1>🔍 Binary Analysis Report</h1>
-            <div class="subtitle">Generated on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')} • {program_hash}</div>
-        </header>
-        
-        <div class="grid">
-            <div class="card">
-                <h2>Verdict</h2>
-                <div class="verdict {verdict_class}">
-                    {'🔴' if verdict_class == 'malicious' else '🟡' if verdict_class == 'suspicious' else '🟢'} {verdict}
-                </div>
-                <div class="score">Risk Score: {score}/100</div>
+    <div class="fixed bottom-8 right-8 no-print" style="z-index: 50;">
+        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500;">
+            Print / Save PDF
+        </button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
+            <div>
+                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
+                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
             </div>
-            
-            <div class="card">
-                <h2>Binary Information</h2>
-                <div class="meta-grid">
-                    <div class="meta-item">
-                        <div class="meta-label">Architecture</div>
-                        <div class="meta-value">{architecture}</div>
-                    </div>
-                    <div class="meta-item">
-                        <div class="meta-label">Compiler</div>
-                        <div class="meta-value">{compiler}</div>
-                    </div>
-                    <div class="meta-item">
-                        <div class="meta-label">Image Base</div>
-                        <div class="meta-value">{image_base}</div>
-                    </div>
-                    <div class="meta-item">
-                        <div class="meta-label">Entry Point</div>
-                        <div class="meta-value">{entry_points[0] if entry_points else 'Unknown'}</div>
-                    </div>
-                </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
+                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
             </div>
         </div>
-        
-        <div class="grid">
-            <div class="card">
-                <h2>Statistics</h2>
-                <div class="stats">
-                    <div class="stat">
-                        <div class="stat-value">{function_count:,}</div>
-                        <div class="stat-label">Functions</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value">{string_count:,}</div>
-                        <div class="stat-label">Strings</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value">{len(decomp_cache)}</div>
-                        <div class="stat-label">Decompiled</div>
-                    </div>
-                    <div class="stat">
-                        <div class="stat-value">{len(iocs.to_dict())}</div>
-                        <div class="stat-label">IOC Categories</div>
-                    </div>
-                </div>
+
+        <!-- Metadata -->
+        <div class="meta-box">
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">{report_data['file_name']}</div>
             </div>
-            
-            <div class="card">
-                <h2>Detected Capabilities</h2>
-                {cap_badges}
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">{task_id}</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>{timestamp}</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
             </div>
         </div>
-        
-        <div class="card">
-            <h2>Executive Summary</h2>
-            <div class="summary">
-                {summary_html}
-            </div>
+
+        <!-- Risk Banner -->
+        <div class="risk-banner {risk_class}">
+            THREAT ASSESSMENT: {verdict.upper()}
         </div>
-        
-        <div class="card">
-            <h2>Indicators of Compromise (IOCs)</h2>
-            {_format_iocs_html(iocs)}
-        </div>
-        
-        <div class="card">
-            <h2>Top Functions by References</h2>
-            {_format_functions_html(funcs.get("functions", []))}
-        </div>
-        
-        <div class="card">
-            <h2>Decompiled Code</h2>
-            {_format_code_html(decomp_cache)}
-        </div>
-        
-        <div class="card">
-            <h2>Suspicious Indicators</h2>
-            {indicators_text}
+
+        {sections_html}
+
+        <!-- Footer -->
+        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Generated by Ghidra Analysis Agent</div>
         </div>
     </div>
 </body>
@@ -720,87 +438,25 @@ def build_report_html(state: Dict[str, Any]) -> str:
 
 def build_report_text(state: Dict[str, Any]) -> str:
     """Build plain text report for download."""
-    iocs = extract_iocs_from_state(state)
-    verdict, _, indicators, score = calculate_verdict(iocs, state)
-    
-    analysis_results = state.get("analysis_results", {})
-    binary = analysis_results.get("binary", {})
-    funcs = analysis_results.get("functions", {})
+    summary = state.get("summary", "No summary available.")
+    program_hash = state.get("program_hash", "unknown")
     
     lines = [
         "=" * 70,
         "GHIDRA BINARY ANALYSIS REPORT",
         "=" * 70,
         "",
+        f"SHA-256: {program_hash}",
         f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-        f"SHA-256: {state.get('program_hash', 'unknown')}",
         "",
         "-" * 70,
-        "VERDICT",
+        "EXECUTIVE SUMMARY",
         "-" * 70,
-        f"Classification: {verdict}",
-        f"Risk Score: {score}/100",
-        "",
-        "-" * 70,
-        "BINARY INFORMATION",
-        "-" * 70,
-        f"Architecture: {binary.get('architecture', 'unknown')}",
-        f"Compiler: {binary.get('compiler', 'unknown')}",
-        f"Image Base: {binary.get('image_base', 'unknown')}",
-        f"Entry Points: {', '.join(binary.get('entry_points', ['unknown']))}",
-        f"Segments: {', '.join(binary.get('segments', []))}",
-        "",
-        "-" * 70,
-        "SUMMARY",
-        "-" * 70,
-        state.get("summary", "No summary available."),
-        "",
-        "-" * 70,
-        "IOCs (INDICATORS OF COMPROMISE)",
-        "-" * 70,
-    ]
-    
-    if iocs.ips:
-        lines.extend(["", "IP Addresses:"])
-        lines.extend([f"  - {ip}" for ip in iocs.ips])
-    
-    if iocs.domains:
-        lines.extend(["", "Domains:"])
-        lines.extend([f"  - {d}" for d in iocs.domains])
-    
-    if iocs.file_paths:
-        lines.extend(["", "File Paths:"])
-        lines.extend([f"  - {p}" for p in iocs.file_paths])
-    
-    if not any([iocs.ips, iocs.domains, iocs.file_paths]):
-        lines.append("No IOCs extracted.")
-    
-    lines.extend([
-        "",
-        "-" * 70,
-        "TOP FUNCTIONS",
-        "-" * 70,
-    ])
-    
-    sorted_funcs = sorted(funcs.get("functions", []), key=lambda f: f.get("xrefs", 0), reverse=True)[:20]
-    for f in sorted_funcs:
-        lines.append(f"  {f.get('name', 'unknown'):40s} @ {f.get('address', '?'):12s} ({f.get('xrefs', 0)} refs)")
-    
-    lines.extend([
-        "",
-        "-" * 70,
-        "DECOMPILED CODE",
-        "-" * 70,
-    ])
-    
-    for func_name, c_code in list(state.get("decompilation_cache", {}).items())[:3]:
-        lines.extend(["", f"--- {func_name} ---", c_code[:2000], ""])
-    
-    lines.extend([
+        summary,
         "",
         "=" * 70,
         "END OF REPORT",
         "=" * 70,
-    ])
+    ]
     
     return '\n'.join(lines)
