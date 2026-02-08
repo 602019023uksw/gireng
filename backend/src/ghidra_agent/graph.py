@@ -344,19 +344,13 @@ async def synthesize(state: AgentState) -> AgentState:
         prompt = f"""{SYSTEM_PROMPT}
 
 Binary hash: {state.get('program_hash', 'unknown')}
-Intent: {state.get('intent', 'reconnaissance')}
 
 Analysis data:
 {context}
 
 User question: {user_query}
 
-Provide a COMPREHENSIVE, DETAILED answer based on ALL the analysis data provided. 
-- Analyze every decompiled function relevant to the question
-- Cite specific addresses and code patterns
-- Explain technical implementation details
-- Assess security implications thoroughly
-If the data is insufficient, say so and suggest what additional analysis could help."""
+Answer based ONLY on the data provided. Be specific with addresses and evidence."""
     else:
         prompt = f"""{SYSTEM_PROMPT}
 
@@ -365,10 +359,10 @@ Binary hash: {state.get('program_hash', 'unknown')}
 Analysis data:
 {context}
 
-You MUST provide a COMPREHENSIVE executive summary (minimum 300 words) following the format in your instructions.
-This is the INITIAL ANALYSIS - make it thorough and detailed.
-Analyze ALL provided decompiled functions, ALL IOCs, and ALL strings.
-Do not skip any sections. The user expects a professional malware analysis report."""
+Generate a complete structured malware analysis report with ALL sections listed in your instructions.
+Use ONLY the data provided above - do not invent or assume information.
+If the malware family is unknown, state "Unknown".
+Cite actual addresses (0xXXXXXXXX) and actual strings from the analysis data."""
 
     try:
         summary = await call_llm(prompt)
