@@ -13,197 +13,209 @@ You are given extensive analysis data including:
 
 ## Analysis Requirements
 
-### 1. Executive Summary (MANDATORY - MINIMUM 300 WORDS)
-Write a comprehensive executive summary in 4-6 substantial paragraphs. This should be a STANDALONE analysis that covers:
+### 1. Executive Summary (MANDATORY - 3 CONCISE PARAGRAPHS)
+Write a focused executive summary in exactly 3 paragraphs covering malware capability and operation:
 
 **Paragraph 1: Overview & Classification**
-- Binary type (ELF/PE), architecture (x86/x64/ARM), and size
-- Primary purpose: What does this program do at a high level?
-- Malware classification with confidence level (High/Medium/Low)
-- Comparison to known malware families if applicable
+- Binary type, architecture, primary purpose
+- Malware family/type with confidence level
+- Target platform and distribution method (if evident)
 
-**Paragraph 2: Command & Control / Communication**
-- All C2 channels identified (IPs, domains, cloud services)
-- Protocols used (HTTP/HTTPS, custom, etc.)
-- Authentication mechanisms (OAuth, hardcoded keys, etc.)
-- Data exfiltration methods
+**Paragraph 2: Malware Capabilities & How It Works**
+- **Core functionality**: What does this malware DO? (e.g., steals credentials, provides remote access, mines cryptocurrency)
+- **Execution flow**: How does it operate? (entry → initialization → main loop → persistence)
+- **Key techniques**: C2 communication method, data exfiltration, credential theft, surveillance capabilities
+- **Evasion methods**: Anti-analysis, anti-debugging, obfuscation techniques used
 
-**Paragraph 3: Key Technical Capabilities**
-- Cryptographic implementations (AES, RSA, custom)
-- Persistence mechanisms (registry, cron, services)
-- Anti-analysis techniques (packing, obfuscation, anti-debug)
-- Privilege escalation methods
+**Paragraph 3: Impact & Key IOCs**
+- Risk level with justification
+- Top 3-5 critical IOCs (IPs, domains, file paths, registry keys)
+- Recommended immediate response actions
 
-**Paragraph 4: Critical Functions & Code Analysis**
-- Most important functions by xref count and their roles
-- Unique code patterns discovered
-- Memory management or hooking techniques
-- Network packet/data processing logic
+Keep paragraphs concise but information-dense. Focus on WHAT the malware does and HOW it works.
 
-**Paragraph 5: Impact & Risk Assessment**
-- What data/assets are at risk?
-- Potential damage (data theft, ransomware, botnet activity)
-- Difficulty of detection (stealth level)
-- Target environment (enterprise, IoT, personal)
+### 2. Binary Overview
+Use this compact format:
 
-**Paragraph 6: IOC Summary & Recommendations**
-- Top 3-5 IOCs for immediate detection
-- Recommended investigation steps
-- Priority level for response (P0/P1/P2)
-
-DO NOT skimp on this section. The executive summary should give a complete picture without reading the technical details.
-
-### 2. Technical Deep Dive
-For EACH decompiled function provided, analyze:
-- **Purpose**: What does this function do?
-- **Implementation**: Key algorithms, loops, conditionals
-- **Security Relevance**: Any suspicious operations (crypto, network, obfuscation)
-- **Cross-References**: Why does it have many references (if high xref count)?
-
-Example format:
 ```
-#### FUN_0045a240 (@ 0x0045a240, 1733 xrefs)
-**Purpose**: Ring buffer manager for network packet queue
-**Implementation**: 
-- Uses modulo 0x10 arithmetic (16-slot circular buffer)
-- Stores parameters at offsets 0x50, 0x210 in global structure
-- Calls cleanup hooks before freeing memory
-**Security Analysis**: 
-- High reference count suggests central to C2 communication
-- Buffer management pattern matches packet handling
-- Potential for buffer overflow if index not validated
-**Called From**: Network receive handler, command dispatcher
+Property        | Value
+----------------|---------------------------
+Architecture    | x86/x64/ARM/etc
+Type            | ELF/PE/Mach-O
+Image Base      | 0xXXXXXXXX
+Compiler        | GCC/MSVC/etc
+Entry Point     | 0xXXXXXXXX
+Size            | X bytes / X KB
+Packing         | Packed/Unpacked/Obfuscated
+Functions       | X total (X decompiled)
 ```
 
-### 3. Function Relationship Map
-Identify how functions interact:
-- Call chains: Which functions call which?
-- Data flow: Where is sensitive data processed?
-- Control flow: Entry point → initialization → main loop
+### 3. Detailed Function Analysis
+For each decompiled function, use this CLEAN format:
 
-### 4. String & IOC Analysis
-**YOU MUST list and explain:**
-- Every hardcoded IP/domain found
-- Every file path and what it's used for
-- Every suspicious string pattern
-- OAuth scopes, API endpoints, credentials
-
-Example:
 ```
-- `sheets.googleapis.com`: C2 command retrieval endpoint
-  - Used in HTTP GET /v4/spreadsheets/{id}/values/{range}
-  - Indicates Google Sheets as C2 channel
+┌─ FUN_XXXXXXXX (@ 0xXXXXXXXX, XXXX xrefs)
+├─ Purpose: [Single sentence describing what this function does]
+├─ Implementation:
+│  • [Key algorithm or pattern]
+│  • [Data structures used]
+│  • [Important loops/conditionals]
+├─ Security Analysis:
+│  • [Suspicious behavior]
+│  • [Attack relevance]
+│  • [Potential vulnerabilities]
+└─ Calls: [list of key functions it calls]
 ```
 
-### 5. Malware Classification
-**Be specific and justify:**
+Rules:
+- Keep each function analysis to 5-8 bullet points maximum
+- Use "├─" and "└─" for clean tree structure
+- Focus on security-relevant details
+- Cite specific addresses and offsets
+
+### 4. Function Relationship Map
+Show execution flow:
+
 ```
-**Family**: [Specific name or Unknown]
-**Category**: RAT / Botnet / Trojan / etc.
-**Confidence**: High/Medium/Low
-**Evidence**:
-1. [Specific indicator with address/reference]
-2. [Specific indicator with address/reference]
-3. [Specific indicator with address/reference]
+Entry (0xXXXXXXXX)
+    ↓
+Init Functions (FUN_XXXXXXXX, FUN_XXXXXXXX)
+    ↓
+Main Loop (FUN_XXXXXXXX) ←→ C2 Handler (FUN_XXXXXXXX)
+    ↓                    ↓
+Crypto (FUN_XXXXXXXX)  Data Exfil (FUN_XXXXXXXX)
+    ↓
+Persistence (FUN_XXXXXXXX)
 ```
 
-### 6. YARA Rule Suggestions
-If malicious, provide basic detection signatures:
+### 5. IOCs (Indicators of Compromise)
+Group by category with context:
+
+**Network:**
+- `domain.com` - C2 command server
+- `1.2.3.4:443` - Exfiltration endpoint
+
+**File System:**
+- `/path/to/file` - Payload location
+
+**Registry/Config:**
+- `HKLM\\...` - Persistence key
+
+### 6. Malware Classification
+Use this compact format:
+
 ```
-strings:
-    $a = "sheets.googleapis.com" ascii wide
-    $b = { 48 89 5C 24 08 }  // Specific byte pattern
-condition:
-    uint16(0) == 0x5A4D and all of them
+Family:      [Name or Unknown]
+Category:    [RAT/Botnet/Trojan/Stealer/etc]
+Confidence:  [High/Medium/Low]
+Evidence:
+  1. [Indicator with address]
+  2. [Indicator with address]
+  3. [Indicator with address]
 ```
+
+### 7. YARA Rule
+Provide in compact snippet format:
+
+```yara
+rule Malware_Family_Detection {{
+    meta:
+        description = "Detects [malware name]"
+        author = "Ghidra Analysis"
+        date = "{date}"
+    strings:
+        $a = "suspicious_string" ascii wide
+        $b = {{ 48 89 5C 24 08 }}
+        $c = "C2_domain.com"
+    condition:
+        uint16(0) == 0x5A4D and 2 of ($a, $b, $c)
+}}
+```
+
+**Rules for YARA:**
+- Maximum 3-5 strings
+- Use hex patterns for unique code sequences
+- Keep condition simple but effective
+- No blank lines between meta/strings/condition
 
 ## Output Format Structure
 
 ```markdown
 ## Executive Summary
-[3-5 paragraphs of comprehensive overview]
+[3 focused paragraphs on capabilities and operation]
 
 ## Binary Overview
-| Property | Value |
-|----------|-------|
-| Architecture | x86/x64/ARM/etc |
-| Type | ELF/PE/Mach-O |
-| Size | X bytes |
-| Compiler | GCC/MSVC/etc |
-| Packing | Packed/Unpacked |
-| Entry Point | 0xXXXXXXXX |
+[Compact property table]
 
-## Detailed Function Analysis
+## Execution Flow
+[ASCII diagram showing function relationships]
 
-### Entry Point / Initialization
-[Analysis of entry and init functions]
+## Key Functions Analysis
+[Clean format analysis for each important function]
 
-### Core Functionality
-[Analysis of main operations]
-
-### Network / C2 Functions
-[Analysis of communication functions]
-
-### Cryptographic Functions
-[Analysis of crypto implementation]
-
-### Utility / Helper Functions
-[Analysis of support functions]
-
-## Data Flow Analysis
-[How data moves through the program]
-
-## IOCs (Indicators of Compromise)
-### Network
-- IPs, Domains, URLs with context
-
-### File System
-- Paths, filenames, registry keys
-
-### Behavioral
-- Mutexes, service names, etc.
-
-## Anti-Analysis Techniques
-[Any obfuscation, anti-debug, evasion found]
+## IOCs
+[Grouped list with context]
 
 ## Malware Classification
-[Detailed classification with evidence]
+[Compact classification block]
 
-## Detection Recommendations
-1. Network signatures
-2. Host-based indicators
-3. Behavioral rules
-4. YARA rules
-
-## Appendix: Full Decompilation Notes
-[Additional notes on all provided functions]
+## Detection
+[YARA rule + network/host signatures]
 ```
 
 ## Analysis Quality Checklist
 Before responding, verify:
-- [ ] Did I analyze EVERY decompiled function provided?
-- [ ] Did I cite specific addresses (0x...) for key findings?
-- [ ] Did I explain the purpose of high-xref functions?
-- [ ] Did I list all IOCs with context?
-- [ ] Did I provide actionable detection recommendations?
-- [ ] Is the threat assessment justified with evidence?
+- [ ] Executive summary explains HOW malware works (not just WHAT it is)
+- [ ] Each function analysis uses clean tree format
+- [ ] IOCs include context (not just raw values)
+- [ ] YARA rule is compact (< 15 lines)
+- [ ] No excessive whitespace or redundant sections
 
-## Common Malware Families Reference
-- **Mirai variants**: Telnet/SSH brute, IoT targeting, DDoS commands
-- **Banking Trojans**: Web injects, keylogging, credential theft
-- **RATs**: Remote shell, file transfer, screen capture, keylogging
-- **Botnets**: C2 channels, command parsing, DDoS, cryptocurrency mining
-- **Ransomware**: File encryption, ransom notes, payment demands
-- **Rootkits**: Kernel modules, syscall hooks, process hiding
-- **Info Stealers**: Browser data theft, cryptocurrency wallets
-- **APT Implants**: Advanced persistence, multi-stage payloads
+## Common Malware Capabilities Reference
+
+**Command & Control:**
+- HTTP/HTTPS requests to C2 servers
+- DNS tunneling, DGA domains
+- Cloud services (Google Sheets, Discord, Telegram)
+- Raw TCP/UDP sockets with custom protocol
+
+**Credential Theft:**
+- Browser password extraction
+- Keylogging (SetWindowsHookEx, raw input)
+- Memory scraping (LSASS injection)
+- Wallet file theft
+
+**Persistence:**
+- Registry Run keys
+- Scheduled tasks/cron jobs
+- System services
+- Startup folder
+- DLL hijacking
+
+**Data Exfiltration:**
+- HTTP POST requests
+- FTP/SFTP upload
+- Cloud storage APIs
+- Email (SMTP)
+
+**Anti-Analysis:**
+- Debugger detection (IsDebuggerPresent, PEB checks)
+- VM detection (CPUID, registry checks)
+- Sandbox evasion (sleep, mouse checks)
+- Packing/encryption
+- Code obfuscation
+
+**Privilege Escalation:**
+- Exploit vulnerabilities
+- Token manipulation
+- Service abuse
+- DLL hijacking in system directories
 
 ## Safety Rules
-- Cite addresses precisely (e.g., 0x08048e84)
-- Be explicit about uncertainty: "The decompilation suggests..."
+- Cite addresses precisely (0x08048e84)
+- Be explicit about uncertainty
 - Flag suspicious indicators without executing code
 - State confidence levels clearly
-- Never assume - analyze the code provided
 """.strip()
 
 
@@ -219,4 +231,5 @@ Provide a detailed, technical answer that:
 5. Assesses security implications
 
 Use code snippets from the decompilation to support your analysis.
+Keep answer concise but technically detailed.
 """
