@@ -47,13 +47,43 @@ services:
     volumes:
       - ghidra_projects:/data/projects
       - ghidra_shared:/data/shared
+    healthcheck:
+      test: ["CMD", "sh", "-c", "test -f /data/shared/ghidra-config/ghidra/*/venv/bin/python3 || python3 -c 'import pyghidra' 2>/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  radare2:
+    image: radare/radare2:latest
+    container_name: radare2
+    entrypoint:
+      - "/bin/sh"
+      - "-c"
+      - |
+        # Install decompiler plugins (best-effort)
+        r2pm -Ui r2ghidra 2>/dev/null || echo "r2ghidra not available"
+        r2pm -Ui r2dec 2>/dev/null || echo "r2dec not available"
+        touch /tmp/.r2_ready
+        echo "Radare2 container ready"
+        tail -f /dev/null
+    volumes:
+      - ghidra_shared:/data/shared
+    healthcheck:
+      test: ["CMD", "cat", "/tmp/.r2_ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   agent:
     build:
       context: .
       dockerfile: backend/Dockerfile
     depends_on:
-      - ghidra
+      ghidra:
+        condition: service_healthy
+      radare2:
+        condition: service_healthy
     environment:
       GHIDRA_DOCKER_IMAGE: ${RUNNER_IMAGE:-ireng-runner}
       GHIDRA_PROJECT_ROOT: /data/projects
@@ -72,6 +102,10 @@ services:
       LLM_BASE_URL: https://api.z.ai/api/coding/paas/v4/
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL}
+      R2_CONTAINER_NAME: radare2
+      R2_SHARED_ROOT: /data/shared
+      R2_TIMEOUT: "60"
+      ENABLE_R2: "true"
     volumes:
       - ghidra_projects:/data/projects
       - ghidra_shared:/data/shared

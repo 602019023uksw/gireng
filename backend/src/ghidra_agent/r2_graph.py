@@ -1,0 +1,179 @@
+"""Radare2 LangGraph pipeline — runs R2 analysis nodes in parallel with Ghidra."""
+
+import asyncio
+from typing import Any, Dict, List
+
+from ghidra_agent.logging import logger
+from ghidra_agent.r2_tools import (
+    r2_analyze_binary,
+    r2_list_functions,
+    r2_decompile_function,
+    r2_find_strings,
+    r2_find_xrefs,
+    r2_disassemble_at,
+)
+from ghidra_agent.state import AgentState
+
+
+async def r2_discovery(state: AgentState) -> AgentState:
+    """Run Radare2 discovery: binary info, functions, and strings."""
+    tool_args = {
+        "session_id": state["session_id"],
+        "program_hash": state["program_hash"],
+        "binary_path": state.get("binary_path"),
+    }
+
+    # Run binary analysis, function listing, and string extraction
+    binary_info: Dict[str, Any] = {"ok": False, "error": "not run"}
+    functions: Dict[str, Any] = {"ok": False, "error": "not run"}
+    strings: Dict[str, Any] = {"ok": False, "error": "not run"}
+
+    try:
+        binary_info = await r2_analyze_binary.ainvoke(tool_args)
+    except Exception as exc:
+        logger.error("r2_discovery_binary_failed", error=str(exc))
+        binary_info = {"ok": False, "error": str(exc)}
+
+    try:
+        functions = await r2_list_functions.ainvoke(tool_args)
+    except Exception as exc:
+        logger.error("r2_discovery_functions_failed", error=str(exc))
+        functions = {"ok": False, "error": str(exc)}
+
+    try:
+        strings = await r2_find_strings.ainvoke(tool_args)
+    except Exception as exc:
+        logger.error("r2_discovery_strings_failed", error=str(exc))
+        strings = {"ok": False, "error": str(exc)}
+
+    state["r2_analysis_results"]["binary"] = binary_info
+    state["r2_analysis_results"]["functions"] = functions
+    state["r2_analysis_results"]["strings"] = strings
+
+    # Auto-decompile top functions (mirroring Ghidra pipeline)
+    await _r2_auto_decompile(state, binary_info, functions)
+
+    if not binary_info.get("ok"):
+        state["r2_analysis_results"].setdefault("errors", []).append("r2_binary_structure_failed")
+
+    state["reasoning_trace"].append("r2_discovery_completed")
+    return state
+
+
+async def _r2_auto_decompile(
+    state: AgentState,
+    binary_info: Dict[str, Any],
+    functions: Dict[str, Any],
+) -> None:
+    """Auto-decompile top R2-detected functions into r2_decompilation_cache."""
+    if not functions.get("ok") or not functions.get("functions"):
+        return
+
+    func_list = functions["functions"]
+    sorted_funcs = sorted(func_list, key=lambda f: f.get("xrefs", 0) + f.get("size", 0), reverse=True)
+
+    # Select top 15 functions prioritising those with high xrefs / largest size
+    funcs_to_decompile = sorted_funcs[:15]
+
+    decompiled = 0
+    for func in funcs_to_decompile:
+        name = func.get("name", "")
+        addr = func.get("address", "")
+        if not name or name in state.get("r2_decompilation_cache", {}):
+            continue
+
+        try:
+            decomp = await r2_decompile_function.ainvoke({
+                "session_id": state["session_id"],
+                "program_hash": state["program_hash"],
+                "binary_path": state.get("binary_path"),
+                "function_name": name,
+                "address": addr,
+            })
+            if decomp.get("ok") and decomp.get("c"):
+                state["r2_decompilation_cache"][name] = decomp["c"]
+                decompiled += 1
+        except Exception as exc:
+            logger.error("r2_auto_decompile_failed", function=name, error=str(exc))
+
+    if decompiled:
+        state["reasoning_trace"].append(f"r2_auto_decompiled:{decompiled}_functions")
+
+
+async def r2_focus_analysis(state: AgentState) -> AgentState:
+    """Focus R2 analysis on a specific function or address."""
+    target = state.get("current_function")
+    addr = state.get("current_address")
+    tool_args = {
+        "session_id": state["session_id"],
+        "program_hash": state["program_hash"],
+        "binary_path": state.get("binary_path"),
+    }
+
+    if target:
+        try:
+            decomp = await r2_decompile_function.ainvoke({
+                **tool_args,
+                "function_name": target,
+                "address": addr,
+            })
+        except Exception as exc:
+            decomp = {"ok": False, "error": str(exc)}
+
+        if not decomp.get("ok") and addr:
+            try:
+                decomp = await r2_disassemble_at.ainvoke({**tool_args, "address": addr})
+            except Exception as exc:
+                decomp = {"ok": False, "error": str(exc)}
+
+        state["r2_analysis_results"]["focus"] = decomp
+        if decomp.get("ok") and decomp.get("c"):
+            state["r2_decompilation_cache"][target] = decomp["c"]
+
+    elif addr:
+        try:
+            disasm = await r2_disassemble_at.ainvoke({**tool_args, "address": addr})
+        except Exception as exc:
+            disasm = {"ok": False, "error": str(exc)}
+        state["r2_analysis_results"]["focus"] = disasm
+    else:
+        state["r2_analysis_results"]["focus"] = {"ok": False, "error": "No focus target"}
+
+    state["reasoning_trace"].append("r2_focus_completed")
+    return state
+
+
+async def r2_cross_reference(state: AgentState) -> AgentState:
+    """Cross-reference analysis using Radare2."""
+    addr = state.get("current_address")
+    if addr:
+        try:
+            xrefs = await r2_find_xrefs.ainvoke({
+                "session_id": state["session_id"],
+                "program_hash": state["program_hash"],
+                "binary_path": state.get("binary_path"),
+                "address": addr,
+            })
+        except Exception as exc:
+            xrefs = {"ok": False, "error": str(exc)}
+        state["r2_analysis_results"]["xrefs"] = xrefs
+
+    state["reasoning_trace"].append("r2_xref_completed")
+    return state
+
+
+async def run_r2_pipeline(state: AgentState) -> AgentState:
+    """Execute the full R2 analysis pipeline (called in parallel with Ghidra).
+
+    This is NOT a LangGraph sub-graph — it's a simple sequential pipeline
+    that mirrors the Ghidra discovery→focus→xref flow.
+    """
+    state = await r2_discovery(state)
+
+    # Only run focus/xref if a specific target is set
+    if state.get("current_function") or state.get("current_address"):
+        state = await r2_focus_analysis(state)
+        if state.get("current_address"):
+            state = await r2_cross_reference(state)
+
+    return state

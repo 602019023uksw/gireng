@@ -1,273 +1,227 @@
 """Enhanced HTML report generation matching professional template format."""
 
+import logging
 import re
 from datetime import datetime, timezone
 from html import escape
 from typing import Any, Dict, List
 
-from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
+from ghidra_agent.ioc_extractor import extract_iocs_from_state, IOCs, calculate_verdict
+
+logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Section headings the LLM is instructed to produce (see prompts.py).
-# Order matters: we walk the summary text and split on these.
-# ---------------------------------------------------------------------------
-_SECTION_PATTERNS: List[Dict[str, str]] = [
-    {"key": "executive_summary",    "pattern": r"(?:Executive\s+Summary)"},
-    {"key": "malware_capabilities", "pattern": r"(?:Malware\s+Capabilities)"},
-    {"key": "binary_info",          "pattern": r"(?:Binary\s+Information)"},
-    {"key": "technical_analysis",   "pattern": r"(?:Technical\s+Analysis)"},
-    {"key": "functions_analysis",   "pattern": r"(?:Functions?\s+Analysis)"},
-    {"key": "operational_flow",     "pattern": r"(?:Operational\s+Flow)"},
-    {"key": "c2_analysis",          "pattern": r"(?:C2\s*[&]\s*Networking|C2\s+Analysis|C2\s+and\s+Networking|Command\s+and\s+Control)"},
-    {"key": "evidence",             "pattern": r"(?:Evidence\s+of\s+Malicious\s+Activity)"},
-    {"key": "recommendations",      "pattern": r"(?:Recommendations?)"},
-    {"key": "iocs_text",            "pattern": r"(?:IOCs?\s*\(Indicators\s+of\s+Compromise\)|Indicators?\s+of\s+Compromise|IOCs)"},
-    {"key": "mitre_attack",         "pattern": r"(?:MITRE\s+ATT&CK|MITRE\s+ATT&CK\s+Matrix)"},
-    {"key": "conclusion",           "pattern": r"(?:Conclusion)"},
-]
-
-
-def _split_summary_into_sections(text: str) -> Dict[str, str]:
-    """Split the LLM-generated summary into named sections by headings."""
-    if not text:
-        return {}
-
-    # Build one big regex alternation to find all section headings.
-    # Each heading looks like:  ### 5. Functions Analysis  or  ## Functions Analysis
-    heading_alts = []
-    for sp in _SECTION_PATTERNS:
-        # Match: optional ### / ## markers, optional number, heading text
-        heading_alts.append(
-            rf'(?P<{sp["key"]}>^\s*#{{2,4}}\s*(?:\d+\.?\s*)?{sp["pattern"]}\s*$)'
-        )
-
-    combined = "|".join(heading_alts)
-    heading_re = re.compile(combined, re.IGNORECASE | re.MULTILINE)
-
-    matches = list(heading_re.finditer(text))
-    sections: Dict[str, str] = {}
-
-    for idx, m in enumerate(matches):
-        # Determine which named group matched
-        key = None
-        for sp in _SECTION_PATTERNS:
-            if m.group(sp["key"]):
-                key = sp["key"]
-                break
-        if not key:
-            continue
-
-        start = m.end()
-        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(text)
-        content = text[start:end].strip()
-        if content:
-            sections[key] = content
-
-    # If no sections found at all, treat everything as executive_summary
-    if not sections:
-        sections["executive_summary"] = text.strip()
-
-    return sections
-
-
-# ---------------------------------------------------------------------------
-# Robust Markdown → HTML converter
-# ---------------------------------------------------------------------------
-
-def _markdown_to_html(text: str) -> str:
-    """Convert markdown text to clean HTML suitable for the report template.
-
-    Processing order matters:
-    1. Extract fenced code blocks first (protect from further transforms).
-    2. Convert tables.
-    3. Convert inline formatting (bold, italic, inline code).
-    4. Convert headers.
-    5. Convert ordered and unordered lists.
-    6. Wrap remaining bare lines as paragraphs.
-    7. Re-inject code blocks.
-    """
+def _extract_section(text: str, section_name: str) -> str:
+    """Extract a section from markdown text using a robust split-based approach."""
     if not text:
         return ""
 
-    # ── Step 0: Normalise line endings ──
+    # Normalize line endings
     text = text.replace('\r\n', '\n').replace('\r', '\n')
 
-    # ── Step 1: Extract fenced code blocks ──
-    code_blocks: List[str] = []
+    # Find all markdown headers (## or ###) with their positions
+    header_pattern = re.compile(r'^(#{2,3})\s+(.*?)$', re.MULTILINE)
+    headers = list(header_pattern.finditer(text))
 
-    def _stash_code(m: re.Match) -> str:
-        lang = m.group(1) or ""
-        code = m.group(2)
-        # Escape HTML inside code
-        code_escaped = escape(code).rstrip('\n')
-        lang_attr = f' class="language-{escape(lang)}"' if lang else ''
-        block_html = (
-            f'<pre><code{lang_attr}>{code_escaped}</code></pre>'
-        )
-        idx = len(code_blocks)
-        code_blocks.append(block_html)
-        return f'\x00CODEBLOCK{idx}\x00'
+    if not headers:
+        logger.warning("extract_section: no markdown headers found in text (%d chars)", len(text))
+        return ""
 
-    text = re.sub(r'```(\w+)?\s*\n(.*?)```', _stash_code, text, flags=re.DOTALL)
+    target = section_name.lower().strip()
 
-    # ── Step 2: Escape HTML in remaining text ──
-    # But NOT the placeholders
-    parts = re.split(r'(\x00CODEBLOCK\d+\x00)', text)
-    escaped_parts = []
-    for part in parts:
-        if part.startswith('\x00CODEBLOCK'):
-            escaped_parts.append(part)
-        else:
-            escaped_parts.append(escape(part))
-    text = ''.join(escaped_parts)
+    for i, hdr in enumerate(headers):
+        header_text = hdr.group(2).strip()
+        # Strip leading number like "1." or "9."
+        clean = re.sub(r'^\d+\.?\s*', '', header_text).strip()
 
-    # ── Step 3: Inline formatting ──
+        if clean.lower() == target:
+            # Extract content from end of header line to start of next header
+            start = hdr.end()
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+            content = text[start:end].strip()
+            logger.info("extract_section: found '%s' (%d chars content)", section_name, len(content))
+            return content
+
+    # Fallback: substring match (e.g. "Evidence of Malicious Activity" in "Evidence of Malicious Activity and Threats")
+    for i, hdr in enumerate(headers):
+        header_text = hdr.group(2).strip()
+        clean = re.sub(r'^\d+\.?\s*', '', header_text).strip()
+
+        if target in clean.lower() or clean.lower() in target:
+            start = hdr.end()
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+            content = text[start:end].strip()
+            logger.info("extract_section: fuzzy matched '%s' via header '%s' (%d chars)",
+                        section_name, header_text, len(content))
+            return content
+
+    logger.warning("extract_section: section '%s' not found. Available headers: %s",
+                   section_name, [h.group(2).strip() for h in headers])
+    return ""
+
+
+def _markdown_to_html(text: str) -> str:
+    """Convert markdown to HTML for template rendering."""
+    if not text:
+        return "<p>No information available.</p>"
+    
+    # Escape HTML first
+    text = escape(text)
+
+    # Extract code blocks first to protect their content from formatting
+    code_blocks = []
+    def _save_code_block(m):
+        code_blocks.append(m.group(2))
+        return f'\x00CODEBLOCK{len(code_blocks) - 1}\x00'
+    text = re.sub(r'```(\w+)?\n(.*?)```', _save_code_block, text, flags=re.DOTALL)
+
+    # Extract inline code to protect from formatting
+    inline_codes = []
+    def _save_inline_code(m):
+        inline_codes.append(m.group(1))
+        return f'\x00INLINE{len(inline_codes) - 1}\x00'
+    text = re.sub(r'`(.+?)`', _save_inline_code, text)
+    
+    # Headers
+    text = re.sub(r'####\s+(.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
+    text = re.sub(r'###\s+(.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
+    text = re.sub(r'##\s+(.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
+    
+    # Bold and italic
     text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', text)
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
-    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
-    text = re.sub(r'`([^`]+?)`', r'<code>\1</code>', text)
-
-    # ── Step 4: Process line by line ──
+    text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    
+    # Tables — skip lines inside <pre><code> blocks
     lines = text.split('\n')
-    result: List[str] = []
-    in_ul = False
-    in_ol = False
-    in_table = False
-    table_html: List[str] = []
+    result = []
     i = 0
-
-    def _close_lists():
-        nonlocal in_ul, in_ol
-        if in_ul:
-            result.append('</ul>')
-            in_ul = False
-        if in_ol:
-            result.append('</ol>')
-            in_ol = False
-
-    def _close_table():
-        nonlocal in_table
-        if in_table:
-            table_html.append('</tbody></table>')
-            result.append('\n'.join(table_html))
-            table_html.clear()
-            in_table = False
-
+    in_table = False
+    in_pre_block = False
+    table_html = []
+    
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
+        if '<pre>' in stripped or '<pre ' in stripped:
+            in_pre_block = True
+        if '</pre>' in stripped:
+            in_pre_block = False
 
-        # ── Code block placeholder ──
-        if stripped.startswith('\x00CODEBLOCK'):
-            _close_lists()
-            _close_table()
-            result.append(stripped)
-            i += 1
-            continue
-
-        # ── Empty line ──
-        if not stripped:
-            _close_lists()
-            _close_table()
-            i += 1
-            continue
-
-        # ── Headers ──
-        hdr_match = re.match(r'^(#{2,6})\s+(.+)$', stripped)
-        if hdr_match:
-            _close_lists()
-            _close_table()
-            level = len(hdr_match.group(1))
-            hdr_text = hdr_match.group(2)
-            # Strip leading "N." numbering since the template adds its own
-            hdr_text = re.sub(r'^\d+\.?\s*', '', hdr_text)
-            result.append(f'<h{level}>{hdr_text}</h{level}>')
-            i += 1
-            continue
-
-        # ── Table rows ──
-        if '|' in stripped and not stripped.startswith('<'):
-            # Check if it's a separator row
-            if re.match(r'^[\|\-\s:]+$', stripped):
-                i += 1
-                continue
-            cells = [c.strip() for c in stripped.split('|')]
-            cells = [c for c in cells if c]  # remove empty edge cells
+        if not in_pre_block and '|' in line and not stripped.startswith('#') and not stripped.startswith('<'):
+            if not in_table:
+                in_table = True
+                table_html = ['<table class="w-full text-left border-collapse">']
+                if i + 1 < len(lines) and re.match(r'^[\|\-\s]+$', lines[i + 1]):
+                    i += 1
+            
+            cells = [c.strip() for c in line.split('|') if c.strip()]
             if cells:
-                if not in_table:
-                    _close_lists()
-                    in_table = True
-                    table_html.append('<table>')
-                    table_html.append('<thead><tr>')
-                    for c in cells:
-                        table_html.append(f'<th>{c}</th>')
-                    table_html.append('</tr></thead><tbody>')
-                    # Skip the separator line if next
-                    if i + 1 < len(lines) and re.match(r'^[\|\-\s:]+$', lines[i + 1].strip()):
-                        i += 1
-                else:
-                    table_html.append('<tr>')
-                    for c in cells:
-                        table_html.append(f'<td>{c}</td>')
-                    table_html.append('</tr>')
-            i += 1
-            continue
+                row_tag = 'th' if len(table_html) == 1 else 'td'
+                table_html.append('<tr>')
+                for cell in cells:
+                    table_html.append(f'<{row_tag}>{cell}</{row_tag}>')
+                table_html.append('</tr>')
+        else:
+            if in_table:
+                table_html.append('</table>')
+                result.append(''.join(table_html))
+                in_table = False
+                table_html = []
+            result.append(line)
+        i += 1
+    
+    if in_table:
+        table_html.append('</table>')
+        result.append(''.join(table_html))
+    
+    text = '\n'.join(result)
+    
+    # Bullet lists
+    lines = text.split('\n')
+    result = []
+    in_list = False
 
-        # ── Unordered list ──
-        ul_match = re.match(r'^(\s*)([-*])\s+(.+)$', stripped)
-        if ul_match:
-            _close_table()
-            if in_ol:
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith('- ') or stripped.startswith('* '):
+            if not in_list:
+                result.append('<ul class="list-disc pl-6 mb-4">')
+                in_list = True
+            item = stripped[2:]
+            result.append(f'<li class="mb-2">{item}</li>')
+        else:
+            if in_list and stripped and not stripped.startswith('<'):
+                result.append('</ul>')
+                in_list = False
+            result.append(line)
+
+    if in_list:
+        result.append('</ul>')
+
+    text = '\n'.join(result)
+
+    # Ordered (numbered) lists: 1. text, 2. text, etc.
+    lines = text.split('\n')
+    result = []
+    in_ol = False
+
+    for line in lines:
+        stripped = line.strip()
+        m = re.match(r'^(\d+)\.\s+(.+)', stripped)
+        if m and not stripped.startswith('<'):
+            if not in_ol:
+                result.append('<ol class="list-decimal pl-6 mb-4">')
+                in_ol = True
+            result.append(f'<li class="mb-2">{m.group(2)}</li>')
+        else:
+            if in_ol and stripped and not stripped.startswith('<'):
                 result.append('</ol>')
                 in_ol = False
-            if not in_ul:
-                result.append('<ul>')
-                in_ul = True
-            content = ul_match.group(3)
-            result.append(f'<li>{content}</li>')
-            i += 1
+            result.append(line)
+
+    if in_ol:
+        result.append('</ol>')
+
+    text = '\n'.join(result)
+    
+    # Paragraphs — skip lines inside <pre><code> blocks and placeholder lines
+    lines = text.split('\n')
+    result = []
+    in_pre = False
+    for line in lines:
+        stripped = line.strip()
+        if '<pre>' in stripped or '<pre ' in stripped:
+            in_pre = True
+        if '</pre>' in stripped:
+            in_pre = False
+            result.append(line)
             continue
-
-        # ── Ordered list ──
-        ol_match = re.match(r'^(\d+)[.)]\s+(.+)$', stripped)
-        if ol_match:
-            _close_table()
-            if in_ul:
-                result.append('</ul>')
-                in_ul = False
-            if not in_ol:
-                result.append('<ol>')
-                in_ol = True
-            content = ol_match.group(2)
-            result.append(f'<li>{content}</li>')
-            i += 1
+        if in_pre:
+            result.append(line)
             continue
+        if stripped and not stripped.startswith('<') and not stripped.startswith('|') and '\x00CODEBLOCK' not in stripped:
+            result.append(f'<p class="mb-3">{stripped}</p>')
+        else:
+            result.append(line)
 
-        # ── Regular paragraph line ──
-        _close_lists()
-        _close_table()
-        result.append(f'<p>{stripped}</p>')
-        i += 1
+    text = '\n'.join(result)
 
-    _close_lists()
-    _close_table()
+    # Restore code blocks and inline code from placeholders
+    for i, block in enumerate(code_blocks):
+        text = text.replace(f'\x00CODEBLOCK{i}\x00', f'<pre><code>{block}</code></pre>')
+    for i, code in enumerate(inline_codes):
+        text = text.replace(f'\x00INLINE{i}\x00', f'<code>{code}</code>')
 
-    html = '\n'.join(result)
-
-    # ── Step 5: Re-inject code blocks ──
-    for idx, block in enumerate(code_blocks):
-        html = html.replace(f'\x00CODEBLOCK{idx}\x00', block)
-
-    return html
+    return text
 
 
-def _parse_iocs_for_template(iocs) -> List[Dict[str, str]]:
+def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
     """Parse IOCs into template format."""
     results = []
-
+    
     for ip in iocs.ips[:10]:
-        results.append({"type": "IP Address", "value": ip})
+        results.append({"type": "IP/Domain", "value": ip})
     for domain in iocs.domains[:10]:
         results.append({"type": "Domain", "value": domain})
     for url in iocs.urls[:5]:
@@ -277,638 +231,690 @@ def _parse_iocs_for_template(iocs) -> List[Dict[str, str]]:
     for email in iocs.emails[:5]:
         results.append({"type": "Email", "value": email})
     for reg in iocs.registry_keys[:5]:
-        results.append({"type": "Registry Key", "value": reg})
+        results.append({"type": "Registry", "value": reg})
     for mutex in iocs.mutexes[:5]:
         results.append({"type": "Mutex", "value": mutex})
-
+    
     return results
 
 
+def _extract_recommendations(summary: str) -> List[str]:
+    """Extract recommendations from the Recommendations section only."""
+    # First, extract the Recommendations section from the summary
+    rec_section = _extract_section(summary, "Recommendations")
+    if not rec_section:
+        logger.warning("extract_recommendations: section not found, using defaults")
+        return ["Conduct dynamic analysis in sandbox environment", "Monitor network traffic for C2 communications"]
+
+    logger.info("extract_recommendations: section found (%d chars)", len(rec_section))
+    recs = []
+    # Try numbered items: 1. xxx  2. xxx
+    numbered = re.findall(r'\d+\.\s*\*\*(.+?)\*\*[:\s]*(.+?)(?=\d+\.\s*\*\*|$)', rec_section, re.DOTALL)
+    if numbered:
+        for title, desc in numbered:
+            cleaned = f"{title.strip()}: {desc.strip()}"
+            if len(cleaned) > 10:
+                recs.append(cleaned)
+    else:
+        # Try bullet items
+        bullets = re.findall(r'[-*]\s+\*\*(.+?)\*\*[:\s]*(.+?)(?=[-*]\s+\*\*|$)', rec_section, re.DOTALL)
+        if bullets:
+            for title, desc in bullets:
+                cleaned = f"{title.strip()}: {desc.strip()}"
+                if len(cleaned) > 10:
+                    recs.append(cleaned)
+        else:
+            # Fallback: plain numbered or bullet lines
+            for line in rec_section.split('\n'):
+                line = line.strip()
+                line = re.sub(r'^[\d.\-*]+\s*', '', line).strip()
+                if line and len(line) > 10:
+                    recs.append(line)
+    
+    return recs[:10] if recs else ["Conduct dynamic analysis in sandbox environment", "Monitor network traffic for C2 communications"]
+
+
+def _extract_evidence(summary: str) -> List[str]:
+    """Extract evidence items from the Evidence section."""
+    evidence = []
+    # Try to extract the specific section
+    ev_section = _extract_section(summary, "Evidence of Malicious Activity")
+    if not ev_section:
+        ev_section = _extract_section(summary, "Evidence")
+    if not ev_section:
+        # Fallback patterns
+        match = re.search(r'Evidence:\s*\n((?:(?:.+\n)+))', summary, re.IGNORECASE)
+        if not match:
+            match = re.search(r'Key Evidence:\s*\n((?:(?:.+\n)+))', summary, re.IGNORECASE)
+        if match:
+            ev_section = match.group(1)
+    
+    if ev_section:
+        # Pattern: N. **Finding**: Description - Evidence: details
+        findings = re.findall(r'\*\*Finding\*\*[:\s]*(.+?)(?=\d+\.\s*\*\*Finding|$)', ev_section, re.DOTALL)
+        if findings:
+            for f in findings:
+                cleaned = f.strip().rstrip('.')
+                if cleaned and len(cleaned) > 5:
+                    evidence.append(cleaned)
+        else:
+            for line in ev_section.split('\n'):
+                line = line.strip()
+                if line and (line.startswith('-') or line.startswith('*') or re.match(r'\d+\.', line)):
+                    cleaned = re.sub(r'^[-*\d.\s]+', '', line).strip()
+                    if cleaned and len(cleaned) > 5:
+                        evidence.append(cleaned)
+    return evidence[:15]
+
+
+def _render_evidence(evidence: List[str]) -> str:
+    """Render evidence items as HTML."""
+    if not evidence:
+        return '<div class="text-gray-500 italic">Evidence extracted from analysis data. Review summary for details.</div>'
+    html = ''
+    for i, item in enumerate(evidence, 1):
+        # Split on " - Evidence:" if present
+        parts = item.split(' - Evidence:', 1)
+        if len(parts) == 2:
+            title = parts[0].strip()
+            desc = parts[1].strip()
+            html += f'<div class="finding-item"><div class="finding-title">{escape(title)}</div><div class="finding-desc text-sm leading-relaxed pl-4">Evidence: {escape(desc)}</div></div>'
+        else:
+            html += f'<div class="finding-item"><div class="finding-title">Finding {i}</div><div class="finding-desc text-sm leading-relaxed pl-4">{escape(item)}</div></div>'
+    return html
+
+
+def _render_recommendations(recommendations: List[str]) -> str:
+    """Render recommendations as HTML."""
+    if not recommendations:
+        return '<div class="text-gray-500 italic">No specific recommendations available.</div>'
+    html = ''
+    for i, rec in enumerate(recommendations, 1):
+        # Convert inline markdown: **bold** and `code`
+        safe = escape(rec)
+        safe = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', safe)
+        safe = re.sub(r'`(.+?)`', r'<code>\1</code>', safe)
+        # Clean trailing ### markers from section splitting
+        safe = re.sub(r'\s*#{2,3}\s*$', '', safe).strip()
+        html += f'<div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">{i}</div><div class="text-sm pt-half text-gray-800">{safe}</div></div>'
+    return html
+
+
+def _render_iocs(iocs: List[Dict[str, str]]) -> str:
+    """Render IOCs as table rows."""
+    if not iocs:
+        return '<tr><td colspan="2" class="text-gray-500 italic">No IOCs extracted.</td></tr>'
+    html = ''
+    for ioc in iocs:
+        html += f'<tr><td class="font-bold text-xs text-gray-500 uppercase">{escape(ioc["type"])}</td><td class="font-mono text-sm break-all">{escape(ioc["value"])}</td></tr>'
+    return html
+
+
 def build_report_html(state: Dict[str, Any]) -> str:
-    """Build HTML report matching the professional print template format.
-
-    The LLM summary is split into named sections (Executive Summary, Functions
-    Analysis, etc.) and each is rendered into its own properly-styled section.
-    """
-
+    """Build HTML report matching professional template format."""
+    
     iocs = extract_iocs_from_state(state)
     verdict, verdict_class, indicators, score = calculate_verdict(iocs, state)
-
+    
     analysis_results = state.get("analysis_results", {})
+    r2_results = state.get("r2_analysis_results", {})
     binary = analysis_results.get("binary", {})
+    r2_binary = r2_results.get("binary", {})
     funcs = analysis_results.get("functions", {})
+    r2_funcs = r2_results.get("functions", {})
     strings_data = analysis_results.get("strings", {})
-
+    r2_strings = r2_results.get("strings", {})
+    
     program_hash = state.get("program_hash", "unknown")
     summary_text = state.get("summary", "")
 
-    file_name = escape(state.get("binary_path", "unknown").split("/")[-1])
+    logger.info("build_report_html: summary_text length=%d", len(summary_text))
+
+    # Extract executive summary; fallback strips markdown headers to avoid duplicates
+    exec_summary = _extract_section(summary_text, "Executive Summary")
+    if not exec_summary:
+        # Strip any leading markdown headers from the raw text to avoid duplicate headings
+        fallback = re.sub(r'^#{2,3}\s+.*$', '', summary_text[:2000], flags=re.MULTILINE).strip()
+        exec_summary = fallback or summary_text[:2000]
+
+    report_data = {
+        "file_name": escape(state.get("binary_path", "unknown").split("/")[-1]),
+        "summary": _markdown_to_html(exec_summary),
+        "malware_capabilities": _markdown_to_html(_extract_section(summary_text, "Malware Capabilities")),
+        "binary_info": _markdown_to_html(f"""| Property | Value |
+|----------|-------|
+| SHA256 | {program_hash} |
+| Architecture | {binary.get('architecture', 'unknown')} |
+| Type | ELF/PE (inferred) |
+| Image Base | {binary.get('image_base', 'unknown')} |
+| Entry Point | {', '.join(binary.get('entry_points', ['unknown']))} |
+| Compiler | {binary.get('compiler', 'unknown')} |
+| Functions (Ghidra) | {len(funcs.get('functions', []))} total ({len(state.get('decompilation_cache', {}))} decompiled) |
+| Functions (R2) | {len(r2_funcs.get('functions', []))} total ({len(state.get('r2_decompilation_cache', {}))} decompiled) |
+| R2 Architecture | {r2_binary.get('architecture', 'N/A')} ({r2_binary.get('bits', '?')}-bit) |
+| R2 OS | {r2_binary.get('os', 'N/A')} |
+| R2 Imports | {', '.join(r2_binary.get('imports', [])[:15]) or 'N/A'} |
+| Strings (Ghidra) | {len(strings_data.get('strings', []))} extracted |
+| Strings (R2) | {len(r2_strings.get('strings', []))} extracted |"""),
+        "technical_analysis": _markdown_to_html(_extract_section(summary_text, "Technical Analysis")),
+        "functions_analysis": _markdown_to_html(_extract_section(summary_text, "Functions Analysis")),
+        "how_it_works": _markdown_to_html(_extract_section(summary_text, "Operational Flow")),
+        "c2_analysis": _markdown_to_html(_extract_section(summary_text, "C2 & Networking")),
+        "evidence": _extract_evidence(summary_text),
+        "recommendations": _extract_recommendations(summary_text),
+        "iocs": _parse_iocs_for_template(iocs),
+        "conclusion": _markdown_to_html(_extract_section(summary_text, "Conclusion")),
+    }
+    
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     task_id = state.get("session_id", "unknown")[:8]
-
-    # ── Parse summary into sections ──
-    sections = _split_summary_into_sections(summary_text)
-
-    # Convert each section's markdown to HTML
-    section_html: Dict[str, str] = {}
-    for key, md in sections.items():
-        section_html[key] = _markdown_to_html(md)
-
-    # ── Structured data from analysis results ──
-    func_count = len(funcs.get("functions", []))
-    decomp_count = len(state.get("decompilation_cache", {}))
-    string_count = len(strings_data.get("strings", []))
-
-    # Risk class mapping
+    
     risk_class = {
         "malicious": "risk-critical",
         "suspicious": "risk-high",
         "clean": "risk-low",
-        "unknown": "risk-clean",
+        "unknown": "risk-clean"
     }.get(verdict_class, "risk-clean")
+    
+    # Build HTML sections
+    sections_html = f'''
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">1. Executive Summary</h2>
+            <div class="markdown-content">{report_data['summary']}</div>
+        </div>
 
-    # IOC table from extractor
-    ioc_list = _parse_iocs_for_template(iocs)
+        <!-- Malware Capabilities -->
+        <div>
+            <h2 class="section-header">2. Malware Capabilities</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
+            <div class="markdown-content">{report_data['malware_capabilities'] if report_data['malware_capabilities'] else '<p>Capabilities analysis not available.</p>'}</div>
+        </div>
 
-    # ── Build IOCs HTML rows ──
-    iocs_rows = ""
-    if ioc_list:
-        for ioc in ioc_list:
-            iocs_rows += (
-                f'<tr>'
-                f'<td class="ioc-type">{escape(ioc["type"])}</td>'
-                f'<td class="ioc-value">{escape(ioc["value"])}</td>'
-                f'</tr>'
-            )
-    else:
-        iocs_rows = '<tr><td colspan="2" class="no-data">No IOCs extracted from this sample.</td></tr>'
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">3. Binary Information</h2>
+            <div class="markdown-content">{report_data['binary_info']}</div>
+        </div>
 
-    # Also merge IOC text from LLM if present
-    iocs_section_html = section_html.get("iocs_text", "")
+        <!-- Technical Analysis -->
+        <div>
+            <h2 class="section-header">4. Technical Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
+            <div class="markdown-content">{report_data['technical_analysis'] if report_data['technical_analysis'] else '<p>Detailed technical analysis not available.</p>'}</div>
+        </div>
 
-    # ── Evidence HTML ──
-    evidence_html = ""
-    if indicators:
-        for i, item in enumerate(indicators[:15], 1):
-            evidence_html += (
-                f'<div class="finding-item">'
-                f'<div class="finding-title">Finding {i}</div>'
-                f'<div class="finding-desc">{escape(item)}</div>'
-                f'</div>'
-            )
+        <!-- Functions Analysis -->
+        <div>
+            <h2 class="section-header">5. Functions Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
+            <div class="markdown-content">{report_data['functions_analysis'] if report_data['functions_analysis'] else '<p>Function analysis not available.</p>'}</div>
+        </div>
 
-    # Also use LLM evidence section if present
-    evidence_section_html = section_html.get("evidence", "")
+        <!-- Evidence -->
+        <div>
+            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
+            <div>{_render_evidence(report_data['evidence'])}</div>
+        </div>
 
-    # ── Recommendations HTML ──
-    rec_section_html = section_html.get("recommendations", "")
+        <!-- Operational Flow -->
+        <div>
+            <h2 class="section-header">7. Operational Flow</h2>
+            <div class="markdown-content">{report_data['how_it_works'] if report_data['how_it_works'] else '<p>Operational flow analysis not available.</p>'}</div>
+        </div>
 
-    # ── Binary info ──
-    # Prefer LLM section, but always add structured table
-    binary_info_html = section_html.get("binary_info", "")
-    binary_table = f'''<table>
-        <thead><tr><th>Property</th><th>Value</th></tr></thead>
-        <tbody>
-            <tr><td>SHA256</td><td class="mono">{escape(program_hash)}</td></tr>
-            <tr><td>Architecture</td><td>{escape(str(binary.get("architecture", "Unknown")))}</td></tr>
-            <tr><td>Image Base</td><td class="mono">{escape(str(binary.get("image_base", "Unknown")))}</td></tr>
-            <tr><td>Entry Point</td><td class="mono">{escape(", ".join(binary.get("entry_points", ["Unknown"])))}</td></tr>
-            <tr><td>Compiler</td><td>{escape(str(binary.get("compiler", "Unknown")))}</td></tr>
-            <tr><td>Total Functions</td><td>{func_count:,}</td></tr>
-            <tr><td>Decompiled</td><td>{decomp_count}</td></tr>
-            <tr><td>Strings Extracted</td><td>{string_count:,}</td></tr>
-        </tbody>
-    </table>'''
+        <!-- C2 & Networking -->
+        <div>
+            <h2 class="section-header">8. C2 & Networking</h2>
+            <div class="markdown-content">{report_data['c2_analysis'] if report_data['c2_analysis'] else '<p>C2 analysis not available.</p>'}</div>
+        </div>
 
-    # ── Section numbering helper ──
-    sec_num = 0
+        <!-- Recommendations -->
+        <div>
+            <h2 class="section-header">9. Recommendations</h2>
+            <div class="space-y-4">{_render_recommendations(report_data['recommendations'])}</div>
+        </div>
 
-    def _next_sec() -> int:
-        nonlocal sec_num
-        sec_num += 1
-        return sec_num
+        <!-- IOCs -->
+        <div>
+            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
+                    <tbody>{_render_iocs(report_data['iocs'])}</tbody>
+                </table>
+            </div>
+        </div>
 
-    # ── Assemble optional sections ──
-    optional_sections = ""
+        <!-- Conclusion -->
+        <div>
+            <h2 class="section-header">11. Conclusion</h2>
+            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                {report_data['conclusion'] if report_data['conclusion'] else f'<p>This binary has been classified as <strong>{verdict}</strong> with a risk score of {score}/100. Review the technical analysis and IOCs above for detection and response guidance.</p>'}
+            </div>
+        </div>
+    '''
+    
+    # CSS styles
+    css_styles = '''
+        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
+        .font-mono { font-family: 'Roboto Mono', monospace; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
+        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
+        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
+        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
+        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
+        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
+        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
+        .markdown-content li { margin-bottom: 6px; }
+        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
+        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
+        .markdown-content pre code { color: #374151; background: none; padding: 0; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
+        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
+        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
+        .finding-desc { color: #4b5563; }
+        /* Utility classes used by markdown renderer */
+        .w-full { width: 100%; }
+        .text-left { text-align: left; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-800 { color: #1f2937; }
+        .italic { font-style: italic; }
+        .font-bold { font-weight: 700; }
+        .break-all { word-break: break-all; }
+        .list-disc { list-style-type: disc; }
+        .pl-4 { padding-left: 1rem; }
+        .pl-6 { padding-left: 1.5rem; }
+        .pt-half { padding-top: 0.125rem; }
+        .pb-4 { padding-bottom: 1rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .gap-4 { gap: 1rem; }
+        .items-start { align-items: flex-start; }
+        .flex { display: flex; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border-b { border-bottom: 1px solid #e5e7eb; }
+        .border-dashed { border-style: dashed; }
+        .border-gray-200 { border-color: #e5e7eb; }
 
-    # Malware Capabilities
-    cap_html = section_html.get("malware_capabilities", "")
-    if cap_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <h2>{n}. Malware Capabilities</h2>
-        <div class="section-desc">Identified capabilities and behaviors exhibited by this sample.</div>
-        <div class="content">{cap_html}</div>'''
-
-    # Binary Information (always show)
-    n = _next_sec()
-    optional_sections += f'''
-    <h2>{n}. Binary Information</h2>
-    <div class="content">
-        {binary_table}
-        {binary_info_html}
-    </div>'''
-
-    # Technical Analysis
-    tech_html = section_html.get("technical_analysis", "")
-    if tech_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <h2>{n}. Technical Analysis</h2>
-        <div class="section-desc">In-depth technical examination of the binary&#39;s code structure, algorithms, and implementation details.</div>
-        <div class="content">{tech_html}</div>'''
-
-    # Functions Analysis
-    func_html = section_html.get("functions_analysis", "")
-    if func_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <div class="page-break"></div>
-        <h2>{n}. Functions Analysis</h2>
-        <div class="section-desc">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
-        <div class="content">{func_html}</div>'''
-
-    # Operational Flow
-    flow_html = section_html.get("operational_flow", "")
-    if flow_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <h2>{n}. Operational Flow</h2>
-        <div class="content">{flow_html}</div>'''
-
-    # C2 & Networking
-    c2_html = section_html.get("c2_analysis", "")
-    if c2_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <h2>{n}. C2 &amp; Networking</h2>
-        <div class="content">{c2_html}</div>'''
-
-    # Evidence of Malicious Activity
-    if evidence_section_html or evidence_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <h2>{n}. Evidence of Malicious Activity</h2>
-        <div class="content">
-            {evidence_section_html if evidence_section_html else evidence_html}
-        </div>'''
-
-    # Recommendations
-    if rec_section_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <div class="page-break"></div>
-        <h2>{n}. Recommendations</h2>
-        <div class="content">{rec_section_html}</div>'''
-
-    # MITRE ATT&CK
-    mitre_html = section_html.get("mitre_attack", "")
-    if mitre_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <h2>{n}. MITRE ATT&amp;CK Matrix</h2>
-        <div class="content">{mitre_html}</div>'''
-
-    # IOCs
-    n = _next_sec()
-    optional_sections += f'''
-    <h2>{n}. Indicators of Compromise (IOCs)</h2>
-    <div class="section-desc">Extracted network, file system, and behavioral indicators.</div>
-    <div class="content">
-        {iocs_section_html}
-        <table>
-            <thead><tr><th style="width:20%">Type</th><th>Value</th></tr></thead>
-            <tbody>{iocs_rows}</tbody>
-        </table>
-    </div>'''
-
-    # Conclusion
-    conclusion_html = section_html.get("conclusion", "")
-    if conclusion_html:
-        n = _next_sec()
-        optional_sections += f'''
-        <div class="page-break"></div>
-        <h2>{n}. Conclusion</h2>
-        <div class="content conclusion-box">{conclusion_html}</div>'''
-
-    # ── Executive summary (section 1, always present) ──
-    exec_summary_html = section_html.get("executive_summary", "<p>No summary provided.</p>")
-
-    # ── CSS ──
-    css = _report_css()
-
-    # ── Final HTML ──
+        .leading-relaxed { line-height: 1.625; }
+        .uppercase { text-transform: uppercase; }
+        .border-l-2 { border-left: 2px solid; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .pl-3 { padding-left: 0.75rem; }
+        .border-collapse { border-collapse: collapse; }
+        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
+    '''
+    
+    # Complete HTML document
     html = f'''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Malware Analysis Report - {file_name}</title>
+    <title>Malware Analysis Report - {report_data['file_name']}</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <style>{css}</style>
+    <style>{css_styles}</style>
 </head>
 <body>
-    <div class="no-print" style="position:fixed;bottom:24px;right:24px;z-index:50;">
-        <button onclick="window.print()" style="background:#1f2937;color:white;border:none;padding:12px 24px;cursor:pointer;font-weight:500;font-size:14px;display:flex;align-items:center;gap:8px;">
-            &#128438; Print / Save PDF
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Print / Save PDF
         </button>
     </div>
 
-    <div class="page">
+    <div class="page-container">
         <!-- Header -->
-        <div class="header">
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
             <div>
-                <div class="header-classification">Confidential &amp; Proprietary</div>
-                <h1 class="header-title">Reverse Engineering Report</h1>
+                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
+                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
             </div>
-            <div class="header-right">
-                <div class="header-org">CYBER SECURITY DIVISION</div>
-                <div class="header-team">Incident Response Team</div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
+                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
             </div>
         </div>
 
         <!-- Metadata -->
         <div class="meta-box">
-            <div><div class="meta-label">File Name</div><div class="mono">{file_name}</div></div>
-            <div class="text-right"><div class="meta-label">Analysis ID</div><div class="mono">{task_id}</div></div>
-            <div><div class="meta-label">Date Generated</div><div>{timestamp}</div></div>
-            <div class="text-right"><div class="meta-label">Classification</div><div class="tlp-badge">TLP:AMBER</div></div>
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">{report_data['file_name']}</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">{task_id}</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>{timestamp}</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
+            </div>
         </div>
 
         <!-- Risk Banner -->
         <div class="risk-banner {risk_class}">
-            THREAT ASSESSMENT: {verdict.upper()} (Score: {score}/100)
+            THREAT ASSESSMENT: {verdict.upper()}
         </div>
 
-        <!-- 1. Executive Summary -->
-        <h2>1. Executive Summary</h2>
-        <div class="content">
-            {exec_summary_html}
-        </div>
-
-        {optional_sections}
+        {sections_html}
 
         <!-- Footer -->
-        <div class="footer">
-            Confidential &amp; Proprietary &mdash; Do Not Distribute Without Authorization
+        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Generated by Ghidra + Radare2 Analysis Agent</div>
         </div>
     </div>
 </body>
 </html>'''
-
+    
     return html
 
 
-def _report_css() -> str:
-    """Return the full CSS for the standalone report."""
-    return '''
-    :root {
-        --primary: #1f2937;
-        --accent: #b91c1c;
-        --border: #e5e7eb;
-        --bg-light: #f9fafb;
-        --text: #111827;
-        --text-secondary: #4b5563;
-        --text-muted: #6b7280;
-        --code-bg: #f3f4f6;
-        --code-color: #b91c1c;
-    }
-    * { box-sizing: border-box; }
-    body {
-        font-family: 'Roboto', 'Segoe UI', sans-serif;
-        background: #f3f4f6;
-        color: var(--text);
-        margin: 0;
-        padding: 20px;
-        -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-    }
+def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
+    """Build a per-agent HTML report showing what a specific tool discovered.
 
-    /* ── Page container ── */
-    .page {
-        max-width: 210mm;
-        margin: 0 auto;
-        background: white;
-        padding: 40px 48px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    }
+    Args:
+        state: The analysis state dict.
+        agent: Either 'ghidra' or 'r2' (radare2).
+    """
+    is_ghidra = agent.lower() in ("ghidra", "ghidra_agent")
+    agent_name = "Ghidra" if is_ghidra else "Radare2"
+    agent_color = "#1a73e8" if is_ghidra else "#e8710a"
 
-    /* ── Header ── */
-    .header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-end;
-        border-bottom: 3px solid var(--primary);
-        padding-bottom: 16px;
-        margin-bottom: 20px;
-    }
-    .header-classification {
-        font-size: 10px;
-        font-weight: 700;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        letter-spacing: 0.1em;
-        margin-bottom: 4px;
-    }
-    .header-title {
-        font-size: 24px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: var(--primary);
-        margin: 0;
-    }
-    .header-right { text-align: right; }
-    .header-org { font-weight: 700; color: var(--primary); font-size: 14px; }
-    .header-team { font-size: 13px; color: var(--text-muted); }
+    program_hash = state.get("program_hash", "unknown")
+    file_name = escape(state.get("binary_path", "unknown").split("/")[-1])
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    session_id = state.get("session_id", "unknown")[:8]
 
-    /* ── Metadata Box ── */
-    .meta-box {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 10px;
-        background: var(--bg-light);
-        border: 1px solid #d1d5db;
-        padding: 14px 16px;
-        margin-bottom: 20px;
-        font-size: 13px;
-    }
-    .meta-label {
-        font-weight: 600;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        font-size: 10px;
-        letter-spacing: 0.05em;
-    }
-    .text-right { text-align: right; }
-    .mono { font-family: 'Roboto Mono', Consolas, monospace; font-size: 12px; }
-    .tlp-badge {
-        display: inline-block;
-        background: var(--primary);
-        color: #FFC000;
-        padding: 2px 10px;
-        font-size: 11px;
-        font-weight: 700;
-    }
+    # Select per-agent data
+    if is_ghidra:
+        analysis = state.get("analysis_results", {})
+        decomp_cache = state.get("decompilation_cache", {})
+    else:
+        analysis = state.get("r2_analysis_results", {})
+        decomp_cache = state.get("r2_decompilation_cache", {})
 
-    /* ── Risk Banner ── */
-    .risk-banner {
-        text-align: center;
-        padding: 8px 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: 13px;
-        letter-spacing: 0.08em;
-        margin-bottom: 24px;
-        border: 2px solid;
-    }
-    .risk-critical { background: #fee2e2; color: #991b1b; border-color: #ef4444; }
-    .risk-high     { background: #ffedd5; color: #9a3412; border-color: #f97316; }
-    .risk-medium   { background: #fef9c3; color: #854d0e; border-color: #eab308; }
-    .risk-low      { background: #dcfce7; color: #166534; border-color: #22c55e; }
-    .risk-clean    { background: var(--code-bg); color: #374151; border-color: #9ca3af; }
+    binary = analysis.get("binary", {})
+    funcs_data = analysis.get("functions", {})
+    strings_data = analysis.get("strings", {})
+    func_list = funcs_data.get("functions", [])
+    string_list = strings_data.get("strings", [])
 
-    /* ── Section Headers ── */
-    h2 {
-        font-size: 14px;
-        font-weight: 700;
-        text-transform: uppercase;
-        color: var(--primary);
-        border-bottom: 2px solid var(--border);
-        padding-bottom: 6px;
-        margin-top: 36px;
-        margin-bottom: 16px;
-        display: flex;
-        align-items: center;
-        letter-spacing: 0.03em;
-    }
-    h2::before {
-        content: '';
-        display: inline-block;
-        width: 5px;
-        height: 16px;
-        background: var(--accent);
-        margin-right: 10px;
-        flex-shrink: 0;
-    }
-    .section-desc {
-        font-size: 12px;
-        color: var(--text-muted);
-        font-style: italic;
-        border-left: 3px solid #d1d5db;
-        padding-left: 12px;
-        margin-bottom: 16px;
-    }
+    # --- Binary Info Table ---
+    if is_ghidra:
+        binary_rows = f"""
+        <tr><td class="prop">Architecture</td><td>{escape(str(binary.get('architecture', 'unknown')))}</td></tr>
+        <tr><td class="prop">Image Base</td><td class="mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
+        <tr><td class="prop">Compiler</td><td>{escape(str(binary.get('compiler', 'unknown')))}</td></tr>
+        <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('entry_points', ['unknown'])[:10]))}</td></tr>
+        <tr><td class="prop">Segments</td><td>{len(binary.get('segments', []))}</td></tr>
+        <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
+        <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
+    else:
+        binary_rows = f"""
+        <tr><td class="prop">Architecture</td><td>{escape(str(binary.get('architecture', 'unknown')))}</td></tr>
+        <tr><td class="prop">Bits</td><td>{escape(str(binary.get('bits', 'unknown')))}</td></tr>
+        <tr><td class="prop">OS</td><td>{escape(str(binary.get('os', 'unknown')))}</td></tr>
+        <tr><td class="prop">Endian</td><td>{escape(str(binary.get('endian', 'unknown')))}</td></tr>
+        <tr><td class="prop">Stripped</td><td>{escape(str(binary.get('stripped', 'unknown')))}</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])[:20]))}</td></tr>
+        <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
+        <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
 
-    /* ── Content area ── */
-    .content {
-        font-size: 10.5pt;
-        line-height: 1.65;
-    }
-    .content p {
-        margin-bottom: 10px;
-        text-align: left;
-    }
+    # --- Functions Table ---
+    func_rows = ""
+    for f in func_list:
+        name = f.get("name", "?")
+        addr = f.get("address", "?")
+        size = f.get("size", "?")
+        xrefs = f.get("xrefs", 0)
+        decompiled = "Yes" if name in decomp_cache else "No"
+        func_rows += f'<tr><td class="mono">{escape(name)}</td><td class="mono">{escape(str(addr))}</td><td>{size}</td><td>{xrefs}</td><td>{decompiled}</td></tr>\n'
 
-    /* Lists */
-    .content ul {
-        list-style: disc;
-        padding-left: 24px;
-        margin: 8px 0 14px 0;
-    }
-    .content ol {
-        list-style: decimal;
-        padding-left: 24px;
-        margin: 8px 0 14px 0;
-    }
-    .content li {
-        margin-bottom: 6px;
-        padding-left: 2px;
-        line-height: 1.6;
-    }
-    .content li > p { margin-bottom: 2px; }
+    # --- Decompiled Code Blocks ---
+    decomp_blocks = ""
+    for fname, code in decomp_cache.items():
+        decomp_blocks += f'''
+        <div class="decomp-block">
+            <div class="decomp-header">{escape(fname)}</div>
+            <pre><code>{escape(code)}</code></pre>
+        </div>'''
 
-    /* Sub-headers inside content */
-    .content h3 {
-        font-size: 12pt;
-        font-weight: 700;
-        color: var(--primary);
-        margin-top: 22px;
-        margin-bottom: 10px;
-        border-bottom: 1px dotted #d1d5db;
-        padding-bottom: 4px;
-    }
-    .content h4 {
-        font-size: 11pt;
-        font-weight: 600;
-        color: #374151;
-        margin-top: 18px;
-        margin-bottom: 8px;
-    }
-    .content h5, .content h6 {
-        font-size: 10.5pt;
-        font-weight: 600;
-        color: var(--text-secondary);
-        margin-top: 14px;
-        margin-bottom: 6px;
-    }
-    .content strong { font-weight: 700; color: var(--text); }
+    # --- Strings Table ---
+    string_rows = ""
+    for s in string_list[:100]:  # Cap at 100 for readability
+        if isinstance(s, dict):
+            val = s.get("value", s.get("string", str(s)))
+            addr = s.get("address", s.get("vaddr", ""))
+        else:
+            val = str(s)
+            addr = ""
+        # Skip very short or empty strings
+        if len(str(val)) < 3:
+            continue
+        string_rows += f'<tr><td class="mono">{escape(str(addr))}</td><td>{escape(str(val)[:200])}</td></tr>\n'
 
-    /* Inline code */
-    .content code {
-        font-family: 'Roboto Mono', Consolas, monospace;
-        background: var(--code-bg);
-        border: 1px solid #e5e7eb;
-        padding: 1px 5px;
-        font-size: 0.88em;
-        color: var(--code-color);
-        border-radius: 2px;
-        word-break: break-all;
-    }
+    # --- Summary (shared LLM synthesis) ---
+    summary_text = state.get("summary", "")
+    summary_html = _markdown_to_html(summary_text) if summary_text else "<p>No LLM summary available.</p>"
 
-    /* Code blocks */
-    .content pre {
-        background: #f8f9fa;
-        border: 1px solid #d1d5db;
-        border-left: 4px solid var(--text-muted);
-        padding: 14px 16px;
-        overflow-x: auto;
-        margin: 14px 0;
-        border-radius: 2px;
-        font-size: 9pt;
-        line-height: 1.5;
-    }
-    .content pre code {
-        background: none;
-        border: none;
-        padding: 0;
-        color: #374151;
-        font-size: inherit;
-        word-break: normal;
-    }
+    html = f'''<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{agent_name} Analysis Report - {file_name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root {{ --agent-color: {agent_color}; --primary: #1f2937; --border: #e5e7eb; }}
+        body {{ font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; }}
+        .page-container {{ max-width: 1100px; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px 40px; }}
+        .mono {{ font-family: 'Roboto Mono', monospace; font-size: 0.85rem; }}
+        .agent-badge {{ display: inline-block; background: var(--agent-color); color: white; padding: 4px 16px; border-radius: 4px; font-weight: 700; font-size: 14px; letter-spacing: 0.05em; text-transform: uppercase; }}
+        h1 {{ font-size: 26px; font-weight: 700; color: var(--primary); margin: 0 0 4px 0; }}
+        h2.section-header {{ font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 2px solid var(--agent-color); padding-bottom: 6px; margin-top: 36px; margin-bottom: 16px; }}
+        .meta-grid {{ display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f9fafb; border: 1px solid #d1d5db; padding: 14px; margin-bottom: 24px; font-size: 0.9rem; }}
+        .meta-label {{ font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.7rem; }}
+        table.data-table {{ width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.88rem; }}
+        table.data-table th {{ background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; color: #374151; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }}
+        table.data-table td {{ padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }}
+        table.data-table td.prop {{ font-weight: 600; color: #4b5563; width: 180px; white-space: nowrap; }}
+        table.data-table tr:hover {{ background: #f9fafb; }}
+        .decomp-block {{ margin-bottom: 20px; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden; }}
+        .decomp-header {{ background: var(--agent-color); color: white; padding: 8px 14px; font-family: 'Roboto Mono', monospace; font-size: 0.85rem; font-weight: 500; }}
+        .decomp-block pre {{ margin: 0; padding: 14px; background: #f8f9fa; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }}
+        .decomp-block code {{ font-family: 'Roboto Mono', monospace; color: #1f2937; }}
+        .summary-box {{ background: #f9fafb; border: 1px solid #d1d5db; padding: 20px; border-radius: 4px; margin-top: 8px; }}
+        .summary-box p {{ margin-bottom: 10px; line-height: 1.6; font-size: 10.5pt; }}
+        .summary-box ul {{ list-style-type: disc; padding-left: 1.5rem; margin-bottom: 10px; }}
+        .summary-box li {{ margin-bottom: 5px; }}
+        .summary-box pre {{ background: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.82rem; margin: 14px 0; }}
+        .summary-box code {{ font-family: 'Roboto Mono', monospace; background: #f3f4f6; padding: 2px 4px; font-size: 0.88em; color: #b91c1c; }}
+        .summary-box pre code {{ color: #374151; background: none; padding: 0; }}
+        .summary-box h3 {{ font-size: 1.05rem; font-weight: 700; color: #1f2937; margin-top: 1.2rem; margin-bottom: 0.6rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }}
+        .summary-box table {{ width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.88rem; border: 1px solid #d1d5db; }}
+        .summary-box th {{ background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }}
+        .summary-box td {{ padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }}
+        .stat {{ display: inline-block; background: #f3f4f6; border: 1px solid #d1d5db; padding: 12px 20px; border-radius: 4px; text-align: center; margin: 6px; }}
+        .stat .num {{ font-size: 28px; font-weight: 700; color: var(--agent-color); }}
+        .stat .lbl {{ font-size: 0.72rem; color: #6b7280; text-transform: uppercase; font-weight: 600; }}
+        .no-print {{ }}
+        @media print {{ body {{ background: white; }} .page-container {{ margin: 0; box-shadow: none; }} .no-print {{ display: none !important; }} }}
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: var(--agent-color); color: white; padding: 10px 20px; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Print / Save PDF</button>
+    </div>
 
-    /* Tables */
-    .content table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 14px 0;
-        font-size: 10pt;
-        border: 1px solid #d1d5db;
-    }
-    .content th {
-        background: #e5e7eb;
-        font-weight: 700;
-        text-transform: uppercase;
-        font-size: 9pt;
-        color: #374151;
-        padding: 8px 12px;
-        text-align: left;
-        border-bottom: 2px solid #9ca3af;
-        letter-spacing: 0.03em;
-    }
-    .content td {
-        padding: 8px 12px;
-        border-bottom: 1px solid var(--border);
-        color: var(--text);
-        vertical-align: top;
-    }
-    .content tr:last-child td { border-bottom: none; }
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--agent-color); padding-bottom: 16px; margin-bottom: 20px;">
+            <div>
+                <div style="margin-bottom: 8px;"><span class="agent-badge">{agent_name}</span></div>
+                <h1>Agent Analysis Report</h1>
+                <div style="font-size: 13px; color: #6b7280;">Per-tool findings for binary <span class="mono">{file_name}</span></div>
+            </div>
+            <div style="text-align: right; font-size: 13px; color: #6b7280;">
+                <div>{timestamp}</div>
+                <div class="mono">Session: {session_id}</div>
+            </div>
+        </div>
 
-    /* IOC table cells */
-    .ioc-type {
-        font-weight: 700;
-        font-size: 9pt;
-        color: var(--text-muted);
-        text-transform: uppercase;
-        width: 20%;
-    }
-    .ioc-value {
-        font-family: 'Roboto Mono', Consolas, monospace;
-        font-size: 10pt;
-        word-break: break-all;
-    }
-    .no-data {
-        color: var(--text-muted);
-        font-style: italic;
-    }
+        <!-- Stats -->
+        <div style="text-align: center; margin-bottom: 24px;">
+            <div class="stat"><div class="num">{len(func_list)}</div><div class="lbl">Functions Found</div></div>
+            <div class="stat"><div class="num">{len(decomp_cache)}</div><div class="lbl">Decompiled</div></div>
+            <div class="stat"><div class="num">{len(string_list)}</div><div class="lbl">Strings</div></div>
+        </div>
 
-    /* Evidence / Findings */
-    .finding-item {
-        margin-bottom: 14px;
-        padding-bottom: 12px;
-        border-bottom: 1px dashed #d1d5db;
-    }
-    .finding-item:last-child { border-bottom: none; }
-    .finding-title {
-        font-weight: 700;
-        color: var(--primary);
-        font-size: 10.5pt;
-        margin-bottom: 4px;
-    }
-    .finding-desc {
-        color: var(--text-secondary);
-        font-size: 10pt;
-        line-height: 1.6;
-        padding-left: 12px;
-    }
+        <!-- Binary Information -->
+        <h2 class="section-header">Binary Information</h2>
+        <table class="data-table">
+            <tbody>
+                <tr><td class="prop">SHA-256</td><td class="mono" style="word-break:break-all">{escape(program_hash)}</td></tr>
+                {binary_rows}
+            </tbody>
+        </table>
 
-    /* Conclusion box */
-    .conclusion-box {
-        background: var(--bg-light);
-        border: 1px solid var(--border);
-        padding: 16px 20px;
-        border-radius: 3px;
-    }
+        <!-- Functions -->
+        <h2 class="section-header">Functions ({len(func_list)} discovered)</h2>
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Address</th><th>Size</th><th>XRefs</th><th>Decompiled</th></tr></thead>
+            <tbody>{func_rows}</tbody>
+        </table>
 
-    /* Page breaks */
-    .page-break { page-break-before: always; }
+        <!-- Decompiled Code -->
+        <h2 class="section-header">Decompiled Code ({len(decomp_cache)} functions)</h2>
+        {decomp_blocks if decomp_blocks else '<div style="color:#6b7280; font-style:italic;">No decompiled functions available.</div>'}
 
-    /* Footer */
-    .footer {
-        margin-top: 44px;
-        padding-top: 16px;
-        border-top: 1px solid #d1d5db;
-        font-size: 10px;
-        color: #9ca3af;
-        text-align: center;
-        letter-spacing: 0.02em;
-    }
+        <!-- Strings -->
+        <h2 class="section-header">Strings ({len(string_list)} extracted)</h2>
+        <table class="data-table">
+            <thead><tr><th>Address</th><th>Value</th></tr></thead>
+            <tbody>{string_rows if string_rows else '<tr><td colspan="2" style="color:#6b7280;font-style:italic;">No strings extracted.</td></tr>'}</tbody>
+        </table>
 
-    /* Print overrides */
-    @media print {
-        body { background: white; padding: 0; }
-        .page {
-            box-shadow: none;
-            max-width: 100%;
-            padding: 15mm;
-        }
-        .no-print { display: none !important; }
-        a { text-decoration: none; color: black; }
-    }
-    '''
+        <!-- LLM Synthesis (shared) -->
+        <h2 class="section-header">LLM Analysis Summary</h2>
+        <div style="font-size: 0.82rem; color: #6b7280; font-style: italic; margin-bottom: 8px;">
+            This summary was generated by the LLM using combined data from all active agents.
+        </div>
+        <div class="summary-box">{summary_html}</div>
+
+        <!-- Footer -->
+        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af;">
+            <div>Confidential &amp; Proprietary</div>
+            <div>Generated by {agent_name} Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>'''
+    return html
 
 
 def build_report_text(state: Dict[str, Any]) -> str:
     """Build plain text report for download."""
     summary = state.get("summary", "No summary available.")
     program_hash = state.get("program_hash", "unknown")
-    
+    binary = state.get("analysis_results", {}).get("binary", {})
+    r2_binary = state.get("r2_analysis_results", {}).get("binary", {})
+    funcs = state.get("analysis_results", {}).get("functions", {})
+    r2_funcs = state.get("r2_analysis_results", {}).get("functions", {})
+    decomp = state.get("decompilation_cache", {})
+    r2_decomp = state.get("r2_decompilation_cache", {})
+
     lines = [
         "=" * 70,
-        "GHIDRA BINARY ANALYSIS REPORT",
+        "GHIDRA + RADARE2 BINARY ANALYSIS REPORT",
         "=" * 70,
         "",
         f"SHA-256: {program_hash}",
         f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
         "",
+    ]
+
+    # Ghidra info
+    if binary.get("ok"):
+        lines.append("-" * 70)
+        lines.append("GHIDRA BINARY INFO")
+        lines.append("-" * 70)
+        lines.append(f"Architecture: {binary.get('architecture', 'unknown')}")
+        lines.append(f"Image Base:   {binary.get('image_base', 'unknown')}")
+        lines.append(f"Entry Points: {', '.join(binary.get('entry_points', []))}")
+        lines.append(f"Compiler:     {binary.get('compiler', 'unknown')}")
+        lines.append(f"Functions:    {len(funcs.get('functions', []))} ({len(decomp)} decompiled)")
+        lines.append("")
+
+    # R2 info
+    if r2_binary.get("ok"):
+        lines.append("-" * 70)
+        lines.append("RADARE2 BINARY INFO")
+        lines.append("-" * 70)
+        lines.append(f"Architecture: {r2_binary.get('architecture', 'unknown')}")
+        lines.append(f"Bits:         {r2_binary.get('bits', 'unknown')}")
+        lines.append(f"OS:           {r2_binary.get('os', 'unknown')}")
+        lines.append(f"Endian:       {r2_binary.get('endian', 'unknown')}")
+        lines.append(f"Stripped:     {r2_binary.get('stripped', 'unknown')}")
+        imports = r2_binary.get("imports", [])
+        if imports:
+            lines.append(f"Imports:      {', '.join(imports[:30])}")
+        lines.append(f"Functions:    {len(r2_funcs.get('functions', []))} ({len(r2_decomp)} decompiled)")
+        lines.append("")
+
+    # Executive summary first (most important for readers)
+    lines.extend([
         "-" * 70,
         "EXECUTIVE SUMMARY",
         "-" * 70,
         summary,
         "",
+    ])
+
+    # Decompiled code appendix
+    if decomp:
+        lines.append("-" * 70)
+        lines.append(f"APPENDIX A: GHIDRA DECOMPILED FUNCTIONS ({len(decomp)})")
+        lines.append("-" * 70)
+        for name, code in list(decomp.items())[:10]:
+            lines.append(f"\n--- {name} ---")
+            lines.append(code[:3000])
+        lines.append("")
+
+    if r2_decomp:
+        lines.append("-" * 70)
+        lines.append(f"APPENDIX B: RADARE2 DECOMPILED FUNCTIONS ({len(r2_decomp)})")
+        lines.append("-" * 70)
+        for name, code in list(r2_decomp.items())[:10]:
+            lines.append(f"\n--- {name} ---")
+            lines.append(code[:3000])
+        lines.append("")
+
+    lines.extend([
         "=" * 70,
         "END OF REPORT",
         "=" * 70,
-    ]
-    
+    ])
+
     return '\n'.join(lines)

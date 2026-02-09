@@ -244,7 +244,9 @@ export function ResourcesPanel({
               <div className="text-right flex-shrink-0">
                 <p className="text-xs text-text-muted uppercase tracking-wider">Verdict</p>
                 <p className={`text-sm font-semibold ${
-                  analysis.verdict === 'Malware' ? 'text-accent-red' : 'text-accent-green'
+                  analysis.verdict === 'Malware' ? 'text-accent-red'
+                  : analysis.verdict === 'Suspicious' ? 'text-accent-orange'
+                  : 'text-accent-green'
                 }`}>
                   {analysis.verdict}
                 </p>

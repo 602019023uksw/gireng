@@ -1,8 +1,10 @@
+import asyncio
 import json
 import re
 from typing import Dict, List, Any
 from langgraph.graph import StateGraph, END
 
+from ghidra_agent.config import settings
 from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import logger
 from ghidra_agent.prompts import SYSTEM_PROMPT
@@ -59,12 +61,52 @@ async def parse_intent(state: AgentState) -> AgentState:
 
 
 async def initialize_ghidra(state: AgentState) -> AgentState:
+    # Skip re-initialization on follow-up queries
+    if "ghidra_initialized" in state.get("reasoning_trace", []):
+        logger.info("skipping_reinit", reason="already_initialized")
+        return state
+
     state["status"] = "initialized"
     state["reasoning_trace"].append("ghidra_initialized")
+
+    # Verify R2 container if enabled
+    if settings.enable_r2:
+        try:
+            from ghidra_agent.radare.runner import Radare2Runner
+            runner = Radare2Runner()
+            if await runner.verify_container():
+                state["reasoning_trace"].append("r2_initialized")
+            else:
+                state["reasoning_trace"].append("r2_unavailable")
+        except Exception as exc:
+            logger.warning("r2_init_check_failed", error=str(exc))
+            state["reasoning_trace"].append("r2_unavailable")
+
     return state
 
 
 async def discovery(state: AgentState) -> AgentState:
+    # Skip re-discovery on follow-up queries if results already exist
+    if state.get("analysis_results", {}).get("binary", {}).get("ok"):
+        logger.info("skipping_rediscovery", reason="results_already_exist")
+        return state
+
+    # Run Ghidra discovery
+    await _ghidra_discovery(state)
+
+    # Run R2 in parallel if available
+    if settings.enable_r2 and "r2_initialized" in state.get("reasoning_trace", []):
+        try:
+            await _safe_r2_pipeline(state)
+        except Exception as exc:
+            logger.error("r2_parallel_failed", error=str(exc))
+
+    state["reasoning_trace"].append("discovery_completed")
+    return state
+
+
+async def _ghidra_discovery(state: AgentState) -> None:
+    """Core Ghidra discovery: binary info, functions, strings, auto-decompile."""
     tool_args = {
         "session_id": state["session_id"],
         "program_hash": state["program_hash"],
@@ -85,18 +127,26 @@ async def discovery(state: AgentState) -> AgentState:
     except Exception as exc:
         logger.error("discovery_strings_failed", error=str(exc))
         strings = {"ok": False, "error": str(exc)}
-    
+
     state["analysis_results"]["binary"] = binary_info
     state["analysis_results"]["functions"] = functions
     state["analysis_results"]["strings"] = strings
-    
-    # B3 FIX + I1: Auto-decompile entry point and top functions on initial upload
+
+    # Auto-decompile entry point and top functions
     await _auto_decompile_key_functions(state, binary_info, functions)
-    
+
     if not binary_info.get("ok"):
         state["analysis_results"].setdefault("errors", []).append("binary_structure_failed")
-    state["reasoning_trace"].append("discovery_completed")
-    return state
+
+
+async def _safe_r2_pipeline(state: AgentState) -> None:
+    """Run R2 pipeline safely — failures don't block Ghidra results."""
+    try:
+        from ghidra_agent.r2_graph import run_r2_pipeline
+        await run_r2_pipeline(state)
+    except Exception as exc:
+        logger.error("r2_pipeline_failed", error=str(exc))
+        state["reasoning_trace"].append(f"r2_error:{exc}")
 
 
 async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, functions: Dict) -> None:
@@ -337,6 +387,27 @@ async def synthesize(state: AgentState) -> AgentState:
     xrefs = results.get("xrefs", {})
     if xrefs.get("ok"):
         context_parts.append(f"\nXRefs to: {xrefs.get('to', [])}, from: {xrefs.get('from', [])}")
+
+    # Include Radare2 results if available
+    r2_results = state.get("r2_analysis_results", {})
+    r2_decomp = state.get("r2_decompilation_cache", {})
+    if r2_results:
+        context_parts.append("\n=== RADARE2 ANALYSIS ===")
+        r2_binary = r2_results.get("binary", {})
+        if r2_binary.get("ok"):
+            context_parts.append(f"R2 Binary: arch={r2_binary.get('architecture')}, bits={r2_binary.get('bits')}, os={r2_binary.get('os')}")
+            if r2_binary.get("imports"):
+                context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'][:30])}")
+        r2_funcs = r2_results.get("functions", {})
+        if r2_funcs.get("ok") and r2_funcs.get("functions"):
+            r2_sorted = sorted(r2_funcs["functions"], key=lambda f: f.get("size", 0), reverse=True)
+            r2_desc = [f"{f.get('name')}(size:{f.get('size', 0)})" for f in r2_sorted[:30]]
+            context_parts.append(f"R2 Functions ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
+    if r2_decomp:
+        context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
+        for func_name, c_code in list(r2_decomp.items())[:5]:
+            context_parts.append(f"\n--- R2 Function: {func_name} ---")
+            context_parts.append(c_code[:3000])
 
     context = "\n".join(context_parts) if context_parts else "No analysis data available."
 

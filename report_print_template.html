@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malware Analysis Report - {{ report.file_name | default('Unknown File') }}</title>
+    <!-- Use Tailwind for utility classes but override with custom CSS for print precision -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1f2937;
+            /* Dark Slate */
+            --accent: #b91c1c;
+            /* Red for threats */
+            --border: #e5e7eb;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f3f4f6;
+            color: #111827;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+        }
+
+        /* A4 Page Simulation */
+        .page-container {
+            width: 210mm;
+            min-height: 297mm;
+            padding: 20mm;
+            margin: 20px auto;
+            background: white;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            position: relative;
+        }
+
+        .font-mono {
+            font-family: 'Roboto Mono', monospace;
+        }
+
+        /* Typography - Report Style */
+        h1.report-title {
+            font-size: 24pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--primary);
+            border-bottom: 4px solid var(--primary);
+            padding-bottom: 12px;
+            margin-bottom: 24px;
+        }
+
+        h2.section-header {
+            font-size: 14pt;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--primary);
+            border-bottom: 1px solid #9ca3af;
+            padding-bottom: 4px;
+            margin-top: 32px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+        }
+
+        h2.section-header::before {
+            content: '';
+            display: inline-block;
+            width: 6px;
+            height: 18px;
+            background-color: var(--accent);
+            margin-right: 12px;
+        }
+
+        /* Header Metadata Box */
+        .meta-box {
+            border: 1px solid #d1d5db;
+            background-color: #f9fafb;
+            padding: 12px;
+            font-size: 0.9rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-bottom: 32px;
+        }
+
+        .meta-label {
+            font-weight: 600;
+            color: #4b5563;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+        }
+
+        /* Markdown Content Styling (for server-rendered HTML) */
+        .markdown-content p {
+            margin-bottom: 12px;
+            line-height: 1.6;
+            text-align: left;
+            hyphens: auto;
+            font-size: 10.5pt;
+        }
+
+        .markdown-content ul {
+            list-style-type: disc;
+            padding-left: 1.5rem;
+            margin-bottom: 12px;
+            margin-top: 4px;
+        }
+
+        .markdown-content ol {
+            list-style-type: decimal;
+            padding-left: 1.5rem;
+            margin-bottom: 12px;
+            margin-top: 4px;
+        }
+
+        .markdown-content ol li {
+            margin-bottom: 10px;
+            padding-left: 4px;
+            line-height: 1.6;
+        }
+
+        .markdown-content ol li strong {
+            color: #1f2937;
+        }
+
+        .markdown-content li {
+            margin-bottom: 6px;
+            padding-left: 4px;
+        }
+
+        .markdown-content li>p {
+            margin-bottom: 0px;
+        }
+
+        /* Code Blocks - Minimalist */
+        .markdown-content pre {
+            background-color: #f3f4f6;
+            border: 1px solid #d1d5db;
+            border-left: 4px solid #6b7280;
+            padding: 12px;
+            overflow-x: auto;
+            font-size: 0.85rem;
+            margin: 16px 0;
+            border-radius: 2px;
+        }
+
+        .markdown-content code {
+            font-family: 'Roboto Mono', monospace;
+            background-color: #f3f4f6;
+            padding: 2px 4px;
+            font-size: 0.9em;
+            color: #b91c1c;
+            /* Tech red */
+        }
+
+        .markdown-content pre code {
+            color: #374151;
+            background: none;
+            padding: 0;
+        }
+
+        /* Headers within Markdown */
+        .markdown-content h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-top: 1.5rem;
+            margin-bottom: 0.75rem;
+            border-bottom: 1px dotted #d1d5db;
+            padding-bottom: 4px;
+        }
+
+        .markdown-content h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #374151;
+            margin-top: 1.25rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-content h5,
+        .markdown-content h6 {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #4b5563;
+            margin-top: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .markdown-content strong {
+            font-weight: 700;
+            color: #111827;
+        }
+
+        /* Tables - Professional/Dense */
+        .markdown-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 16px 0;
+            font-size: 0.9rem;
+            border: 1px solid #d1d5db;
+        }
+
+        .markdown-content th {
+            background-color: #e5e7eb;
+            font-weight: 700;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            color: #374151;
+            padding: 8px 12px;
+            text-align: left;
+            border-bottom: 2px solid #9ca3af;
+        }
+
+        .markdown-content td {
+            padding: 8px 12px;
+            border-bottom: 1px solid #e5e7eb;
+            color: #1f2937;
+        }
+
+        .markdown-content tr:last-child td {
+            border-bottom: none;
+        }
+
+        /* Evidence Items - "Findings" Style */
+        .finding-item {
+            margin-bottom: 16px;
+            border-bottom: 1px dashed #d1d5db;
+            padding-bottom: 12px;
+        }
+
+        .finding-title {
+            font-weight: 700;
+            color: #1f2937;
+            font-size: 1rem;
+            margin-bottom: 4px;
+        }
+
+        .finding-desc {
+            color: #4b5563;
+        }
+
+        /* Threat Badge - Professional */
+        .risk-banner {
+            text-align: center;
+            padding: 6px;
+            font-weight: bold;
+            text-transform: uppercase;
+            font-size: 0.9rem;
+            letter-spacing: 0.1em;
+            margin-bottom: 20px;
+            border: 1px solid;
+        }
+
+        .risk-critical {
+            background-color: #fee2e2;
+            color: #991b1b;
+            border-color: #fca5a5;
+        }
+
+        .risk-high {
+            background-color: #ffedd5;
+            color: #9a3412;
+            border-color: #fdba74;
+        }
+
+        .risk-medium {
+            background-color: #fef9c3;
+            color: #854d0e;
+            border-color: #fde047;
+        }
+
+        .risk-low {
+            background-color: #dcfce7;
+            color: #166534;
+            border-color: #86efac;
+        }
+
+        .risk-clean {
+            background-color: #f3f4f6;
+            color: #374151;
+            border-color: #d1d5db;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+
+            .page-container {
+                margin: 0;
+                padding: 15mm;
+                /* Slightly less padding for print margins */
+                box-shadow: none;
+                width: 100%;
+                max-width: none;
+            }
+
+            .no-print,
+            .actions-bar {
+                display: none !important;
+            }
+
+            .page-break {
+                page-break-before: always;
+            }
+
+            a {
+                text-decoration: none;
+                color: black;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Print/Action Button (Screen Only) -->
+    <div class="fixed bottom-8 right-8 no-print z-50 actions-bar">
+        <button onclick="window.print()"
+            class="bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 shadow-xl font-medium flex items-center gap-2 rounded-sm transition-all">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24"
+                stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+            </svg>
+            Print / Save PDF
+        </button>
+    </div>
+
+    <!-- MAIN DOCUMENT PAGE -->
+    <div class="page-container">
+
+        <!-- Header -->
+        <div class="flex justify-between items-end mb-2 border-b-2 border-gray-800 pb-4">
+            <div>
+                <div class="text-xs font-bold text-gray-500 uppercase tracking-widest mb-1">Confidential & Proprietary
+                </div>
+                <h1 class="text-3xl font-bold text-gray-900 uppercase tracking-wide">Reverse Engineering Report</h1>
+            </div>
+            <div class="text-right">
+                <div class="font-bold text-gray-900">CYBER SECURITY DIVISION</div>
+                <div class="text-sm text-gray-500">Incident Response Team</div>
+            </div>
+        </div>
+
+        <!-- Metadata Table -->
+        <div class="meta-box">
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">{{ report.file_name | default('N/A') }}</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">{{ task_id }}</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>{{ timestamp }}</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div class="font-bold inline-block px-2 py-0.5 text-sm"
+                    style="background-color: black; color: #FFC000; border: 1px solid black;">TLP:AMBER</div>
+            </div>
+        </div>
+
+        <!-- Risk Banner -->
+        <div class="risk-banner 
+            {% if report.risk_level == 'critical' %} risk-critical
+            {% elif report.risk_level == 'high' %} risk-high
+            {% elif report.risk_level == 'medium' %} risk-medium
+            {% elif report.risk_level == 'low' %} risk-low
+            {% else %} risk-clean {% endif %}">
+            THREAT ASSESSMENT: {{ report.risk_level | default('Unknown') | upper }}
+        </div>
+
+        {# Dynamic section counter #}
+        {% set section = namespace(num=1) %}
+
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">{{ section.num }}. Executive Summary</h2>
+            {% set section.num = section.num + 1 %}
+            <div id="summary-content" class="markdown-content">
+                {{ report.summary | default('No summary provided.') | safe }}
+            </div>
+        </div>
+
+        <!-- Malware Capabilities -->
+        {% if report.malware_capabilities %}
+        <div>
+            <h2 class="section-header">{{ section.num }}. Malware Capabilities</h2>
+            {% set section.num = section.num + 1 %}
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">
+                Identified capabilities and behaviors exhibited by this malware sample.
+            </div>
+            <div id="capabilities-content" class="markdown-content">
+                {{ report.malware_capabilities | safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">{{ section.num }}. Binary Information</h2>
+            {% set section.num = section.num + 1 %}
+            <div id="binary-info" class="markdown-content">
+                {{ report.binary_info | default('No binary information available.') | safe }}
+            </div>
+        </div>
+
+        <!-- Technical Analysis -->
+        {% if report.technical_analysis %}
+        <div>
+            <h2 class="section-header">{{ section.num }}. Technical Analysis</h2>
+            {% set section.num = section.num + 1 %}
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">
+                In-depth technical examination of the malware's code structure, algorithms, and implementation details.
+            </div>
+            <div id="technical-content" class="markdown-content">
+                {{ report.technical_analysis | safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Functions Analysis -->
+        {% if report.functions_analysis %}
+        <div class="page-break"></div>
+        <div>
+            <h2 class="section-header">{{ section.num }}. Functions Analysis</h2>
+            {% set section.num = section.num + 1 %}
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">
+                Key functions identified during static analysis, including decompiled pseudocode and behavioral
+                descriptions.
+            </div>
+            <div id="functions-content" class="markdown-content">
+                {{ report.functions_analysis | safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Evidence of Malicious Activity -->
+        {% if report.evidence %}
+        <div>
+            <h2 class="section-header">{{ section.num }}. Evidence of Malicious Activity</h2>
+            {% set section.num = section.num + 1 %}
+            <div id="evidence-container">
+                <div class="text-gray-500 italic">No specific evidence recorded.</div>
+            </div>
+            <div id="evidence-raw" class="hidden">
+                {% if report.evidence is iterable and report.evidence is not string %}
+                {{ report.evidence | tojson }}
+                {% else %}
+                {{ report.evidence }}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Operational Flow -->
+        {% if report.how_it_works %}
+        <div>
+            <h2 class="section-header">{{ section.num }}. Operational Flow</h2>
+            {% set section.num = section.num + 1 %}
+            <div id="how-it-works-content" class="markdown-content">
+                {{ report.how_it_works | safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- C2 & Networking -->
+        {% if report.c2_analysis %}
+        <div>
+            <h2 class="section-header">{{ section.num }}. C2 & Networking</h2>
+            {% set section.num = section.num + 1 %}
+            <div id="c2-content" class="markdown-content">
+                {{ report.c2_analysis | safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Recommendations -->
+        {% if report.recommendations %}
+        <div class="page-break"></div>
+        <div>
+            <h2 class="section-header">{{ section.num }}. Recommendations</h2>
+            {% set section.num = section.num + 1 %}
+            <div id="recommendations-container" class="space-y-4">
+            </div>
+            <div id="recommendations-raw" class="hidden">
+                {% if report.recommendations is iterable and report.recommendations is not string %}
+                {{ report.recommendations | tojson }}
+                {% else %}
+                {{ report.recommendations }}
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- MITRE ATT&CK Matrix -->
+        {% if report.mitre_attack %}
+        <div>
+            <h2 class="section-header">{{ section.num }}. MITRE ATT&CK Matrix</h2>
+            {% set section.num = section.num + 1 %}
+            <div id="mitre-content" class="markdown-content">
+                {{ report.mitre_attack | safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Indicators of Compromise -->
+        {% if report.iocs %}
+        <div>
+            <h2 class="section-header">{{ section.num }}. Indicators of Compromise (IOCs)</h2>
+            {% set section.num = section.num + 1 %}
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead>
+                        <tr>
+                            <th width="20%">Type</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for ioc in report.iocs %}
+                        <tr>
+                            <td class="font-bold text-xs text-gray-500 uppercase">{{ ioc.type }}</td>
+                            <td class="font-mono text-sm break-all">{{ ioc.value }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Conclusion -->
+        {% if report.conclusion %}
+        <div class="page-break"></div>
+        <div>
+            <h2 class="section-header">{{ section.num }}. Conclusion</h2>
+            {% set section.num = section.num + 1 %}
+            <div class="markdown-content"
+                style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                {{ report.conclusion | safe }}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Footer -->
+        <div class="mt-12 pt-6 border-t border-gray-300 flex justify-between text-xs text-gray-400 no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Page 1 of 1</div>
+        </div>
+
+    </div>
+
+    <script>
+        // Utilities
+        function cleanMarkdown(text) {
+            if (!text) return '';
+            return text
+                .replace(/\*\*([^*]+)\*\*/g, '$1') // Remove bold
+                .replace(/`([^`]+)`/g, '$1')       // Remove code ticks
+                .replace(/^[-*]\s+/gm, '')         // Remove list markers
+                .trim();
+        }
+
+        function styleCodeReferences(text) {
+            // Convert known technical terms to code style
+            return text
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                .replace(/\b(fcn\.[0-9a-fA-F]+)\b/g, '<code>$1</code>')
+                .replace(/\b(0x[0-9a-fA-F]+)\b/g, '<code>$1</code>')
+                .replace(/\b(sym\.[a-zA-Z0-9_]+)\b/g, '<code>$1</code>');
+        }
+
+        // NOTE: Standard sections like Summary, Methods, C2, etc 
+        // are now rendered server-side. No client-side marked.js needed.
+
+        // ----------------------------------------------------
+        // EVIDENCE PROCESSOR
+        // ----------------------------------------------------
+        try {
+            const evidenceRawEl = document.getElementById('evidence-raw');
+            const evidenceContainer = document.getElementById('evidence-container');
+
+            if (evidenceRawEl && evidenceContainer) {
+                let rawData = evidenceRawEl.textContent.trim();
+                let items = [];
+
+                // Parse JSON if possible, otherwise treat as single string
+                try {
+                    items = JSON.parse(rawData);
+                } catch (e) {
+                    items = [rawData]; // Fallback
+                }
+
+                if (Array.isArray(items) && items.length > 0) {
+                    let html = '';
+                    items.forEach((item, idx) => {
+                        let title = `Observasi ${idx + 1}`;
+                        let desc = item;
+
+                        // Try to split Title: Desc
+                        // Matches "**Title**: Description" or "Title: Description"
+                        const match = item.match(/^(\*\*.*?\*\*|[^:]+):\s*(.+)$/s);
+                        if (match) {
+                            title = match[1].replace(/\*\*/g, '').trim();
+                            desc = match[2].trim();
+                        } else {
+                            // If just a sentence, use cleaned version
+                            desc = cleanMarkdown(item);
+                        }
+
+                        desc = styleCodeReferences(desc);
+
+                        html += `
+                        <div class="finding-item">
+                            <div class="finding-title">• ${title}</div>
+                            <div class="finding-desc text-sm leading-relaxed pl-4">${desc}</div>
+                        </div>`;
+                    });
+                    evidenceContainer.innerHTML = html;
+                }
+            }
+        } catch (e) { console.error("Evidence rendering error", e); }
+
+        // ----------------------------------------------------
+        // RECOMMENDATIONS PROCESSOR
+        // ----------------------------------------------------
+        try {
+            const recRawEl = document.getElementById('recommendations-raw');
+            const recContainer = document.getElementById('recommendations-container');
+
+            if (recRawEl && recContainer) {
+                let rawData = recRawEl.textContent.trim();
+                let items = [];
+                try { items = JSON.parse(rawData); } catch (e) { items = [rawData]; }
+
+                if (Array.isArray(items) && items.length > 0) {
+                    let html = '';
+                    items.forEach((item, idx) => {
+                        const cleaned = styleCodeReferences(cleanMarkdown(item));
+                        html += `
+                            <div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0">
+                                <div class="flex-shrink-0 w-6 h-6 rounded-full bg-gray-800 text-white flex items-center justify-center text-xs font-bold">${idx + 1}</div>
+                                <div class="text-sm pt-0.5 text-gray-800">${cleaned}</div>
+                            </div>
+                        `;
+                    });
+                    recContainer.innerHTML = html;
+                }
+            }
+        } catch (e) { console.error("Rec rendering error", e); }
+
+    </script>
+</body>
+
+</html>

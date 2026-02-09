@@ -5,6 +5,7 @@ import { ToolCallCard } from './ToolCallCard';
 import { CodeBlock } from './CodeBlock';
 import { AnalysisCompletedCard } from './AnalysisCompletedCard';
 import { getAgentById } from '@/agents/ghidra-agent';
+import { MarkdownContent } from '@/components/common/MarkdownContent';
 
 interface MessageBubbleProps {
   message: Message;
@@ -17,94 +18,11 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
     const diff = now.getTime() - date.getTime();
     const minutes = Math.floor(diff / 60000);
     const hours = Math.floor(diff / 3600000);
-    
+
     if (minutes < 1) return 'Just now';
     if (minutes < 60) return `${minutes}m`;
     if (hours < 24) return `${hours}h`;
     return date.toLocaleDateString();
-  };
-
-  // Parse markdown-like content
-  const renderContent = (content: string) => {
-    const lines = content.split('\n');
-    const elements: React.ReactNode[] = [];
-    let currentList: string[] = [];
-
-    const flushList = () => {
-      if (currentList.length > 0) {
-        elements.push(
-          <ul key={`list-${elements.length}`} className="list-disc list-inside mb-3 space-y-1">
-            {currentList.map((item, i) => (
-              <li key={i} className="text-sm text-text-secondary">{item.replace(/^•\s*/, '')}</li>
-            ))}
-          </ul>
-        );
-        currentList = [];
-      }
-    };
-
-    lines.forEach((line, index) => {
-      // Headers
-      if (line.startsWith('## ')) {
-        flushList();
-        elements.push(
-          <h2 key={`h2-${index}`} className="text-lg font-semibold text-text-primary mt-4 mb-2">
-            {line.replace('## ', '')}
-          </h2>
-        );
-        return;
-      }
-      if (line.startsWith('### ')) {
-        flushList();
-        elements.push(
-          <h3 key={`h3-${index}`} className="text-base font-semibold text-text-primary mt-3 mb-2">
-            {line.replace('### ', '')}
-          </h3>
-        );
-        return;
-      }
-
-      // List items
-      if (line.startsWith('• ') || line.startsWith('- ')) {
-        currentList.push(line);
-        return;
-      }
-
-      // Empty line - flush list
-      if (line.trim() === '') {
-        flushList();
-        return;
-      }
-
-      // Regular paragraph with inline code
-      flushList();
-      const parts = line.split(/(`[^`]+`)/g);
-      elements.push(
-        <p key={`p-${index}`} className="text-sm text-text-secondary leading-relaxed mb-2">
-          {parts.map((part, i) => {
-            if (part.startsWith('`') && part.endsWith('`')) {
-              return (
-                <code 
-                  key={i}
-                  className="px-1.5 py-0.5 rounded text-xs font-mono"
-                  style={{
-                    background: 'rgba(88, 166, 255, 0.1)',
-                    border: '1px solid rgba(88, 166, 255, 0.2)',
-                    color: '#F0F6FC',
-                  }}
-                >
-                  {part.slice(1, -1)}
-                </code>
-              );
-            }
-            return part;
-          })}
-        </p>
-      );
-    });
-
-    flushList();
-    return elements;
   };
 
   if (message.isUser) {
@@ -115,7 +33,7 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
         className="flex justify-end mb-4"
       >
-        <div 
+        <div
           className="max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3"
           style={{
             background: 'linear-gradient(135deg, rgba(35, 45, 75, 0.6) 0%, rgba(25, 32, 55, 0.5) 100%)',
@@ -140,13 +58,13 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
       className="flex gap-3 mb-4"
     >
       {/* AI Avatar */}
-      <div 
+      <div
         className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-1"
         style={{
-          background: agent 
+          background: agent
             ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.05) 100%)'
             : 'linear-gradient(135deg, rgba(88, 166, 255, 0.2) 0%, rgba(88, 166, 255, 0.05) 100%)',
-          border: agent 
+          border: agent
             ? '1px solid rgba(168, 85, 247, 0.3)'
             : '1px solid rgba(88, 166, 255, 0.3)',
         }}
@@ -163,7 +81,7 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
         <div className="flex items-center gap-2 mb-1">
           {/* Agent Badge */}
           {agent && (
-            <span 
+            <span
               className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
               style={{
                 background: 'rgba(168, 85, 247, 0.15)',
@@ -178,10 +96,10 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
           <Clock className="w-3.5 h-3.5 text-text-muted" />
           <span className="text-xs text-text-muted">{formatTime(message.timestamp)}</span>
         </div>
-        
-        {/* Render parsed content */}
+
+        {/* Render markdown content */}
         <div className="mb-3">
-          {renderContent(message.content)}
+          <MarkdownContent content={message.content} compact />
         </div>
 
         {/* Tool Calls */}

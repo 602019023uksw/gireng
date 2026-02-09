@@ -56,7 +56,7 @@ URL_PATTERN = re.compile(
 )
 
 DOMAIN_PATTERN = re.compile(
-    r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:[a-zA-Z]{2,}|local|lan|home|corp)\b',
+    r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|ru|cn|tk|xyz|info|biz|cc|top|pw|club|work|live|online|site|tech|co)\b',
     re.IGNORECASE
 )
 
@@ -109,7 +109,7 @@ SUSPICIOUS_KEYWORDS = [
 
 # Crypto-related patterns
 CRYPTO_KEYWORDS = [
-    'AES', 'RSA', 'DES', ' Blowfish', 'ChaCha', 'Salsa20',
+    'AES', 'RSA', 'DES', 'Blowfish', 'ChaCha', 'Salsa20',
     'private', 'public', 'key', 'encrypt', 'decrypt', 'cipher',
     'openssl', 'libcrypto', 'EVP_', 'AES_', 'RSA_',
 ]
@@ -176,7 +176,8 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
                 iocs.registry_keys.append(reg)
         
         # Extract potential mutexes/event names (long alphanumeric strings)
-        if len(value) >= 10 and value.isalnum():
+        # Require mixed case or special patterns to reduce false positives
+        if len(value) >= 16 and value.isalnum() and not value.isdigit() and not value.islower() and not value.isupper():
             if value not in seen_mutexes:
                 seen_mutexes.add(value)
                 iocs.mutexes.append(value)
@@ -275,12 +276,23 @@ def format_iocs_for_report(iocs: IOCs) -> str:
 
 
 def extract_iocs_from_state(state: Dict[str, Any]) -> IOCs:
-    """Extract IOCs from the full agent state."""
-    strings_data = state.get("analysis_results", {}).get("strings", {})
-    if not strings_data.get("ok"):
+    """Extract IOCs from the full agent state (both Ghidra and R2)."""
+    all_strings = []
+
+    # Ghidra strings
+    ghidra_strings = state.get("analysis_results", {}).get("strings", {})
+    if ghidra_strings.get("ok"):
+        all_strings.extend(ghidra_strings.get("strings", []))
+
+    # Radare2 strings
+    r2_strings = state.get("r2_analysis_results", {}).get("strings", {})
+    if r2_strings.get("ok"):
+        all_strings.extend(r2_strings.get("strings", []))
+
+    if not all_strings:
         return IOCs()
-    
-    return extract_iocs_from_strings(strings_data.get("strings", []))
+
+    return extract_iocs_from_strings(all_strings)
 
 
 def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
@@ -293,7 +305,14 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
         - indicators: List of human-readable indicator descriptions
         - score: Numerical score for debugging
     """
+    # Gather strings from both tools
+    all_string_vals = []
     strings_data = state.get("analysis_results", {}).get("strings", {})
+    if strings_data.get("ok"):
+        all_string_vals.extend([s.get("value", "").lower() for s in strings_data.get("strings", [])])
+    r2_strings_data = state.get("r2_analysis_results", {}).get("strings", {})
+    if r2_strings_data.get("ok"):
+        all_string_vals.extend([s.get("value", "").lower() for s in r2_strings_data.get("strings", [])])
     
     score = 0
     indicators = []
@@ -321,9 +340,9 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
         score += min(len(iocs.suspicious_strings), 10) * 5
         indicators.append(f"{len(iocs.suspicious_strings)} suspicious keywords")
     
-    # Score capabilities from strings
-    if strings_data.get("ok"):
-        strings_vals = " ".join([s.get("value", "").lower() for s in strings_data.get("strings", [])])
+    # Score capabilities from strings (both Ghidra + R2)
+    if all_string_vals:
+        strings_vals = " ".join(all_string_vals)
         if any(x in strings_vals for x in ["socket", "connect", "recv", "send"]):
             score += 20
             indicators.append("Network capability detected")
@@ -334,12 +353,12 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
             score += 25
             indicators.append("Command execution capability detected")
     
-    # Determine verdict
+    # Determine verdict – labels match frontend taxonomy exactly
     if score >= 80:
-        return "Malicious", "malicious", indicators, score
+        return "Malware", "malicious", indicators, score
     elif score >= 40:
         return "Suspicious", "suspicious", indicators, score
     elif score >= 10:
-        return "Potentially Unwanted", "suspicious", indicators, score
+        return "Suspicious", "suspicious", indicators, score
     else:
-        return "Clean/Unknown", "clean", indicators, score
+        return "Clean", "clean", indicators, score

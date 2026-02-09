@@ -46,6 +46,26 @@ class SessionStore:
 store = SessionStore()
 
 
+# --- Hot-deploy session restore ---
+def _restore_sessions():
+    import json
+    from pathlib import Path
+    backup = Path('/tmp/sessions_backup.json')
+    if backup.exists():
+        try:
+            with open(backup) as f:
+                data = json.load(f)
+            for sid, state in data.items():
+                store.sessions[sid] = state
+            backup.unlink()
+            logger.info('sessions_restored', count=len(data))
+        except Exception as e:
+            logger.error('session_restore_failed', error=str(e))
+
+_restore_sessions()
+# --- End hot-deploy session restore ---
+
+
 async def run_graph(state: AgentState) -> AgentState:
     logger.info("graph_run_started", session_id=state.get("session_id"), program_hash=state.get("program_hash"))
     result = await graph.ainvoke(state, config={"recursion_limit": 50})

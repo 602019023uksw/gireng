@@ -19,6 +19,9 @@ class AgentState(TypedDict):
     status: str
     review_approved: bool
     summary: str
+    # Radare2 results (parallel to Ghidra)
+    r2_analysis_results: Dict[str, Any]
+    r2_decompilation_cache: Dict[str, str]
 
 
 DEFAULT_STATE: AgentState = {
@@ -37,6 +40,8 @@ DEFAULT_STATE: AgentState = {
     "status": "initialized",
     "review_approved": False,
     "summary": "",
+    "r2_analysis_results": {},
+    "r2_decompilation_cache": {},
 }
 
 
@@ -55,3 +60,6 @@ class AgentStateModel(BaseModel):
     intent: Optional[str] = None
     status: str = "initialized"
     review_approved: bool = False
+    summary: str = ""
+    r2_analysis_results: Dict[str, Any] = Field(default_factory=dict)
+    r2_decompilation_cache: Dict[str, str] = Field(default_factory=dict)

@@ -11,7 +11,9 @@ interface StatusBadgeProps {
 const verdictColors: Record<string, string> = {
   Clean: 'text-accent-green',
   Malware: 'text-accent-red',
+  Malicious: 'text-accent-red',
   Suspicious: 'text-accent-orange',
+  'Potentially Unwanted': 'text-accent-orange',
   Not_extracted: 'text-text-muted',
   COMPLETED: 'text-accent-green',
   running: 'text-accent-blue',
@@ -21,7 +23,9 @@ const verdictColors: Record<string, string> = {
 const verdictBgColors: Record<string, string> = {
   Clean: 'bg-accent-green/10',
   Malware: 'bg-accent-red/10',
+  Malicious: 'bg-accent-red/10',
   Suspicious: 'bg-accent-orange/10',
+  'Potentially Unwanted': 'bg-accent-orange/10',
   Not_extracted: 'bg-text-muted/10',
   COMPLETED: 'bg-accent-green/10',
   running: 'bg-accent-blue/10',
@@ -31,6 +35,7 @@ const verdictBgColors: Record<string, string> = {
 const dotColors: Record<string, string> = {
   Clean: '#3FB950',
   Malware: '#F85149',
+  Malicious: '#F85149',
   Suspicious: '#D29922',
   COMPLETED: '#3FB950',
   running: '#58A6FF',

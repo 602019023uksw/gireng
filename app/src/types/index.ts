@@ -45,7 +45,7 @@ export interface Analyzer {
   name: string;
   source: string;
   sourceUrl: string;
-  verdict: 'Clean' | 'Malware' | 'Suspicious' | 'Not_extracted';
+  verdict: 'Clean' | 'Malware' | 'Suspicious' | 'Not_extracted' | string;
   details?: AnalyzerDetails;
 }
 
@@ -113,6 +113,7 @@ export interface Report {
   id: string;
   name: string;
   timestamp: number;
+  content?: string;
 }
 
 export interface NavItem {

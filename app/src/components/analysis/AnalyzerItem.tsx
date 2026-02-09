@@ -10,7 +10,9 @@ interface AnalyzerItemProps {
 const verdictColors: Record<string, string> = {
   Clean: 'text-accent-green',
   Malware: 'text-accent-red',
+  Malicious: 'text-accent-red',
   Suspicious: 'text-accent-orange',
+  'Potentially Unwanted': 'text-accent-orange',
   Not_extracted: 'text-text-muted',
 };
 

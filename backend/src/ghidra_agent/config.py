@@ -20,6 +20,11 @@ class Settings(BaseModel):
     default_analysis_timeout: int = Field(default=120, alias="DEFAULT_ANALYSIS_TIMEOUT")
     max_upload_bytes: int = Field(default=200 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")  # 200 MB
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    # Radare2 settings
+    r2_container_name: str = Field(default="radare2", alias="R2_CONTAINER_NAME")
+    r2_shared_root: str = Field(default="/data/shared", alias="R2_SHARED_ROOT")
+    r2_timeout: int = Field(default=60, alias="R2_TIMEOUT")
+    enable_r2: bool = Field(default=True, alias="ENABLE_R2")
 
     class Config:
         populate_by_name = True

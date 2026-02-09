@@ -39,13 +39,20 @@ export async function getStatus(sessionId: string): Promise<StatusResponse> {
 }
 
 // Send a natural-language query
-export async function sendQuery(sessionId: string, query: string): Promise<void> {
+export interface QueryResponse {
+  ok: boolean;
+  answer?: string;
+  error?: string;
+}
+
+export async function sendQuery(sessionId: string, query: string): Promise<QueryResponse> {
   const res = await fetch(`${API_BASE}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ session_id: sessionId, query }),
   });
   if (!res.ok) throw new Error(`Query failed: ${res.status}`);
+  return res.json();
 }
 
 // Get analysis data by program hash
@@ -106,8 +113,8 @@ export function connectStream(sessionId: string, onEvent: (event: any) => void):
 export async function pollStatus(
   sessionId: string,
   onUpdate: (status: StatusResponse) => void,
-  intervalMs = 3000,
-  maxPolls = 120,
+  intervalMs = 5000,
+  maxPolls = 540,
 ): Promise<StatusResponse> {
   for (let i = 0; i < maxPolls; i++) {
     const status = await getStatus(sessionId);

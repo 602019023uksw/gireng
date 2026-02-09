@@ -170,11 +170,13 @@ rule Detect_[MalwareFamily] {
   ]
 };
 
-// Agent registry - add more agents here
+import { radareAgent } from './radare-agent';
+
+// Agent registry
 export const agents: Agent[] = [
   ghidraAgent,
+  radareAgent,
   // Add more agents:
-  // radareAgent,
   // virustotalAgent,
   // stringsAgent,
   // yaraAgent,

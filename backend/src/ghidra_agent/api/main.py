@@ -26,7 +26,8 @@ from ghidra_agent.ui_adapter import (
     build_report_content,
     build_similar_files,
 )
-from ghidra_agent.reporting import build_report_html, build_report_text
+from ghidra_agent.reporting import build_report_html, build_report_text, build_agent_report_html
+from ghidra_agent.llm import call_llm
 from ghidra_agent.utils import ensure_directory, safe_basename
 
 
@@ -41,6 +42,12 @@ app.add_middleware(
 )
 
 configure_logging()
+
+
+@app.get("/health")
+async def health() -> JSONResponse:
+    """Health check endpoint."""
+    return JSONResponse({"status": "ok", "sessions": len(store.sessions)})
 
 
 class ConnectionManager:
@@ -109,13 +116,105 @@ async def status(session_id: str) -> StatusResponse:
 
 @app.post("/query")
 async def query(request: QueryRequest) -> JSONResponse:
+    """Answer follow-up questions using existing analysis context (no re-analysis)."""
     try:
         state = store.get_session(request.session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Session not found: {request.session_id}")
-    state["user_query"] = request.query
-    _create_tracked_task(_run_with_events(state))
-    return JSONResponse({"ok": True})
+
+    if state.get("status") != "completed":
+        return JSONResponse(
+            {"ok": False, "error": f"Analysis not yet completed (status: {state.get('status')})"},
+            status_code=400,
+        )
+
+    # Build context from existing analysis data (same as synthesize node)
+    context_parts = []
+    results = state.get("analysis_results", {})
+    binary = results.get("binary", {})
+    if binary.get("ok"):
+        context_parts.append(f"Architecture: {binary.get('architecture')}, Image base: {binary.get('image_base')}")
+        if binary.get("entry_points"):
+            context_parts.append(f"Entry points: {', '.join(binary.get('entry_points', []))}")
+
+    funcs = results.get("functions", {})
+    if funcs.get("ok") and funcs.get("functions"):
+        sorted_funcs = sorted(funcs["functions"], key=lambda f: f.get("xrefs", 0), reverse=True)
+        func_desc = [f"{f.get('name')}(xrefs:{f.get('xrefs', 0)})" for f in sorted_funcs[:50]]
+        context_parts.append(f"Functions ({len(funcs['functions'])} total): {', '.join(func_desc)}")
+
+    strings_data = results.get("strings", {})
+    if strings_data.get("ok") and strings_data.get("strings"):
+        str_vals = [s.get("value", str(s)) if isinstance(s, dict) else str(s) for s in strings_data["strings"][:50]]
+        context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_vals)}")
+
+    decomp_cache = state.get("decompilation_cache", {})
+    if decomp_cache:
+        context_parts.append(f"\n=== GHIDRA DECOMPILED CODE ({len(decomp_cache)} functions) ===")
+        for func_name, c_code in list(decomp_cache.items())[:10]:
+            context_parts.append(f"\n--- {func_name} ---\n{c_code[:4000]}")
+
+    r2_results = state.get("r2_analysis_results", {})
+    r2_decomp = state.get("r2_decompilation_cache", {})
+    if r2_results:
+        r2_binary = r2_results.get("binary", {})
+        if r2_binary.get("ok"):
+            context_parts.append(f"\nR2 Binary: arch={r2_binary.get('architecture')}, bits={r2_binary.get('bits')}, os={r2_binary.get('os')}")
+            if r2_binary.get("imports"):
+                context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'][:30])}")
+    if r2_decomp:
+        context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
+        for func_name, c_code in list(r2_decomp.items())[:5]:
+            context_parts.append(f"\n--- {func_name} ---\n{c_code[:3000]}")
+
+    # Include previous analysis summary for continuity
+    prev_summary = state.get("summary", "")
+
+    context = "\n".join(context_parts) if context_parts else "No analysis data available."
+
+    prompt = f"""You are a malware analyst answering a follow-up question about a binary you already analyzed.
+
+PREVIOUS ANALYSIS SUMMARY (for context):
+{prev_summary[:4000]}
+
+RAW ANALYSIS DATA:
+{context[:8000]}
+
+Binary hash: {state.get('program_hash', 'unknown')}
+
+USER QUESTION: {request.query}
+
+INSTRUCTIONS:
+- Answer ONLY the user's specific question. Do NOT repeat the full report.
+- Be concise and direct. A few sentences or a short paragraph is ideal.
+- Reference specific function names, addresses, and code when relevant.
+- If the data doesn't contain enough information to answer, say so clearly.
+- Do NOT produce section headers like "Executive Summary" or numbered sections unless the user asks for a report."""
+
+    try:
+        logger.info("query_start", session_id=request.session_id, query=request.query[:200])
+        answer = await call_llm(prompt)
+        logger.info("query_complete", session_id=request.session_id, answer_len=len(answer))
+
+        # Store the Q&A in reasoning trace for history
+        state.setdefault("qa_history", []).append({
+            "question": request.query,
+            "answer": answer,
+        })
+        store.update_session(request.session_id, state)
+
+        return JSONResponse({
+            "ok": True,
+            "session_id": request.session_id,
+            "status": "completed",
+            "answer": answer,
+        })
+    except Exception as exc:
+        logger.error("query_failed", session_id=request.session_id, error=str(exc), exc_info=exc)
+        return JSONResponse(
+            {"ok": False, "error": str(exc)},
+            status_code=500,
+        )
 
 
 @app.post("/write_mode")
@@ -189,15 +288,19 @@ async def analysis_status(program_hash: str) -> JSONResponse:
 async def analysis_analyzers(program_hash: str) -> JSONResponse:
     for state in store.sessions.values():
         if state["program_hash"] == program_hash:
-            return JSONResponse([build_analyzer_response(state)])
+            analyzers = [build_analyzer_response(state, "ghidra")]
+            # Include radare2 if R2 results exist
+            if state.get("r2_analysis_results"):
+                analyzers.append(build_analyzer_response(state, "radare2"))
+            return JSONResponse(analyzers)
     return JSONResponse([], status_code=404)
 
 
 @app.get("/api/analysis/{program_hash}/analyzers/{analyzer_id}")
 async def analysis_analyzer_detail(program_hash: str, analyzer_id: str) -> JSONResponse:
     for state in store.sessions.values():
-        if state["program_hash"] == program_hash and analyzer_id == "ghidra":
-            return JSONResponse(build_analyzer_response(state))
+        if state["program_hash"] == program_hash and analyzer_id in ("ghidra", "radare2"):
+            return JSONResponse(build_analyzer_response(state, analyzer_id))
     return JSONResponse({"error": "not_found"}, status_code=404)
 
 
@@ -241,6 +344,39 @@ async def analysis_similar(program_hash: str) -> JSONResponse:
     return JSONResponse([], status_code=404)
 
 
+@app.get("/api/analysis/{program_hash}/results/ghidra")
+async def ghidra_results(program_hash: str) -> JSONResponse:
+    """Return raw Ghidra analysis results (functions, strings, binary info, decompiled code)."""
+    for state in store.sessions.values():
+        if state["program_hash"] == program_hash:
+            return JSONResponse({
+                "analyzer": "ghidra",
+                "binary": state.get("analysis_results", {}).get("binary", {}),
+                "functions": state.get("analysis_results", {}).get("functions", {}),
+                "strings": state.get("analysis_results", {}).get("strings", {}),
+                "decompiled": state.get("decompilation_cache", {}),
+            })
+    return JSONResponse({"error": "not_found"}, status_code=404)
+
+
+@app.get("/api/analysis/{program_hash}/results/radare2")
+async def radare2_results(program_hash: str) -> JSONResponse:
+    """Return raw Radare2 analysis results (functions, strings, binary info, decompiled code)."""
+    for state in store.sessions.values():
+        if state["program_hash"] == program_hash:
+            r2 = state.get("r2_analysis_results", {})
+            if not r2:
+                return JSONResponse({"error": "radare2 analysis not available"}, status_code=404)
+            return JSONResponse({
+                "analyzer": "radare2",
+                "binary": r2.get("binary", {}),
+                "functions": r2.get("functions", {}),
+                "strings": r2.get("strings", {}),
+                "decompiled": state.get("r2_decompilation_cache", {}),
+            })
+    return JSONResponse({"error": "not_found"}, status_code=404)
+
+
 @app.get("/api/models")
 async def models() -> JSONResponse:
     return JSONResponse(build_model_list())
@@ -279,6 +415,22 @@ async def export_session_html(session_id: str) -> HTMLResponse:
         program_hash = state.get("program_hash", "unknown")
         return HTMLResponse(content=html, headers={
             "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.html"'
+        })
+    except KeyError:
+        return HTMLResponse("<h1>Session not found</h1>", status_code=404)
+
+
+@app.get("/export/session/{session_id}/agent/{agent}")
+async def export_session_agent_html(session_id: str, agent: str) -> HTMLResponse:
+    """Export per-agent report (ghidra or r2)."""
+    if agent.lower() not in ("ghidra", "r2", "radare2"):
+        return HTMLResponse("<h1>Invalid agent. Use 'ghidra' or 'r2'.</h1>", status_code=400)
+    try:
+        state = store.get_session(session_id)
+        html = build_agent_report_html(state, agent)
+        program_hash = state.get("program_hash", "unknown")
+        return HTMLResponse(content=html, headers={
+            "Content-Disposition": f'attachment; filename="report_{agent}_{program_hash[:16]}.html"'
         })
     except KeyError:
         return HTMLResponse("<h1>Session not found</h1>", status_code=404)

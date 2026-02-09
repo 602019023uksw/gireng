@@ -15,6 +15,7 @@ import { AnalysisSection } from '@/components/analysis/AnalysisSection';
 import { DataTable } from '@/components/data/DataTable';
 import { ShareModal } from '@/components/modals/ShareModal';
 import { ModelSelector } from '@/components/chat/ModelSelector';
+import { MarkdownContent } from '@/components/common/MarkdownContent';
 
 import {
   uploadBinary,
@@ -26,7 +27,6 @@ import {
   getReports,
   getReportContent,
 } from '@/lib/api';
-import type { StatusResponse } from '@/lib/api';
 
 import {
   mockChats,
@@ -59,9 +59,24 @@ function App() {
   const [codeFiles, setCodeFiles] = useState<CodeFile[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [activeReport, setActiveReport] = useState<Report | null>(null);
 
   // Track current session
   const sessionRef = useRef<{ id: string; hash: string } | null>(null);
+
+  // Fetch report content when a report is selected
+  const handleReportSelect = useCallback(async (reportId: string) => {
+    const hash = sessionRef.current?.hash;
+    if (!hash) return;
+    try {
+      const data = await getReportContent(hash, reportId);
+      if (data) {
+        setActiveReport(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch report content:', err);
+    }
+  }, []);
 
   // Fetch all side-panel data for a completed analysis
   const fetchAnalysisData = useCallback(async (hash: string) => {
@@ -82,13 +97,41 @@ function App() {
         setCodeFiles(cfs);
       }
       setReports(reportsData || []);
+
+      // Auto-load the first report content for the Analysis Summary
+      if (reportsData?.length > 0) {
+        try {
+          const firstReport = await getReportContent(hash, reportsData[0].id);
+          if (firstReport) setActiveReport(firstReport);
+        } catch { /* non-critical */ }
+      }
+
+      // Derive overall verdict from analyzers: worst-case wins
+      const verdictPriority: Record<string, number> = { 'Malware': 3, 'Suspicious': 2, 'Clean': 1 };
+      const overallVerdict = (analyzersData || []).reduce(
+        (worst: string, a: Analyzer) => {
+          const p = verdictPriority[a.verdict] || 0;
+          return p > (verdictPriority[worst] || 0) ? a.verdict : worst;
+        },
+        'Clean',
+      );
+
+      // Also compute threat score based on verdict
+      const threatScoreMap: Record<string, number> = { 'Malware': 6, 'Suspicious': 3, 'Clean': 0 };
+
+      setCurrentAnalysis(prev => ({
+        ...prev,
+        verdict: overallVerdict,
+        threatScore: threatScoreMap[overallVerdict] ?? 0,
+      }));
+
       setAnalyses([{
         id: hash,
         hash,
         shortHash: hash.slice(0, 16) + '...',
-        tags: ['ghidra'],
+        tags: (analyzersData || []).map((a: Analyzer) => a.name.split(' ')[0].toLowerCase()),
         extraTagCount: 0,
-        verdict: analyzersData?.[0]?.verdict || 'Unknown',
+        verdict: overallVerdict,
         status: 'completed',
       }]);
     } catch (err) {
@@ -111,16 +154,28 @@ function App() {
       const { session_id } = await uploadBinary(file);
       const analyzingMsg: Message = {
         id: (Date.now() + 1).toString(),
-        content: `Binary uploaded. Ghidra is analyzing **${file.name}**... This may take 1-2 minutes.`,
+        content: `Binary uploaded. Analyzing **${file.name}** with Ghidra and Radare2... This typically takes 5-15 minutes.`,
         isUser: false,
         timestamp: new Date(),
         toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'running' }],
       };
       setMessages(prev => [...prev, analyzingMsg]);
 
-      // Poll until done
-      const result = await pollStatus(session_id, (s) => {
-        // Update the analyzing message with current status
+      // Poll until done, updating status message on each tick
+      const startTime = Date.now();
+      const result = await pollStatus(session_id, (statusUpdate) => {
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        const mins = Math.floor(elapsed / 60);
+        const secs = elapsed % 60;
+        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        const step = statusUpdate.state?.current_step || statusUpdate.status || 'analyzing';
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === analyzingMsg.id
+              ? { ...m, content: `Analyzing **${file.name}**... (${timeStr} elapsed, step: ${step})` }
+              : m
+          )
+        );
       });
 
       const hash = result.state.program_hash;
@@ -151,7 +206,7 @@ function App() {
         hash,
         status: result.status.toUpperCase(),
         type: result.state.analysis_results?.binary?.architecture || 'Unknown',
-        verdict: 'Suspicious',
+        verdict: '',
       });
       await fetchAnalysisData(hash);
     } catch (err: any) {
@@ -165,7 +220,7 @@ function App() {
     }
   }, [fetchAnalysisData]);
 
-  const handleSendMessage = useCallback(async (content: string, agentId?: string) => {
+  const handleSendMessage = useCallback(async (content: string, _agentId?: string) => {
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
@@ -198,13 +253,12 @@ function App() {
     setMessages(prev => [...prev, thinkingMsg]);
 
     try {
-      await sendQuery(sessionRef.current.id, content);
-      const result = await pollStatus(sessionRef.current.id, () => {});
+      const queryResult = await sendQuery(sessionRef.current.id, content);
 
-      const summary = result.state.summary || 'Analysis completed.';
+      const answer = queryResult.answer || 'No answer returned.';
       const responseMsg: Message = {
         id: (Date.now() + 2).toString(),
-        content: summary,
+        content: answer,
         isUser: false,
         timestamp: new Date(),
         toolCalls: [{ id: '1', name: 'Agent Query', status: 'completed' }],
@@ -263,8 +317,10 @@ function App() {
           codeFiles={codeFiles}
           activeTab={rightPanelTab}
           activeCodeFileId={activeCodeFileId}
+          activeReport={activeReport}
           onTabChange={setRightPanelTab}
           onCodeFileChange={setActiveCodeFileId}
+          onReportSelect={handleReportSelect}
           onClose={() => setRightPanelOpen(false)}
         />
       </ResizablePanel>
@@ -466,11 +522,15 @@ function App() {
                           </AnalysisSection>
                         )}
 
-                        {/* Analysis Summary - Template: Populate from API */}
+                        {/* Analysis Summary */}
                         <AnalysisSection title="Analysis Summary">
-                          <p className="text-sm text-text-secondary">
-                            Analysis results will be displayed here. Connect to your backend API to populate this section.
-                          </p>
+                          {activeReport?.content ? (
+                            <MarkdownContent content={activeReport.content} compact />
+                          ) : (
+                            <p className="text-sm text-text-muted italic">
+                              Click a report in the Resources panel to view the analysis summary.
+                            </p>
+                          )}
                         </AnalysisSection>
                       </motion.div>
                     )}

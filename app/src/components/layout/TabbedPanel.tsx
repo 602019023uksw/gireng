@@ -5,6 +5,7 @@ import type { FileNode, Analysis, Report, CodeFile } from '@/types';
 import { TagCloud } from '@/components/analysis/TagCloud';
 import { ChevronRight, ChevronDown, FolderOpen } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
+import { MarkdownContent } from '@/components/common/MarkdownContent';
 
 interface TabbedPanelProps {
   files: FileNode[];
@@ -13,8 +14,10 @@ interface TabbedPanelProps {
   codeFiles: CodeFile[];
   activeTab: 'resources' | 'code' | 'report';
   activeCodeFileId?: string;
+  activeReport?: Report | null;
   onTabChange: (tab: 'resources' | 'code' | 'report') => void;
   onCodeFileChange: (fileId: string) => void;
+  onReportSelect?: (reportId: string) => void;
   onClose: () => void;
 }
 
@@ -148,8 +151,10 @@ export function TabbedPanel({
   codeFiles,
   activeTab,
   activeCodeFileId,
+  activeReport,
   onTabChange,
   onCodeFileChange,
+  onReportSelect,
   onClose,
 }: TabbedPanelProps) {
   const activeCodeFile = codeFiles.find(f => f.id === activeCodeFileId) || codeFiles[0];
@@ -207,7 +212,9 @@ export function TabbedPanel({
                   <div className="text-right flex-shrink-0">
                     <p className="text-xs text-text-muted uppercase tracking-wider">Verdict</p>
                     <p className={`text-sm font-semibold ${
-                      analysis.verdict === 'Malware' ? 'text-accent-red' : 'text-accent-green'
+                      analysis.verdict === 'Malware' ? 'text-accent-red'
+                      : analysis.verdict === 'Suspicious' ? 'text-accent-orange'
+                      : 'text-accent-green'
                     }`}>
                       {analysis.verdict}
                     </p>
@@ -221,7 +228,10 @@ export function TabbedPanel({
               {reports.map((report) => (
                 <button
                   key={report.id}
-                  onClick={() => onTabChange('report')}
+                  onClick={() => {
+                    if (onReportSelect) onReportSelect(report.id);
+                    onTabChange('report');
+                  }}
                   className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg transition-colors duration-150 text-left"
                 >
                   <FileText className="w-5 h-5 text-text-secondary" />
@@ -276,28 +286,15 @@ export function TabbedPanel({
           <div className="flex flex-col h-full">
             <div className="flex-1 overflow-y-auto scrollbar-dark p-4">
               <h3 className="text-lg font-semibold text-text-primary mb-4">
-                Comprehensive Analysis Report
+                {activeReport?.name || 'Analysis Report'}
               </h3>
-              <div className="space-y-4 text-sm text-text-secondary">
-                <p>
-                  This report provides a comprehensive analysis of the submitted ELF shared library,
-                  identified as a malicious Pluggable Authentication Module (PAM).
-                </p>
-                <div className="p-4 rounded-xl" style={{ background: 'rgba(20, 28, 50, 0.4)', border: '1px solid rgba(100, 120, 180, 0.15)' }}>
-                  <h4 className="font-semibold text-text-primary mb-2">1. Executive Summary</h4>
-                  <p>
-                    The analysis concludes with high confidence that the file is a malicious PAM designed
-                    to function as a sophisticated backdoor and credential stealer on Linux systems.
-                  </p>
+              {activeReport?.content ? (
+                <MarkdownContent content={activeReport.content} compact />
+              ) : (
+                <div className="text-sm text-text-muted italic">
+                  Select a report from the Resources tab to view its content.
                 </div>
-                <div className="p-4 rounded-xl" style={{ background: 'rgba(20, 28, 50, 0.4)', border: '1px solid rgba(100, 120, 180, 0.15)' }}>
-                  <h4 className="font-semibold text-text-primary mb-2">2. Technical Deep Dive</h4>
-                  <p>
-                    The core malicious logic is located within the pam_sm_authenticate function,
-                    which is the standard PAM function responsible for validating user credentials.
-                  </p>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         );
