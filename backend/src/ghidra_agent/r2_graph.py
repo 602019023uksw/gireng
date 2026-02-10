@@ -15,7 +15,7 @@ from ghidra_agent.r2_tools import (
 )
 from ghidra_agent.state import AgentState
 
-R2_AUTO_DECOMPILE_PERCENT = 0.50  # Decompile 75% of discovered functions
+R2_AUTO_DECOMPILE_PERCENT = 0.60  # Decompile 60% of meaningful (non-stub) functions
 R2_AUTO_DECOMPILE_MIN = 10         # Floor: always decompile at least this many
 
 
