@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malware Analysis Report - dbus-echo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
+        .font-mono { font-family: 'Roboto Mono', monospace; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
+        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
+        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
+        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
+        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
+        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
+        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
+        .markdown-content li { margin-bottom: 6px; }
+        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
+        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
+        .markdown-content pre code { color: #374151; background: none; padding: 0; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
+        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
+        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
+        .finding-desc { color: #4b5563; }
+        /* Utility classes used by markdown renderer */
+        .w-full { width: 100%; }
+        .text-left { text-align: left; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-800 { color: #1f2937; }
+        .italic { font-style: italic; }
+        .font-bold { font-weight: 700; }
+        .break-all { word-break: break-all; }
+        .list-disc { list-style-type: disc; }
+        .pl-4 { padding-left: 1rem; }
+        .pl-6 { padding-left: 1.5rem; }
+        .pt-half { padding-top: 0.125rem; }
+        .pb-4 { padding-bottom: 1rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .gap-4 { gap: 1rem; }
+        .items-start { align-items: flex-start; }
+        .flex { display: flex; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border-b { border-bottom: 1px solid #e5e7eb; }
+        .border-dashed { border-style: dashed; }
+        .border-gray-200 { border-color: #e5e7eb; }
+
+        .leading-relaxed { line-height: 1.625; }
+        .uppercase { text-transform: uppercase; }
+        .border-l-2 { border-left: 2px solid; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .pl-3 { padding-left: 0.75rem; }
+        .border-collapse { border-collapse: collapse; }
+        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Print / Save PDF
+        </button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
+            <div>
+                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
+                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
+                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
+            </div>
+        </div>
+
+        <!-- Metadata -->
+        <div class="meta-box">
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">dbus-echo</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">cefd5eb0</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>2026-02-10 07:11 UTC</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
+            </div>
+        </div>
+
+        <!-- Risk Banner -->
+        <div class="risk-banner risk-high">
+            THREAT ASSESSMENT: SUSPICIOUS
+        </div>
+
+        
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">1. Executive Summary</h2>
+            <div class="markdown-content"><p class="mb-3">The analyzed binary is a Linux ELF 64-bit malware sample that functions as a UDP-based backdoor. Upon execution, it attempts to disguise its process name as <code>[syslog]</code> to blend in with legitimate system processes. It establishes a listening UDP socket to receive encrypted commands from a remote controller. The malware supports updating its encryption keys, writing file data to the local system (specifically to a file named <code>system.conf</code>), and likely executing remote shell commands via a <code>remoteExec</code> function. Communication is obfuscated using a simple XOR cipher and involves raw packet manipulation to calculate custom UDP checksums. Given its capabilities for remote command execution and file manipulation, the threat level is <strong>High</strong>.</p></div>
+        </div>
+
+        <!-- Malware Capabilities -->
+        <div>
+            <h2 class="section-header">2. Malware Capabilities</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Process Masquerading</strong>: Renames the running process to <code>[syslog]</code> to avoid detection in process lists.</li>
+<li class="mb-2"><strong>C2 Communication</strong>: Listens on a UDP socket (associated with magic port <code>0x84b</code>) for incoming packets.</li>
+<li class="mb-2"><strong>Cryptographic Obfuscation</strong>: Uses a 4-byte XOR key (<code>idkey</code>) to encrypt and decrypt command payloads.</li>
+<li class="mb-2"><strong>File Operations</strong>: Capable of writing received file chunks to <code>system.conf</code> on disk.</li>
+<li class="mb-2"><strong>Remote Execution</strong>: Contains a <code>remoteExec</code> function to run shell commands via <code>popen</code> and return the output to the C2 server.</li>
+<li class="mb-2"><strong>Anti-Analysis/Debugging</strong>: Ignores <code>SIGCHLD</code> (signal 17) signals to prevent zombie processes and handle child termination silently (common in forking shells).</li>
+</ul></div>
+        </div>
+
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">3. Binary Information</h2>
+            <div class="markdown-content"><table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr><tr><td>Architecture</td><td>x86</td></tr><tr><td>Type</td><td>ELF/PE (inferred)</td></tr><tr><td>Image Base</td><td>00400000</td></tr><tr><td>Entry Point</td><td>00601dc8, 004017a0, 00400aa0, 00401878, 00401216, 00401888, 0040163e, 00401890, 00601b38, 004017b0, 00601dd0, 004015ce, 00601dd4, 00601de8, 004010ce, 00601df8, 0040155e, 00601df0, 004016b8, 00400b78, 004008d0</td></tr><tr><td>Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@51d34f02</td></tr><tr><td>Ghidra Imports</td><td>&lt;EXTERNAL&gt;::__sysv_signal, &lt;EXTERNAL&gt;::printf, &lt;EXTERNAL&gt;::memset, &lt;EXTERNAL&gt;::puts, &lt;EXTERNAL&gt;::fseek, &lt;EXTERNAL&gt;::htons, &lt;EXTERNAL&gt;::exit, &lt;EXTERNAL&gt;::fopen, &lt;EXTERNAL&gt;::__libc_start_main, &lt;EXTERNAL&gt;::recv, &lt;EXTERNAL&gt;::setsockopt, &lt;EXTERNAL&gt;::pclose, &lt;EXTERNAL&gt;::sprintf, &lt;EXTERNAL&gt;::ntohs, &lt;EXTERNAL&gt;::fgetc</td></tr><tr><td>Ghidra Exports</td><td>data_start, __libc_csu_fini, _start, _fini, sendResult2Peer, _IO_stdin_used, checksum, __dso_handle, __DTOR_END__, __libc_csu_init, initPz, myDecryptFun, __bss_start, file, remoteExec</td></tr><tr><td>Functions (Ghidra)</td><td>70 total (10 decompiled)</td></tr><tr><td>Functions (R2)</td><td>42 total (10 decompiled)</td></tr><tr><td>R2 Architecture</td><td>x86 (64-bit)</td></tr><tr><td>R2 OS</td><td>linux</td></tr><tr><td>R2 Imports</td><td>__sysv_signal, printf, memset, __gmon_start__, puts, fseek, htons, exit, fopen, __libc_start_main, recv, setsockopt, pclose, sprintf, ntohs</td></tr><tr><td>R2 Exports</td><td>__libc_csu_fini, _start, _fini, sendResult2Peer, _IO_stdin_used, __data_start, checksum, __dso_handle, __DTOR_END__, __libc_csu_init, initPz, myDecryptFun, __bss_start, file, remoteExec</td></tr><tr><td>Strings (Ghidra)</td><td>153 extracted</td></tr><tr><td>Strings (R2)</td><td>9 extracted</td></tr></table></div>
+        </div>
+
+        <!-- Technical Analysis -->
+        <div>
+            <h2 class="section-header">4. Technical Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
+            <div class="markdown-content"><strong>Process Name Spoofing</strong>
+<p class="mb-3">The <code>main</code> function checks if the argument count (<code>argc</code>) is greater than 8. If so, it overwrites <code>argv[0]</code> with the string &quot;[syslog]&quot; using hardcoded hex values (<code>0x7379735b</code>, <code>0x64676f6c</code>, <code>0x5d</code>). This technique hides the malware&#x27;s true identity in tools like <code>top</code> or <code>ps</code>.</p>
+
+<strong>C2 Communication &amp; Protocol</strong>
+<p class="mb-3">The malware creates a UDP socket (<code>socket(2,3,0x11)</code>). It enters a loop receiving data into a buffer. It validates packets by checking for a specific magic number <code>0x84b</code> (decimal 2123) and a hard-coded <code>idkey</code>. If valid, it decrypts the payload.</p>
+
+<strong>Command Handling</strong>
+<p class="mb-3">Based on the decompilation, the malware interprets command types located at offset <code>local_18[9]</code>:</p>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Type 0x01</strong>: Updates the <code>idkey</code> used for encryption.</li>
+<li class="mb-2"><strong>Type 0x02</strong>: Writes data to <code>system.conf</code>.</li>
+
+</ul>
+<pre><code>// Ghidra Decompilation of Process Name Spoofing in main
+if (8 &lt; ~uVar10 - 1) {
+    // ...
+    puVar2 = (undefined4 *)*param_2;
+    *puVar2 = 0x7379735b; // [sys
+    puVar2[1] = 0x64676f6c; // logd
+    *(undefined2 *)(puVar2 + 2) = 0x5d; // ]
+}
+</code></pre>
+
+<strong>Cryptography</strong>
+<p class="mb-3">The sample utilizes <code>myEncryptFun</code> and <code>myDecryptFun</code> to obfuscate traffic. These functions perform a byte-wise XOR operation on the payload using the global <code>idkey</code>.</p>
+
+<pre><code>// Ghidra Decompilation of XOR Cipher (myEncryptFun / myDecryptFun)
+for (local_c = 0; local_c &lt; (int)(uint)param_4; local_c = local_c + 1) {
+    if (param_2 &lt;= local_d) {
+        local_d = 0;
+    }
+    *(byte *)(local_c + param_5) =
+         *(byte *)(local_c + param_3) ^ *(byte *)((ulong)local_d + param_1);
+    local_d = local_d + 1;
+}
+</code></pre></div>
+        </div>
+
+        <!-- Functions Analysis -->
+        <div>
+            <h2 class="section-header">5. Functions Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
+            <div class="markdown-content"><strong>main @ 0x00400b78 (26 xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Entry point and core command loop. Handles process spoofing, socket initialization, and packet reception.</li>
+<li class="mb-2"><strong>Key Code</strong>: Checks <code>argc</code> to spoof name. Sets <code>socket</code> options. Receives loop checking for magic bytes <code>0x84b</code> and validating <code>idkey</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: The use of <code>[syslog]</code> for process hiding is a clear indicator of malicious intent. The hardcoded check for magic number <code>0x84b</code> acts as a simple protocol signature.</li>
+
+<strong>myDecryptFun @ 0x004015ce (2 xrefs)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Decrypts incoming command payloads.</li>
+<li class="mb-2"><strong>Key Code</strong>: Loops through the buffer length performing XOR with the <code>idkey</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: XOR encryption is weak and easily reversible, allowing defenders to decode captured traffic if the key is known.</li>
+
+<strong>myEncryptFun @ 0x0040155e (2 xrefs)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Encrypts outgoing data (e.g., command results) before transmission.</li>
+<li class="mb-2"><strong>Key Code</strong>: Identical logic to <code>myDecryptFun</code> (XOR operation).</li>
+<li class="mb-2"><strong>Security Note</strong>: Used to obfuscate C2 responses.</li>
+
+<strong>sendResult2Peer @ 0x00401216 (3 xrefs)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Sends data back to the controller. It manually constructs packet headers and calculates UDP checksums.</li>
+<li class="mb-2"><strong>Key Code</strong>: Calls <code>udp_tcp_checksum</code> and <code>checksum</code>. Swaps source/destination ports/IPs in the packet structure. Encrypts payload via <code>myEncryptFun</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: The manual manipulation of packet headers suggests the malware might bypass standard stack handling or needs to craft specific raw packets (though <code>sendto</code> is used on a DGRAM socket).</li>
+
+<strong>remoteExec @ 0x004010ce (1 xref)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Executes shell commands on the host.</li>
+<li class="mb-2"><strong>Key Code</strong>: Uses <code>popen</code> to execute a command string passed in <code>param_1</code>. Reads the output via <code>fgetc</code> and stores it in a buffer. Appends error messages if execution fails.</li>
+<li class="mb-2"><strong>Security Note</strong>: Provides the attacker with full Remote Code Execution (RCE) capabilities on the infected host.</li>
+</ul></div>
+        </div>
+
+        <!-- Evidence -->
+        <div>
+            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
+            <div><div class="finding-item"><div class="finding-title">Process Masquerading</div><div class="finding-desc text-sm leading-relaxed pl-4">Evidence: Hex codes `0x7379735b` (&quot;[sys&quot;), `0x64676f6c` (&quot;logd&quot;), `0x5d` (&quot;]&quot;) used to overwrite `argv[0]`</div></div><div class="finding-item"><div class="finding-title">Cryptographic Obfuscation</div><div class="finding-desc text-sm leading-relaxed pl-4">Evidence: Functions `myEncryptFun` and `myDecryptFun` utilizing XOR logic on a global `idkey`</div></div><div class="finding-item"><div class="finding-title">Remote Command Execution</div><div class="finding-desc text-sm leading-relaxed pl-4">Evidence: `remoteExec` function uses `popen` to execute strings and read output</div></div><div class="finding-item"><div class="finding-title">Suspicious File Activity</div><div class="finding-desc text-sm leading-relaxed pl-4">Evidence: String `&quot;system.conf&quot;` and code opening this file with &quot;w+&quot; permissions in `main`</div></div><div class="finding-item"><div class="finding-title">Backdoor Logic</div><div class="finding-desc text-sm leading-relaxed pl-4">Evidence: Magic number `0x84b` check and `idkey` validation in `main`</div></div></div>
+        </div>
+
+        <!-- Operational Flow -->
+        <div>
+            <h2 class="section-header">7. Operational Flow</h2>
+            <div class="markdown-content"><ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: The binary starts at <code>main</code>. It checks arguments and overwrites <code>argv[0]</code> with <code>[syslog]</code>. It sets a signal handler for <code>SIGCHLD</code> (signal 17) to ignore child signals.</li>
+<li class="mb-2"><strong>Setup</strong>: Creates a UDP socket (<code>socket(2,3,0x11)</code>). Sets socket options. Initializes buffers.</li>
+<li class="mb-2"><strong>Main Operation</strong>: Enters an infinite <code>recv</code> loop.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">Receives data (max 2048 bytes).</li>
+<li class="mb-2">Checks for Magic Header <code>0x84b</code>.</li>
+<li class="mb-2">Validates the <code>idkey</code>.</li>
+<li class="mb-2">Decrypts the command payload.</li>
+<li class="mb-2"><strong>Action</strong>:</li>
+<li class="mb-2">If Cmd Type <code>0x01</code>: Update <code>idkey</code>.</li>
+<li class="mb-2">If Cmd Type <code>0x02</code>: Write data to <code>system.conf</code>.</li>
+<li class="mb-2">Sends results back via <code>sendResult2Peer</code>.</li>
+</ul>
+<li class="mb-2"><strong>Persistence</strong>: No specific persistence mechanism (like systemd service or cron job) is visible in the provided code snippets, though the malware writes to <code>system.conf</code>, which could potentially be a configuration file for persistence or a dropped payload.</li>
+</ol></div>
+        </div>
+
+        <!-- C2 & Networking -->
+        <div>
+            <h2 class="section-header">8. C2 & Networking</h2>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>C2 Servers</strong>: IP addresses are not hardcoded in the provided strings; the malware listens on a socket (binds implicitly or connects). The protocol uses a magic number <code>0x84b</code> (Port 2123).</li>
+<li class="mb-2"><strong>Protocols</strong>: UDP (Protocol 17).</li>
+<li class="mb-2"><strong>Communication Pattern</strong>:</li>
+<li class="mb-2"><strong>Inbound</strong>: Encrypted (XOR) packets containing a Magic ID (<code>0x84b</code>), Session Key (<code>idkey</code>), Command Type, and Payload.</li>
+<li class="mb-2"><strong>Outbound</strong>: Constructed UDP packets containing the response, encrypted with the session key, and including a custom checksum.</li>
+</ul></div>
+        </div>
+
+        <!-- Recommendations -->
+        <div>
+            <h2 class="section-header">9. Recommendations</h2>
+            <div class="space-y-4"><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">1</div><div class="text-sm pt-half text-gray-800">Network Monitoring: Monitor for UDP traffic on non-standard ports, specifically port 2123 (<code>0x84b</code>), and inspect for packets lacking standard protocol headers or containing the specific magic sequence.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">2</div><div class="text-sm pt-half text-gray-800">Host-Based Detection: Scan processes for instances where the process name claims to be <code>[syslog]</code> but the executable path or parent process hierarchy is suspicious.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">3</div><div class="text-sm pt-half text-gray-800">File Integrity Monitoring: Monitor for unauthorized creation or modification of <code>system.conf</code> in root directories or user home directories.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">4</div><div class="text-sm pt-half text-gray-800">Signature Creation: Create YARA rules matching the unique string combination of <code>&quot;[syslog]&quot;</code>, <code>&quot;socket(): %s&quot;</code>, and the specific function prologues for the XOR encryption routine.</div></div></div>
+        </div>
+
+        <!-- IOCs -->
+        <div>
+            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
+                    <tbody><tr><td colspan="2" class="text-gray-500 italic">No IOCs extracted.</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conclusion -->
+        <div>
+            <h2 class="section-header">11. Conclusion</h2>
+            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                <p class="mb-3">The analyzed binary is a stealthy Linux backdoor capable of remote command execution and file manipulation. It employs process masquerading (<code>[syslog]</code>) and weak XOR encryption to hide its activity. The presence of <code>popen</code> and socket functionality indicates a functional C2 mechanism allowing attackers to control the infected host. Immediate remediation involves killing the spoofed process and blocking the associated UDP traffic.</p>
+            </div>
+        </div>
+
+        <!-- Call Graph -->
+        <div>
+            <h2 class="section-header">12. Call Graph &amp; Attack Chains</h2>
+            <div class="markdown-content"><h3>Ghidra Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 17 | <strong>Edges:</strong> 12 | <strong>Entries:</strong> __libc_csu_fini, __libc_csu_init, _fini, _init, _start, checksum, main, myDecryptFun, myEncryptFun, remoteExec | <strong>Attack Chains:</strong> 4</p>
+<h4>Attack Chains</h4>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>[Crypto]</strong> main &rarr; myDecryptFun</li>
+<li class="mb-2"><strong>[Crypto]</strong> sendResult2Peer &rarr; myEncryptFun</li>
+<li class="mb-2"><strong>[Network]</strong> main &rarr; sendResult2Peer</li>
+<li class="mb-2"><strong>[Crypto]</strong> main &rarr; sendResult2Peer &rarr; myEncryptFun</li>
+</ul>
+<h4>Adjacency (Who Calls Whom)</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>FUN_004008e8</code></td><td>-</td></tr>
+<tr><td><code>__do_global_ctors_aux</code></td><td>-</td></tr>
+<tr><td><code>__do_global_dtors_aux</code></td><td>-</td></tr>
+<tr><td><code>__libc_csu_fini</code></td><td>-</td></tr>
+<tr><td><code>__libc_csu_init</code></td><td>_init</td></tr>
+<tr><td><code>_fini</code></td><td>__do_global_dtors_aux</td></tr>
+<tr><td><code>_init</code></td><td>__do_global_ctors_aux, call_gmon_start, frame_dummy</td></tr>
+<tr><td><code>_start</code></td><td>-</td></tr>
+<tr><td><code>call_gmon_start</code></td><td>-</td></tr>
+<tr><td><code>checksum</code></td><td>-</td></tr>
+<tr><td><code>frame_dummy</code></td><td>-</td></tr>
+<tr><td><code>main</code></td><td>myDecryptFun, remoteExec, sendResult2Peer</td></tr>
+<tr><td><code>myDecryptFun</code></td><td>-</td></tr>
+<tr><td><code>myEncryptFun</code></td><td>-</td></tr>
+<tr><td><code>remoteExec</code></td><td>-</td></tr>
+<tr><td><code>sendResult2Peer</code></td><td>checksum, myEncryptFun, udp_tcp_checksum</td></tr>
+<tr><td><code>udp_tcp_checksum</code></td><td>checksum</td></tr>
+</table>
+<h3>Radare2 Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 42 | <strong>Edges:</strong> 0 | <strong>Entries:</strong> entry0, main | <strong>Attack Chains:</strong> 0</p>
+<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>
+<h4>Adjacency (Who Calls Whom)</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>entry0</code></td><td>-</td></tr>
+<tr><td><code>main</code></td><td>-</td></tr>
+<tr><td><code>sym.__do_global_ctors_aux</code></td><td>-</td></tr>
+<tr><td><code>sym.__do_global_dtors_aux</code></td><td>-</td></tr>
+<tr><td><code>sym.__libc_csu_fini</code></td><td>-</td></tr>
+<tr><td><code>sym.__libc_csu_init</code></td><td>-</td></tr>
+<tr><td><code>sym._fini</code></td><td>-</td></tr>
+<tr><td><code>sym._init</code></td><td>-</td></tr>
+<tr><td><code>sym.call_gmon_start</code></td><td>-</td></tr>
+<tr><td><code>sym.checksum</code></td><td>-</td></tr>
+<tr><td><code>sym.frame_dummy</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.__errno_location</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.__libc_start_main</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.__sysv_signal</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.exit</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.fclose</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.fgetc</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.fopen</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.fork</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.fseek</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.fwrite</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.htons</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.memcpy</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.memset</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.ntohs</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.pclose</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.perror</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.popen</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.printf</code></td><td>-</td></tr>
+<tr><td><code>sym.imp.puts</code></td><td>-</td></tr>
+</table></div>
+        </div>
+    
+
+        <!-- Footer -->
+        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Generated by Ghidra + Radare2 Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>

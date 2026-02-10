@@ -19,6 +19,7 @@ from ghidra_agent.state import AgentState
 
 R2_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 R2_AUTO_DECOMPILE_MIN = 10         # Floor: always decompile at least this many
+R2_AUTO_DECOMPILE_MAX = 25         # Ceiling: cap decompilation to avoid runaway on large binaries
 
 
 async def r2_discovery(state: AgentState) -> AgentState:
@@ -104,10 +105,13 @@ async def _r2_auto_decompile(
         reverse=True,
     )
 
-    # Percentage-based limit: decompile 50% of meaningful functions, min 10
-    decompile_target = max(
-        R2_AUTO_DECOMPILE_MIN,
-        int(len(meaningful_funcs) * R2_AUTO_DECOMPILE_PERCENT),
+    # Percentage-based limit: decompile 75% of meaningful functions, min 10, max 25
+    decompile_target = min(
+        R2_AUTO_DECOMPILE_MAX,
+        max(
+            R2_AUTO_DECOMPILE_MIN,
+            int(len(meaningful_funcs) * R2_AUTO_DECOMPILE_PERCENT),
+        ),
     )
 
     funcs_to_decompile = sorted_funcs[:decompile_target]
