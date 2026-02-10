@@ -50,7 +50,7 @@ export interface AnalyzerRawResults {
   binary?: Record<string, any>;
   functions?: Record<string, any>;
   strings?: Record<string, any>;
-  call_graph?: Record<string, any>;
+  call_graph?: CallGraphRaw;
   call_graph_analysis?: CallGraphAnalysis;
   decompiled?: Record<string, string>;
 }

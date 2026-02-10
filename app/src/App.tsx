@@ -141,11 +141,11 @@ function App() {
       const callGraphData: CallGraphPanel[] = [];
       const ghAnalysis = ghidraResults?.call_graph_analysis;
       if (ghAnalysis?.ok) {
-        callGraphData.push({ source: 'Ghidra', analysis: ghAnalysis, rawGraph: ghidraResults?.call_graph as CallGraphRaw | undefined });
+        callGraphData.push({ source: 'Ghidra', analysis: ghAnalysis, rawGraph: ghidraResults?.call_graph });
       }
       const r2Analysis = radare2Results?.call_graph_analysis;
       if (r2Analysis?.ok) {
-        callGraphData.push({ source: 'Radare2', analysis: r2Analysis, rawGraph: radare2Results?.call_graph as CallGraphRaw | undefined });
+        callGraphData.push({ source: 'Radare2', analysis: r2Analysis, rawGraph: radare2Results?.call_graph });
       }
       setCallGraphPanels(callGraphData);
 
