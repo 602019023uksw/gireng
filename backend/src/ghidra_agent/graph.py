@@ -24,10 +24,11 @@ from ghidra_agent.tools import (
     add_comment,
 )
 
-GHIDRA_AUTO_DECOMPILE_MAX = 25
+GHIDRA_AUTO_DECOMPILE_PERCENT = 0.50  # Decompile 75% of discovered functions
+GHIDRA_AUTO_DECOMPILE_MIN = 10       # Floor: always decompile at least this many
 LLM_GHIDRA_DECOMP_LIMIT = 15
 LLM_R2_DECOMP_LIMIT = 10
-LLM_DECOMP_SNIPPET_CHARS = 2000
+LLM_DECOMP_SNIPPET_CHARS = 4000
 
 BYTE_SIGNATURE_PATTERNS = [
     {"id": "x64_shellcode_prologue", "pattern": "FC 48 83 E4 F0 E8"},
@@ -227,10 +228,25 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
     if not func_list:
         return
     
-    # Sort by xref count descending (I5 improvement)
-    sorted_funcs = sorted(func_list, key=lambda f: f.get("xrefs", 0), reverse=True)
-    
-    # Select functions to decompile: entry point + top 3 by xrefs
+    # Filter out trivial PLT/GOT stubs (size <= 6 bytes) — they decompile to
+    # a single indirect-jump and waste decompilation slots.
+    meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
+
+    # Sort by xrefs + size so large important functions (main, etc.) rank high
+    # even when they have 0 cross-references.
+    sorted_funcs = sorted(
+        meaningful_funcs,
+        key=lambda f: f.get("xrefs", 0) * 100 + f.get("size", 0),
+        reverse=True,
+    )
+
+    # Percentage-based limit: decompile 50% of meaningful functions, min 10
+    decompile_target = max(
+        GHIDRA_AUTO_DECOMPILE_MIN,
+        int(len(meaningful_funcs) * GHIDRA_AUTO_DECOMPILE_PERCENT),
+    )
+
+    # Select functions to decompile: entry point first, then top ranked
     funcs_to_decompile = []
     entry_point = None
     
@@ -249,8 +265,8 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
                 state["current_address"] = entry_point
                 break
     
-    # Add top referenced functions to reach the configured total target.
-    remaining_slots = max(0, GHIDRA_AUTO_DECOMPILE_MAX - len(funcs_to_decompile))
+    # Add top ranked functions to reach the percentage-based target.
+    remaining_slots = max(0, decompile_target - len(funcs_to_decompile))
     top_funcs = [f for f in sorted_funcs if f not in funcs_to_decompile][:remaining_slots]
     funcs_to_decompile.extend(top_funcs)
     

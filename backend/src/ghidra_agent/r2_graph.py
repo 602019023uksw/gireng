@@ -15,7 +15,8 @@ from ghidra_agent.r2_tools import (
 )
 from ghidra_agent.state import AgentState
 
-R2_AUTO_DECOMPILE_MAX = 25
+R2_AUTO_DECOMPILE_PERCENT = 0.50  # Decompile 75% of discovered functions
+R2_AUTO_DECOMPILE_MIN = 10         # Floor: always decompile at least this many
 
 
 async def r2_discovery(state: AgentState) -> AgentState:
@@ -81,10 +82,24 @@ async def _r2_auto_decompile(
         return
 
     func_list = functions["functions"]
-    sorted_funcs = sorted(func_list, key=lambda f: f.get("xrefs", 0) + f.get("size", 0), reverse=True)
 
-    # Select top functions prioritising those with high xrefs / largest size.
-    funcs_to_decompile = sorted_funcs[:R2_AUTO_DECOMPILE_MAX]
+    # Filter out trivial PLT/import stubs (size <= 6 bytes).
+    meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
+
+    # Sort by xrefs*100 + size so large functions rank high even with 0 xrefs.
+    sorted_funcs = sorted(
+        meaningful_funcs,
+        key=lambda f: f.get("xrefs", 0) * 100 + f.get("size", 0),
+        reverse=True,
+    )
+
+    # Percentage-based limit: decompile 50% of meaningful functions, min 10
+    decompile_target = max(
+        R2_AUTO_DECOMPILE_MIN,
+        int(len(meaningful_funcs) * R2_AUTO_DECOMPILE_PERCENT),
+    )
+
+    funcs_to_decompile = sorted_funcs[:decompile_target]
 
     decompiled = 0
     for func in funcs_to_decompile:

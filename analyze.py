@@ -35,19 +35,48 @@ def main():
             binary = ar.get("binary", {})
 
             print()
-            print("=== RESULTS ===")
+            print("=== GHIDRA RESULTS ===")
             print(f"binary ok:   {bool(binary.get('ok'))}")
             print(f"functions:   {len(ar.get('functions', {}).get('functions', []))}")
             print(f"strings:     {len(ar.get('strings', {}).get('strings', []))}")
             print(f"decompiled:  {len(r.get('decompilation_cache', {}))}")
             print(f"imports:     {len(binary.get('imports', []))}")
             print(f"exports:     {len(binary.get('exports', []))}")
-            print(f"byte sigs:   {len(ar.get('byte_signatures', []))}")
 
-            iocs = ar.get("iocs", {})
-            if iocs:
-                total = sum(len(v) for v in iocs.values() if isinstance(v, list))
+            # R2 results
+            r2 = r.get("r2_analysis_results", {})
+            r2_bin = r2.get("binary", {})
+            r2_funcs = len(r2.get("functions", {}).get("functions", []))
+            r2_decomp = len(r.get("r2_decompilation_cache", {}))
+            r2_imports = len(r2_bin.get("imports", []))
+            r2_exports = len(r2_bin.get("exports", []))
+            if r2_funcs:
+                print()
+                print("=== RADARE2 RESULTS ===")
+                print(f"functions:   {r2_funcs}")
+                print(f"decompiled:  {r2_decomp}")
+                print(f"imports:     {r2_imports}")
+                print(f"exports:     {r2_exports}")
+                syscalls = r2.get("syscalls", {}).get("syscalls", [])
+                if syscalls:
+                    print(f"syscalls:    {len(syscalls)}")
+
+            # Byte signatures
+            byte_sigs = ar.get("byte_signatures", {}).get("signatures", [])
+            sig_hits = sum(1 for s in byte_sigs if s.get("count", 0) > 0)
+            print()
+            print(f"=== INDICATORS ===")
+            print(f"byte sigs:   {len(byte_sigs)} scanned, {sig_hits} hits")
+
+            ioc_data = ar.get("iocs", {}).get("data", {})
+            if ioc_data:
+                total = sum(len(v) for v in ioc_data.values() if isinstance(v, list))
                 print(f"IOCs:        {total}")
+
+            assessment = ar.get("ioc_assessment", {})
+            if assessment:
+                print(f"verdict:     {assessment.get('verdict', 'N/A')}")
+                print(f"score:       {assessment.get('score', 'N/A')}")
 
             print()
             print("--- SUMMARY ---")

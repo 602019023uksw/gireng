@@ -56,15 +56,15 @@
                 <div style="font-size: 13px; color: #6b7280;">Per-tool findings for binary <span class="mono">dbus-echo</span></div>
             </div>
             <div style="text-align: right; font-size: 13px; color: #6b7280;">
-                <div>2026-02-09 09:05 UTC</div>
-                <div class="mono">Session: bb1641c0</div>
+                <div>2026-02-10 03:32 UTC</div>
+                <div class="mono">Session: d20a8389</div>
             </div>
         </div>
 
         <!-- Stats -->
         <div style="text-align: center; margin-bottom: 24px;">
             <div class="stat"><div class="num">70</div><div class="lbl">Functions Found</div></div>
-            <div class="stat"><div class="num">15</div><div class="lbl">Decompiled</div></div>
+            <div class="stat"><div class="num">25</div><div class="lbl">Decompiled</div></div>
             <div class="stat"><div class="num">153</div><div class="lbl">Strings</div></div>
         </div>
 
@@ -76,11 +76,13 @@
                 
         <tr><td class="prop">Architecture</td><td>x86</td></tr>
         <tr><td class="prop">Image Base</td><td class="mono">00400000</td></tr>
-        <tr><td class="prop">Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@38f3dbbf</td></tr>
+        <tr><td class="prop">Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@543c887</td></tr>
         <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">00601dc8, 004017a0, 00400aa0, 00401878, 00401216, 00401888, 0040163e, 00401890, 00601b38, 004017b0</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">&lt;EXTERNAL&gt;::__sysv_signal, &lt;EXTERNAL&gt;::printf, &lt;EXTERNAL&gt;::memset, &lt;EXTERNAL&gt;::puts, &lt;EXTERNAL&gt;::fseek, &lt;EXTERNAL&gt;::htons, &lt;EXTERNAL&gt;::exit, &lt;EXTERNAL&gt;::fopen, &lt;EXTERNAL&gt;::__libc_start_main, &lt;EXTERNAL&gt;::recv, &lt;EXTERNAL&gt;::setsockopt, &lt;EXTERNAL&gt;::pclose, &lt;EXTERNAL&gt;::sprintf, &lt;EXTERNAL&gt;::ntohs, &lt;EXTERNAL&gt;::fgetc, &lt;EXTERNAL&gt;::strerror, &lt;EXTERNAL&gt;::memcpy, &lt;EXTERNAL&gt;::socket, &lt;EXTERNAL&gt;::__errno_location, &lt;EXTERNAL&gt;::strcpy</td></tr>
+        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">data_start, __libc_csu_fini, _start, _fini, sendResult2Peer, _IO_stdin_used, checksum, __dso_handle, __DTOR_END__, __libc_csu_init, initPz, myDecryptFun, __bss_start, file, remoteExec, _end, myEncryptFun, filesize, udp_tcp_checksum, main</td></tr>
         <tr><td class="prop">Segments</td><td>31</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>70</td></tr>
-        <tr><td class="prop">Functions Decompiled</td><td>15</td></tr>
+        <tr><td class="prop">Functions Decompiled</td><td>25</td></tr>
             </tbody>
         </table>
 
@@ -97,19 +99,19 @@
 <tr><td class="mono">fseek</td><td class="mono">00400938</td><td>6</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">htons</td><td class="mono">00400948</td><td>6</td><td>6</td><td>Yes</td></tr>
 <tr><td class="mono">exit</td><td class="mono">00400958</td><td>6</td><td>2</td><td>Yes</td></tr>
-<tr><td class="mono">fopen</td><td class="mono">00400968</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">__libc_start_main</td><td class="mono">00400978</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">recv</td><td class="mono">00400988</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">setsockopt</td><td class="mono">00400998</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fopen</td><td class="mono">00400968</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">__libc_start_main</td><td class="mono">00400978</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">recv</td><td class="mono">00400988</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">setsockopt</td><td class="mono">00400998</td><td>6</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">pclose</td><td class="mono">004009a8</td><td>6</td><td>2</td><td>Yes</td></tr>
 <tr><td class="mono">sprintf</td><td class="mono">004009b8</td><td>6</td><td>2</td><td>Yes</td></tr>
 <tr><td class="mono">ntohs</td><td class="mono">004009c8</td><td>6</td><td>2</td><td>Yes</td></tr>
-<tr><td class="mono">fgetc</td><td class="mono">004009d8</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">strerror</td><td class="mono">004009e8</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">memcpy</td><td class="mono">004009f8</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">socket</td><td class="mono">00400a08</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">__errno_location</td><td class="mono">00400a18</td><td>6</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">strcpy</td><td class="mono">00400a28</td><td>6</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fgetc</td><td class="mono">004009d8</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">strerror</td><td class="mono">004009e8</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">memcpy</td><td class="mono">004009f8</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">socket</td><td class="mono">00400a08</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">__errno_location</td><td class="mono">00400a18</td><td>6</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">strcpy</td><td class="mono">00400a28</td><td>6</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">fclose</td><td class="mono">00400a38</td><td>6</td><td>1</td><td>No</td></tr>
 <tr><td class="mono">fork</td><td class="mono">00400a48</td><td>6</td><td>1</td><td>No</td></tr>
 <tr><td class="mono">sendto</td><td class="mono">00400a58</td><td>6</td><td>1</td><td>No</td></tr>
@@ -139,19 +141,19 @@
 <tr><td class="mono">fseek</td><td class="mono">00602028</td><td>1</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">htons</td><td class="mono">00602030</td><td>1</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">exit</td><td class="mono">00602038</td><td>1</td><td>1</td><td>Yes</td></tr>
-<tr><td class="mono">fopen</td><td class="mono">00602040</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">__libc_start_main</td><td class="mono">00602048</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">recv</td><td class="mono">00602050</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">setsockopt</td><td class="mono">00602058</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fopen</td><td class="mono">00602040</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">__libc_start_main</td><td class="mono">00602048</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">recv</td><td class="mono">00602050</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">setsockopt</td><td class="mono">00602058</td><td>1</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">pclose</td><td class="mono">00602060</td><td>1</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">sprintf</td><td class="mono">00602068</td><td>1</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">ntohs</td><td class="mono">00602070</td><td>1</td><td>1</td><td>Yes</td></tr>
-<tr><td class="mono">fgetc</td><td class="mono">00602078</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">strerror</td><td class="mono">00602080</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">memcpy</td><td class="mono">00602088</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">socket</td><td class="mono">00602090</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">__errno_location</td><td class="mono">00602098</td><td>1</td><td>1</td><td>No</td></tr>
-<tr><td class="mono">strcpy</td><td class="mono">006020a0</td><td>1</td><td>1</td><td>No</td></tr>
+<tr><td class="mono">fgetc</td><td class="mono">00602078</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">strerror</td><td class="mono">00602080</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">memcpy</td><td class="mono">00602088</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">socket</td><td class="mono">00602090</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">__errno_location</td><td class="mono">00602098</td><td>1</td><td>1</td><td>Yes</td></tr>
+<tr><td class="mono">strcpy</td><td class="mono">006020a0</td><td>1</td><td>1</td><td>Yes</td></tr>
 <tr><td class="mono">fclose</td><td class="mono">006020a8</td><td>1</td><td>1</td><td>No</td></tr>
 <tr><td class="mono">fork</td><td class="mono">006020b0</td><td>1</td><td>1</td><td>No</td></tr>
 <tr><td class="mono">sendto</td><td class="mono">006020b8</td><td>1</td><td>1</td><td>No</td></tr>
@@ -162,7 +164,7 @@
         </table>
 
         <!-- Decompiled Code -->
-        <h2 class="section-header">Decompiled Code (15 functions)</h2>
+        <h2 class="section-header">Decompiled Code (25 functions)</h2>
         
         <div class="decomp-block">
             <div class="decomp-header">FUN_004008e8</div>
@@ -487,6 +489,162 @@ int fseek(FILE *__stream,long __off,int __whence)
 
 </code></pre>
         </div>
+        <div class="decomp-block">
+            <div class="decomp-header">fopen</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+FILE * fopen(char *__filename,char *__modes)
+
+{
+  FILE *pFVar1;
+  
+  pFVar1 = (FILE *)(*(code *)PTR_fopen_00601d30)();
+  return pFVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">__libc_start_main</div>
+            <pre><code>
+void __libc_start_main(void)
+
+{
+  (*(code *)PTR___libc_start_main_00601d38)();
+  return;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">recv</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+ssize_t recv(int __fd,void *__buf,size_t __n,int __flags)
+
+{
+  ssize_t sVar1;
+  
+  sVar1 = (*(code *)PTR_recv_00601d40)();
+  return sVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">setsockopt</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+int setsockopt(int __fd,int __level,int __optname,void *__optval,socklen_t __optlen)
+
+{
+  int iVar1;
+  
+  iVar1 = (*(code *)PTR_setsockopt_00601d48)();
+  return iVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">fgetc</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+int fgetc(FILE *__stream)
+
+{
+  int iVar1;
+  
+  iVar1 = (*(code *)PTR_fgetc_00601d68)();
+  return iVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">strerror</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+char * strerror(int __errnum)
+
+{
+  char *pcVar1;
+  
+  pcVar1 = (char *)(*(code *)PTR_strerror_00601d70)();
+  return pcVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">memcpy</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+void * memcpy(void *__dest,void *__src,size_t __n)
+
+{
+  void *pvVar1;
+  
+  pvVar1 = (void *)(*(code *)PTR_memcpy_00601d78)();
+  return pvVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">socket</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+int socket(int __domain,int __type,int __protocol)
+
+{
+  int iVar1;
+  
+  iVar1 = (*(code *)PTR_socket_00601d80)();
+  return iVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">__errno_location</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+int * __errno_location(void)
+
+{
+  int *piVar1;
+  
+  piVar1 = (int *)(*(code *)PTR___errno_location_00601d88)();
+  return piVar1;
+}
+
+</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">strcpy</div>
+            <pre><code>
+/* WARNING: Unknown calling convention -- yet parameter storage is locked */
+
+char * strcpy(char *__dest,char *__src)
+
+{
+  char *pcVar1;
+  
+  pcVar1 = (char *)(*(code *)PTR_strcpy_00601d90)();
+  return pcVar1;
+}
+
+</code></pre>
+        </div>
 
         <!-- Strings -->
         <h2 class="section-header">Strings (153 extracted)</h2>
@@ -600,40 +758,31 @@ int fseek(FILE *__stream,long __off,int __whence)
             This summary was generated by the LLM using combined data from all active agents.
         </div>
         <div class="summary-box"><h3>1. Executive Summary</h3>
-<p class="mb-3">This binary is a Linux-based backdoor (Unknown Family) designed to provide remote access and execution capabilities to an attacker. The malware operates by establishing a raw socket interface, allowing it to intercept and craft custom UDP packets. It listens for incoming commands, decrypts them using a simple XOR cipher, executes them on the local system using a shell, and returns the output to the remote controller. The use of raw sockets (Protocol 0x11/UDP) and manual packet crafting suggests an attempt to bypass standard firewall inspections or blend in with normal network traffic. The threat level is <strong>High</strong> due to its ability to execute arbitrary commands and its stealthy networking approach.</p>
+<p class="mb-3">The analyzed binary is a Linux ELF backdoor that utilizes raw sockets for stealthy communication and remote command execution. The malware operates by creating a raw UDP socket, allowing it to send and receive packets without standard network stack restrictions, which requires root privileges. It implements a simple XOR-based encryption algorithm (<code>myEncryptFun</code>) to obfuscate command traffic and results, using a hardcoded key (<code>idkey</code>). Upon receiving a command, the binary decrypts it, executes the shell command using <code>popen</code>, captures the output, encrypts the response, and transmits it back to the controller via a custom-crafted UDP packet. The presence of raw socket usage and command execution capabilities indicates a high threat level suitable for remote control of compromised Linux hosts.</p>
 
 <h3>2. Malware Capabilities</h3>
 <ul class="list-disc pl-6 mb-4">
-<li class="mb-2"><strong>Remote Code Execution</strong>: Executes arbitrary shell commands received over the network using <code>popen</code>.</li>
-<li class="mb-2"><strong>Raw Socket Communication</strong>: Creates a raw socket (<code>AF_INET</code>, <code>SOCK_RAW</code>, <code>IPPROTO_UDP</code>) to send and receive custom UDP packets, allowing manipulation of IP and UDP headers.</li>
-<li class="mb-2"><strong>Data Obfuscation</strong>: Implements a custom XOR encryption function (<code>myEncryptFun</code>) to hide command payloads and exfiltrated data.</li>
-<li class="mb-2"><strong>Packet Crafting</strong>: Manually constructs network packets, calculating IP and UDP checksums to ensure validity.</li>
-<li class="mb-2"><strong>Configuration</strong>: Reads configuration from a file named <code>system.conf</code>.</li>
-<li class="mb-2"><strong>Stealth</strong>: Sets the &quot;Don&#x27;t Fragment&quot; (DF) flag on outgoing packets to influence network handling.</li>
+<li class="mb-2"><strong>Raw Socket Communication</strong>: Creates a raw socket (<code>socket(AF_INET, SOCK_RAW, IPPROTO_UDP)</code>) to send and receive custom UDP packets, bypassing standard OS network layers.</li>
+<li class="mb-2"><strong>Remote Command Execution</strong>: Executes arbitrary shell commands on the host system using <code>popen</code> and returns the output to the attacker.</li>
+<li class="mb-2"><strong>Data Obfuscation</strong>: Employs a custom XOR encryption/decryption routine (<code>myEncryptFun</code>, <code>myDecryptFun</code>) to hide C2 traffic and payloads.</li>
+<li class="mb-2"><strong>Packet Crafting</strong>: Manually constructs network packet headers and calculates checksums (<code>udp_tcp_checksum</code>) for valid packet transmission.</li>
+<li class="mb-2"><strong>Process Stealth</strong>: Attempts to mask its presence or arguments by manipulating process name strings (referenced by <code>[syslog]</code>).</li>
 
 <h3>3. Binary Information</h3>
-<table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr><tr><td>Architecture</td><td>x86-64</td></tr><tr><td>Type</td><td>ELF</td></tr><tr><td>Image Base</td><td>0x00400000</td></tr><tr><td>Entry Point</td><td>0x00400b78 (main)</td></tr><tr><td>Compiler</td><td>GCC 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr><tr><td>Size</td><td>Unknown</td></tr><tr><td>Packing</td><td>Unpacked</td></tr></table>
+<table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr><tr><td>Architecture</td><td>x64</td></tr><tr><td>Type</td><td>ELF</td></tr><tr><td>Image Base</td><td>00400000</td></tr><tr><td>Entry Point</td><td>00400b78 (entry0)</td></tr><tr><td>Compiler</td><td>GCC 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr><tr><td>Size</td><td>Unknown</td></tr><tr><td>Packing</td><td>Unpacked</td></tr></table>
 
 <h3>4. Technical Analysis</h3>
-
-<strong>Networking &amp; Packet Crafting (sendResult2Peer)</strong>
+<strong>Raw Socket &amp; Communication (main)</strong>
 </ul>
-<p class="mb-3">The malware utilizes a custom function <code>sendResult2Peer</code> to send data back to the controller. It manually constructs the packet headers. Notably, it swaps source and destination IP addresses and ports found in the received packet buffer to route the response correctly through the raw socket. It sets the IP &quot;Don&#x27;t Fragment&quot; flag (<code>local_40[6] | 0x40</code>).</p>
+<p class="mb-3">The malware initializes by setting up a raw socket. In the <code>main</code> function (address <code>0x400b78</code>), it calls <code>socket(2, 3, 0x11)</code>, which corresponds to <code>AF_INET</code> (2), <code>SOCK_RAW</code> (3), and <code>IPPROTO_UDP</code> (17). This allows the binary to craft its own IP and UDP headers. It also sets a socket option using <code>setsockopt</code>, likely to enable broadcast capabilities or modify packet handling.</p>
 
-<pre><code>// Setting Don&#x27;t Fragment (DF) flag in IP header
-local_40[6] = local_40[6] | 0x40;
-uVar1 = htons(local_a + 0x14);
-*(uint16_t *)(local_40 + 2) = uVar1; // Set Total Length
-*(undefined2 *)(local_40 + 10) = 0;
-uVar2 = checksum(local_628,local_a + 0x14); // Calculate IP Checksum
-*(undefined2 *)(local_40 + 10) = uVar2;
-</code></pre>
+<strong>Command Execution (remoteExec)</strong>
+<p class="mb-3">The <code>remoteExec</code> function is responsible for running commands. It takes a command string, copies it to a local buffer, and calls <code>popen</code> to execute it in read mode. It reads the output character by character using <code>fgetc</code> and stores it in a buffer to be sent back to the attacker. Error handling includes a <code>perror</code> call if execution fails.</p>
 
-<strong>Encryption Mechanism (myEncryptFun)</strong>
-<p class="mb-3">The malware employs a basic XOR cipher for encrypting command payloads and exfiltration results. It uses a 4-byte key referenced by <code>idkey</code>. The algorithm cycles through the key for every byte of data.</p>
+<strong>Encryption &amp; Data Handling (myEncryptFun)</strong>
+<p class="mb-3">To avoid detection, the malware uses a custom XOR cipher. The <code>myEncryptFun</code> function iterates through the data and XORs it with a key referenced as <code>idkey</code>.</p>
 
-<pre><code>// XOR Encryption logic
-local_d = 0;
+<pre><code>// From myEncryptFun @ 0x4015ce
 for (local_c = 0; local_c &lt; (int)(uint)param_4; local_c = local_c + 1) {
     if (param_2 &lt;= local_d) {
       local_d = 0;
@@ -644,106 +793,76 @@ for (local_c = 0; local_c &lt; (int)(uint)param_4; local_c = local_c + 1) {
 }
 </code></pre>
 
-<strong>Remote Execution (remoteExec)</strong>
-<p class="mb-3">The core payload execution is handled by <code>remoteExec</code>. It takes a command string, appends a newline, and executes it using <code>popen</code>. It captures the output (<code>stdout</code>) character by character and stores it in a buffer to be sent back to the C2 server.</p>
-
-<pre><code>// Command execution using popen
-rax = 0;
-rax = popen(*((rbp - 0x18)), 0x40194d); // &quot;r&quot; mode
-// ... loop reading output ...
-al = fgetc(*((rbp - 0x10)));
-*(rdx) = al; // Store output
-</code></pre>
+<strong>Packet Transmission (sendResult2Peer)</strong>
+<p class="mb-3">This function prepares the data for transmission. It performs endianness conversion using <code>htons</code>, calculates the UDP checksum via <code>udp_tcp_checksum</code>, and likely calls <code>sendto</code> (though the call is at the end of the truncated decompilation, imports confirm its presence).</p>
 
 <h3>5. Functions Analysis</h3>
 
-<strong>main @ 0x00400b78 ([1] xref)</strong>
+<strong>main @ 0x400b78 (xrefs: 0 - entry point)</strong>
 <ul class="list-disc pl-6 mb-4">
-<li class="mb-2"><strong>Purpose</strong>: Entry point for the malware logic. Initializes the raw socket and enters the receive loop.</li>
-<li class="mb-2"><strong>Key Code</strong>: Creates socket <code>socket(2, 3, 0x11)</code>. Sets socket options. Enters a <code>while</code> loop calling <code>recv</code>.</li>
-<li class="mb-2"><strong>Security Note</strong>: The use of raw sockets requires root privileges (<code>CAP_NET_RAW</code>). The socket creation with protocol 0x11 (UDP) and type 3 (Raw) indicates the malware handles its own transport layer headers.</li>
+<li class="mb-2"><strong>Purpose</strong>: Entry point and orchestrator. Sets up the raw socket, configures signals, and manages the command loop.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>eax = socket (2, 3, 0x11);</code> followed by error checking and signal setup.</li>
+<li class="mb-2"><strong>Security Note</strong>: The use of <code>SOCK_RAW</code> requires root privileges (<code>CAP_NET_RAW</code>), indicating the target host must be compromised at a high level.</li>
 
-<strong>remoteExec @ 0x004010ce ([1] xref)</strong>
-<li class="mb-2"><strong>Purpose</strong>: Executes a shell command and captures the output.</li>
-<li class="mb-2"><strong>Key Code</strong>: <code>popen(command, &quot;r&quot;)</code>; <code>fgetc(stream)</code>.</li>
-<li class="mb-2"><strong>Security Note</strong>: Allows arbitrary command execution (RCE). The error string <code>&quot;server error: &#x27;%s&#x27; cannt execute&quot;</code> suggests logging failure states if the command cannot be run.</li>
+<strong>remoteExec @ 0x4010ce (xrefs: 1)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Executes shell commands and captures the output.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>rax = popen (*((rbp - 0x18)), 0x40194d);</code> followed by a <code>while</code> loop reading with <code>fgetc</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Provides the attacker with full shell access to the system.</li>
 
-<strong>sendResult2Peer @ 0x00401216 ([3] xrefs)</strong>
-<li class="mb-2"><strong>Purpose</strong>: Encrypts and transmits data (command results) back to the attacker.</li>
-<li class="mb-2"><strong>Key Code</strong>: Calls <code>myEncryptFun</code> with <code>idkey</code>. Swaps IPs/Ports in the packet buffer. Calculates checksums via <code>udp_tcp_checksum</code>.</li>
-<li class="mb-2"><strong>Security Note</strong>: Indicates the C2 communication is bidirectional. The malware acts as a server responding to requests, or a reverse shell handling specific protocols.</li>
+<strong>sendResult2Peer @ 0x401216 (xrefs: 3)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Encrypts command output and sends it back to the C2 server.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>myEncryptFun(&amp;idkey,4,param_4,param_5,local_18 + 0xc);</code> and checksum calculation.</li>
+<li class="mb-2"><strong>Security Note</strong>: Ensures C2 traffic is obfuscated to bypass simple network inspection.</li>
 
-<strong>myEncryptFun @ 0x0040155e ([2] xrefs)</strong>
-<li class="mb-2"><strong>Purpose</strong>: Obfuscates data using a 4-byte XOR key.</li>
-<li class="mb-2"><strong>Key Code</strong>: <code>XOR loop</code> using <code>param_1</code> (idkey).</li>
-<li class="mb-2"><strong>Security Note</strong>: Weak encryption that can be easily broken if the key is known or if plaintext is predictable (known-plaintext attack).</li>
+<strong>myEncryptFun @ 0x4015ce (xrefs: 2)</strong>
+<li class="mb-2"><strong>Purpose</strong>: XOR encryption/decryption routine.</li>
+<li class="mb-2"><strong>Key Code</strong>: XOR loop logic using <code>idkey</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Weak encryption (XOR) but sufficient to evade basic string-based detection.</li>
 
-<strong>udp_tcp_checksum @ 0x004016b8 (xrefs: unknown)</strong>
-<li class="mb-2"><strong>Purpose</strong>: Calculates the standard internet checksum for UDP packets.</li>
-<li class="mb-2"><strong>Key Code</strong>: Constructs a pseudo-header and sums 16-bit words.</li>
-<li class="mb-2"><strong>Security Note</strong>: Ensures generated packets pass network integrity checks, avoiding filtering by IDS/IPS that drop invalid packets.</li>
+<strong>checksum @ 0x4016b8 (xrefs: 2)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Calculates standard internet checksum for IP/UDP packets.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>return ~((int)lVar1 + (int)((ulong)lVar1 &gt;&gt; 0x10)) &amp; 0xffff;</code></li>
 
 <h3>6. Operational Flow</h3>
 </ul>
 <ol class="list-decimal pl-6 mb-4">
-<li class="mb-2"><strong>Initialization</strong>: The <code>main</code> function (0x00400b78) is called. It creates a raw socket (<code>socket()</code>) and sets socket options.</li>
-<li class="mb-2"><strong>Setup</strong>: Arguments are checked. A specific string or configuration might be referenced (<code>system.conf</code> string found).</li>
-<li class="mb-2"><strong>Main Operation</strong>: The malware enters an infinite loop receiving data via <code>recv</code> into a buffer. It likely parses this buffer to extract the command and the originating IP/Port.</li>
-<li class="mb-2"><strong>Execution</strong>: The <code>remoteExec</code> function is invoked with the decrypted command. <code>popen</code> executes the shell command (e.g., <code>sh -c &quot;...&quot;</code>).</li>
-<li class="mb-2"><strong>Persistence/Response</strong>: The output of the command is captured. <code>sendResult2Peer</code> is called to encrypt the output and send it back as a crafted UDP packet to the source IP found in the received packet.</li>
+<li class="mb-2"><strong>Initialization</strong>: The binary starts, sets up signal handling (likely to ignore SIGHUP or handle termination), and creates a raw UDP socket (<code>main</code>).</li>
+<li class="mb-2"><strong>Setup</strong>: It manipulates the process name arguments to appear as <code>[syslog]</code> or similar to blend in.</li>
+<li class="mb-2"><strong>Main Operation</strong>: The malware enters a loop listening for incoming packets. When a packet is received, it decrypts the payload (<code>myDecryptFun</code>).</li>
+<li class="mb-2"><strong>Execution</strong>: The decrypted command is passed to <code>remoteExec</code> to be run via the shell.</li>
+<li class="mb-2"><strong>Exfiltration</strong>: The output of the command is encrypted (<code>myEncryptFun</code>) and sent back to the controller using <code>sendResult2Peer</code>.</li>
 
 <h3>7. C2 &amp; Networking</h3>
 <ul class="list-disc pl-6 mb-4">
-<li class="mb-2">  <strong>C2 Servers</strong>: No hardcoded IPs found in strings; the malware likely acts as a passive listener or extracts the C2 address from the received packet headers (Source IP).</li>
-<li class="mb-2">  <strong>Protocols</strong>: Raw IP / UDP (Protocol 17).</li>
-<li class="mb-2">  <strong>Communication Pattern</strong>:</li>
-<li class="mb-2">  Malware listens on a raw socket.</li>
-<li class="mb-2">  Attacker sends a UDP packet to the host.</li>
-<li class="mb-2">  Malware receives packet, extracts payload.</li>
-<li class="mb-2">  Malware executes command.</li>
-<li class="mb-2">  Malware crafts a new UDP packet (swapping src/dst) containing the result and sends it via raw socket.</li>
+<li class="mb-2">  <strong>C2 Servers</strong>: No hardcoded IPs/ Domains found in strings (likely determined by incoming packet source or packet inspection logic).</li>
+<li class="mb-2">  <strong>Protocols</strong>: UDP (Raw Sockets).</li>
+<li class="mb-2">  <strong>Communication Pattern</strong>: The malware listens on the wire for UDP packets. It parses the raw packet, validates the checksum, decrypts the payload, executes the command, and crafts a new raw UDP packet to send the result back to the source IP/Port of the received packet.</li>
 
 <h3>8. Evidence of Malicious Activity</h3>
 </ul>
-<li class="mb-2"><strong>Finding</strong>: Raw socket creation for packet sniffing/spoofing.</li>
-<ul class="list-disc pl-6 mb-4">
-<li class="mb-2">  Evidence: <code>socket(2, 3, 0x11)</code> at <code>0x00400b78</code> (main).</li>
-</ul>
-<li class="mb-2"><strong>Finding</strong>: Arbitrary shell command execution.</li>
-<ul class="list-disc pl-6 mb-4">
-<li class="mb-2">  Evidence: <code>popen</code> usage in <code>remoteExec</code> at <code>0x004010ce</code> and string <code>&quot;server error: &#x27;%s&#x27; cannt execute&quot;</code>.</li>
-</ul>
-<li class="mb-2"><strong>Finding</strong>: Data Obfuscation.</li>
-<ul class="list-disc pl-6 mb-4">
-<li class="mb-2">  Evidence: <code>myEncryptFun</code> and <code>myDecryptFun</code> strings and function logic at <code>0x0040155e</code>.</li>
-</ul>
-<li class="mb-2"><strong>Finding</strong>: Reference to configuration file.</li>
-<ul class="list-disc pl-6 mb-4">
-<li class="mb-2">  Evidence: String <code>system.conf</code> found in binary data.</li>
-</ul>
-<li class="mb-2"><strong>Finding</strong>: Hardcoded Key/Magic.</li>
-<ul class="list-disc pl-6 mb-4">
-<li class="mb-2">  Evidence: Reference to <code>idkey</code> in <code>sendResult2Peer</code> and string <code>zR</code>.</li>
+<li class="mb-2"><strong>Finding</strong>: Raw Socket Creation - Evidence: <code>socket (2, 3, 0x11)</code> in <code>main</code> @ 0x400b78.</li>
+<li class="mb-2"><strong>Finding</strong>: Command Execution Capability - Evidence: Import of <code>popen</code> and usage in <code>remoteExec</code> @ 0x4010ce.</li>
+<li class="mb-2"><strong>Finding</strong>: Encryption of C2 Traffic - Evidence: <code>myEncryptFun</code> function @ 0x4015ce and string &quot;idkey not correct,%d!=%d&quot;.</li>
+<li class="mb-2"><strong>Finding</strong>: Error Messages indicating server functionality - Evidence: String &quot;server error: &#x27;%s&#x27; cannt execute&quot;.</li>
+<li class="mb-2"><strong>Finding</strong>: File/Config Reference - Evidence: String &quot;system.conf&quot; found in the binary.</li>
 
 <h3>9. Recommendations</h3>
-</ul>
-<li class="mb-2"><strong>Network Segmentation</strong>: Restrict root privileges and prevent the creation of raw sockets (<code>CAP_NET_RAW</code>) on non-critical systems to hinder this malware&#x27;s ability to communicate.</li>
-<li class="mb-2"><strong>Detection Rules</strong>: Monitor for processes creating Raw Sockets (Socket Type 3) combined with calls to <code>popen</code>.</li>
-<li class="mb-2"><strong>File Integrity</strong>: Search for and investigate the presence of <code>system.conf</code> or files matching the provided SHA256 hash on endpoints.</li>
-<li class="mb-2"><strong>Traffic Analysis</strong>: Implement IDS/IPS signatures to detect UDP packets where the payload structure matches the malware&#x27;s specific header manipulation or encrypted patterns if the key is recovered.</li>
+<li class="mb-2">Restrict and monitor the use of raw sockets (<code>SOCK_RAW</code>) on Linux endpoints, as this capability is rarely required by legitimate user applications.</li>
+<li class="mb-2">Implement network monitoring to detect anomalies in UDP packet sizes and checksums that indicate crafted packets.</li>
+<li class="mb-2">Scan systems for the presence of the file hash <code>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</code>.</li>
 
 <h3>10. IOCs (Indicators of Compromise)</h3>
 <ul class="list-disc pl-6 mb-4">
-<li class="mb-2">  <strong>File Hash</strong>: 827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</li>
-<li class="mb-2">  <strong>File Path</strong>: <code>system.conf</code> - Likely configuration file or path used by malware.</li>
-<li class="mb-2">  <strong>String</strong>: <code>server error: &#x27;%s&#x27; cannt execute</code> - Specific error message in memory/code.</li>
-<li class="mb-2">  <strong>String</strong>: <code>zR</code> - Potential magic bytes or identifier.</li>
-<li class="mb-2">  <strong>String</strong>: <code>[syslog]</code> (Note: While not explicitly in the provided string list, <code>system.conf</code> is).</li>
+<li class="mb-2">  <strong>File Hash</strong>: 827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161 - Malware binary</li>
+<li class="mb-2">  <strong>String</strong>: &quot;system.conf&quot; - Potential configuration file or artifact</li>
+<li class="mb-2">  <strong>String</strong>: &quot;server error: &#x27;%s&#x27; cannt execute&quot; - Specific error message in traffic or logs</li>
+<li class="mb-2">  <strong>String</strong>: &quot;idkey not correct,%d!=%d&quot; - Key validation error message</li>
+<li class="mb-2">  <strong>String</strong>: &quot;[syslog]&quot; - Process masquerading attempt</li>
 
 <h3>11. Conclusion</h3>
 </ul>
 </ol>
-<p class="mb-3">The analyzed binary is a Linux x86-64 backdoor capable of arbitrary remote code execution. It utilizes raw sockets to hide its communication channel within standard UDP traffic and employs weak XOR encryption for payload obfuscation. Its capabilities allow an attacker full control over the infected system, posing a significant security risk. Immediate patching and restriction of raw socket capabilities are recommended.</p></div>
+<p class="mb-3">The analyzed binary is a Linux backdoor that leverages raw sockets for stealthy communication and XOR encryption for obfuscation. It allows an attacker to remotely execute arbitrary commands with the privileges of the infected process (likely root due to raw socket requirements). The lack of hardcoded C2 IPs suggests it may communicate with dynamic sources or rely on packet spoofing techniques.</p></div>
 
         <!-- Footer -->
         <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af;">
