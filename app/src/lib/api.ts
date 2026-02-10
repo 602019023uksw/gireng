@@ -18,9 +18,22 @@ export interface AttackChain {
   description?: string;
 }
 
+export interface AdjacencyRow {
+  function: string;
+  calls: string[];
+}
+
+export interface CallGraphRaw {
+  ok?: boolean;
+  nodes?: { name: string; address: string | number; size?: number }[];
+  edges?: { from: string | number; to: string | number; from_name?: string; to_name?: string; type?: string }[];
+  entry_points?: (string | number)[];
+}
+
 export interface CallGraphAnalysis {
   ok?: boolean;
   entries?: string[];
+  adjacency?: AdjacencyRow[];
   chains?: AttackChain[];
   cycles?: string[][];
   stats?: {

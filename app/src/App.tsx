@@ -12,6 +12,7 @@ import { AnalysisHeader } from '@/components/analysis/AnalysisHeader';
 import { AnalysisTabs } from '@/components/analysis/AnalysisTabs';
 import { AnalyzerList } from '@/components/analysis/AnalyzerList';
 import { AnalysisSection } from '@/components/analysis/AnalysisSection';
+import CallGraphView from '@/components/analysis/CallGraphView';
 import { DataTable } from '@/components/data/DataTable';
 import { ShareModal } from '@/components/modals/ShareModal';
 import { ModelSelector } from '@/components/chat/ModelSelector';
@@ -29,6 +30,7 @@ import {
   getGhidraResults,
   getRadare2Results,
   type CallGraphAnalysis,
+  type CallGraphRaw,
 } from '@/lib/api';
 
 import {
@@ -42,7 +44,11 @@ import type { Message, Analyzer, FileNode, CodeFile, Report, Analysis } from '@/
 
 type ViewState = 'welcome' | 'chat' | 'analysis';
 type RightPanelTab = 'resources' | 'code' | 'report';
-type CallGraphPanel = { source: 'Ghidra' | 'Radare2'; analysis: CallGraphAnalysis };
+type CallGraphPanel = {
+  source: 'Ghidra' | 'Radare2';
+  analysis: CallGraphAnalysis;
+  rawGraph?: CallGraphRaw;
+};
 
 const currentUser = { name: '' };
 
@@ -135,11 +141,11 @@ function App() {
       const callGraphData: CallGraphPanel[] = [];
       const ghAnalysis = ghidraResults?.call_graph_analysis;
       if (ghAnalysis?.ok) {
-        callGraphData.push({ source: 'Ghidra', analysis: ghAnalysis });
+        callGraphData.push({ source: 'Ghidra', analysis: ghAnalysis, rawGraph: ghidraResults?.call_graph as CallGraphRaw | undefined });
       }
       const r2Analysis = radare2Results?.call_graph_analysis;
       if (r2Analysis?.ok) {
-        callGraphData.push({ source: 'Radare2', analysis: r2Analysis });
+        callGraphData.push({ source: 'Radare2', analysis: r2Analysis, rawGraph: radare2Results?.call_graph as CallGraphRaw | undefined });
       }
       setCallGraphPanels(callGraphData);
 
@@ -572,57 +578,7 @@ function App() {
                         transition={{ duration: 0.3 }}
                       >
                         <AnalysisSection title="Call Graph & Attack Chains">
-                          {callGraphPanels.length > 0 ? (
-                            <div className="space-y-4">
-                              {callGraphPanels.map((panel) => {
-                                const stats = panel.analysis.stats || {};
-                                const entries = panel.analysis.entries || [];
-                                const chains = panel.analysis.chains || [];
-
-                                return (
-                                  <div
-                                    key={panel.source}
-                                    className="rounded-xl p-4"
-                                    style={{
-                                      background: 'rgba(10, 16, 28, 0.45)',
-                                      border: '1px solid rgba(100, 120, 180, 0.18)',
-                                    }}
-                                  >
-                                    <h4 className="text-sm font-semibold text-text-primary mb-2">{panel.source}</h4>
-                                    <p className="text-xs text-text-secondary">
-                                      Nodes: {stats.nodes ?? 0} | Edges: {stats.edges ?? 0} | Chains: {stats.chains ?? chains.length}
-                                    </p>
-                                    {entries.length > 0 && (
-                                      <p className="text-xs text-text-muted mt-1">
-                                        Entry points: {entries.slice(0, 8).join(', ')}
-                                      </p>
-                                    )}
-
-                                    <div className="mt-3">
-                                      {chains.length > 0 ? (
-                                        <ul className="space-y-1">
-                                          {chains.slice(0, 12).map((chain, idx) => (
-                                            <li key={`${panel.source}-${idx}`} className="text-xs text-text-secondary">
-                                              <span className="text-accent-blue">[{chain.category || 'Unknown'}]</span>{' '}
-                                              {(chain.path || []).join(' -> ')}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      ) : (
-                                        <p className="text-xs text-text-muted italic">
-                                          No sink-reaching attack chains were detected.
-                                        </p>
-                                      )}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-text-muted italic">
-                              Call graph data is not available for this analysis.
-                            </p>
-                          )}
+                          <CallGraphView panels={callGraphPanels} />
                         </AnalysisSection>
                       </motion.div>
                     )}
