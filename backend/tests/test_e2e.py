@@ -65,6 +65,8 @@ def _ghidra_tool_mocks():
             ainvoke=AsyncMock(return_value={"ok": True, "graph": {}})),
         "ghidra_agent.graph.disassemble_at": AsyncMock(
             ainvoke=AsyncMock(return_value=SAMPLE_DISASM_R2)),
+        "ghidra_agent.graph.search_bytes": AsyncMock(
+            ainvoke=AsyncMock(return_value={"ok": True, "matches": []})),
     }
 
 
@@ -87,6 +89,8 @@ def _r2_tool_mocks():
             ainvoke=AsyncMock(return_value=SAMPLE_XREFS_R2)),
         "ghidra_agent.r2_graph.r2_disassemble_at": AsyncMock(
             ainvoke=AsyncMock(return_value=SAMPLE_DISASM_R2)),
+        "ghidra_agent.r2_graph.r2_syscall_analysis": AsyncMock(
+            ainvoke=AsyncMock(return_value={"ok": True, "syscalls": []})),
     }
 
 
@@ -129,11 +133,13 @@ class TestE2EDualAgentFlow:
                 assert state["analysis_results"]["binary"]["ok"] is True
                 assert state["analysis_results"]["functions"]["ok"] is True
                 assert state["analysis_results"]["strings"]["ok"] is True
+                assert state["analysis_results"]["iocs"]["ok"] is True
 
                 # Verify R2 results
                 assert state["r2_analysis_results"]["binary"]["ok"] is True
                 assert state["r2_analysis_results"]["functions"]["ok"] is True
                 assert state["r2_analysis_results"]["strings"]["ok"] is True
+                assert state["r2_analysis_results"]["syscalls"]["ok"] is True
                 assert "discovery_completed" in state["reasoning_trace"]
 
                 # Both should have decompiled functions

@@ -191,6 +191,8 @@ def _ghidra_tool_mocks():
             ainvoke=AsyncMock(return_value={"ok": True, "graph": {}})),
         "ghidra_agent.graph.disassemble_at": AsyncMock(
             ainvoke=AsyncMock(return_value=CHARGEN_DISASM)),
+        "ghidra_agent.graph.search_bytes": AsyncMock(
+            ainvoke=AsyncMock(return_value={"ok": True, "matches": []})),
     }
 
 
@@ -208,6 +210,8 @@ def _r2_tool_mocks():
             ainvoke=AsyncMock(return_value=CHARGEN_XREFS)),
         "ghidra_agent.r2_graph.r2_disassemble_at": AsyncMock(
             ainvoke=AsyncMock(return_value=CHARGEN_DISASM)),
+        "ghidra_agent.r2_graph.r2_syscall_analysis": AsyncMock(
+            ainvoke=AsyncMock(return_value={"ok": True, "syscalls": []})),
     }
 
 

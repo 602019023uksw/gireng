@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Radare2 Analysis Report - dbus-echo</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --agent-color: #e8710a; --primary: #1f2937; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; }
+        .page-container { max-width: 1100px; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); padding: 32px 40px; }
+        .mono { font-family: 'Roboto Mono', monospace; font-size: 0.85rem; }
+        .agent-badge { display: inline-block; background: var(--agent-color); color: white; padding: 4px 16px; border-radius: 4px; font-weight: 700; font-size: 14px; letter-spacing: 0.05em; text-transform: uppercase; }
+        h1 { font-size: 26px; font-weight: 700; color: var(--primary); margin: 0 0 4px 0; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 2px solid var(--agent-color); padding-bottom: 6px; margin-top: 36px; margin-bottom: 16px; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f9fafb; border: 1px solid #d1d5db; padding: 14px; margin-bottom: 24px; font-size: 0.9rem; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.7rem; }
+        table.data-table { width: 100%; border-collapse: collapse; margin: 12px 0 24px 0; font-size: 0.88rem; }
+        table.data-table th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; color: #374151; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        table.data-table td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }
+        table.data-table td.prop { font-weight: 600; color: #4b5563; width: 180px; white-space: nowrap; }
+        table.data-table tr:hover { background: #f9fafb; }
+        .decomp-block { margin-bottom: 20px; border: 1px solid #d1d5db; border-radius: 4px; overflow: hidden; }
+        .decomp-header { background: var(--agent-color); color: white; padding: 8px 14px; font-family: 'Roboto Mono', monospace; font-size: 0.85rem; font-weight: 500; }
+        .decomp-block pre { margin: 0; padding: 14px; background: #f8f9fa; overflow-x: auto; font-size: 0.82rem; line-height: 1.5; }
+        .decomp-block code { font-family: 'Roboto Mono', monospace; color: #1f2937; }
+        .summary-box { background: #f9fafb; border: 1px solid #d1d5db; padding: 20px; border-radius: 4px; margin-top: 8px; }
+        .summary-box p { margin-bottom: 10px; line-height: 1.6; font-size: 10.5pt; }
+        .summary-box ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 10px; }
+        .summary-box li { margin-bottom: 5px; }
+        .summary-box pre { background: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.82rem; margin: 14px 0; }
+        .summary-box code { font-family: 'Roboto Mono', monospace; background: #f3f4f6; padding: 2px 4px; font-size: 0.88em; color: #b91c1c; }
+        .summary-box pre code { color: #374151; background: none; padding: 0; }
+        .summary-box h3 { font-size: 1.05rem; font-weight: 700; color: #1f2937; margin-top: 1.2rem; margin-bottom: 0.6rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .summary-box table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.88rem; border: 1px solid #d1d5db; }
+        .summary-box th { background: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.72rem; padding: 8px 10px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .summary-box td { padding: 6px 10px; border-bottom: 1px solid #e5e7eb; }
+        .stat { display: inline-block; background: #f3f4f6; border: 1px solid #d1d5db; padding: 12px 20px; border-radius: 4px; text-align: center; margin: 6px; }
+        .stat .num { font-size: 28px; font-weight: 700; color: var(--agent-color); }
+        .stat .lbl { font-size: 0.72rem; color: #6b7280; text-transform: uppercase; font-weight: 600; }
+        .no-print { }
+        @media print { body { background: white; } .page-container { margin: 0; box-shadow: none; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: var(--agent-color); color: white; padding: 10px 20px; border: none; cursor: pointer; font-weight: 600; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">Print / Save PDF</button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid var(--agent-color); padding-bottom: 16px; margin-bottom: 20px;">
+            <div>
+                <div style="margin-bottom: 8px;"><span class="agent-badge">Radare2</span></div>
+                <h1>Agent Analysis Report</h1>
+                <div style="font-size: 13px; color: #6b7280;">Per-tool findings for binary <span class="mono">dbus-echo</span></div>
+            </div>
+            <div style="text-align: right; font-size: 13px; color: #6b7280;">
+                <div>2026-02-09 09:06 UTC</div>
+                <div class="mono">Session: bb1641c0</div>
+            </div>
+        </div>
+
+        <!-- Stats -->
+        <div style="text-align: center; margin-bottom: 24px;">
+            <div class="stat"><div class="num">42</div><div class="lbl">Functions Found</div></div>
+            <div class="stat"><div class="num">15</div><div class="lbl">Decompiled</div></div>
+            <div class="stat"><div class="num">9</div><div class="lbl">Strings</div></div>
+        </div>
+
+        <!-- Binary Information -->
+        <h2 class="section-header">Binary Information</h2>
+        <table class="data-table">
+            <tbody>
+                <tr><td class="prop">SHA-256</td><td class="mono" style="word-break:break-all">827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr>
+                
+        <tr><td class="prop">Architecture</td><td>x86</td></tr>
+        <tr><td class="prop">Bits</td><td>64</td></tr>
+        <tr><td class="prop">OS</td><td>linux</td></tr>
+        <tr><td class="prop">Endian</td><td>little</td></tr>
+        <tr><td class="prop">Stripped</td><td>False</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">__sysv_signal, printf, memset, __gmon_start__, puts, fseek, htons, exit, fopen, __libc_start_main, recv, setsockopt, pclose, sprintf, ntohs, fgetc, strerror, memcpy, socket, __errno_location</td></tr>
+        <tr><td class="prop">Functions Discovered</td><td>42</td></tr>
+        <tr><td class="prop">Functions Decompiled</td><td>15</td></tr>
+            </tbody>
+        </table>
+
+        <!-- Functions -->
+        <h2 class="section-header">Functions (42 discovered)</h2>
+        <table class="data-table">
+            <thead><tr><th>Name</th><th>Address</th><th>Size</th><th>XRefs</th><th>Decompiled</th></tr></thead>
+            <tbody><tr><td class="mono">sym.imp.__sysv_signal</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.printf</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.memset</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.puts</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fseek</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.htons</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.exit</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fopen</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.__libc_start_main</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.recv</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.setsockopt</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.pclose</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.sprintf</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.ntohs</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fgetc</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.strerror</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.memcpy</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.socket</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.__errno_location</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.strcpy</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fclose</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fork</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.sendto</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.fwrite</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.perror</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym.imp.popen</td><td class="mono">0x0</td><td>6</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">entry0</td><td class="mono">0x0</td><td>41</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.call_gmon_start</td><td class="mono">0x0</td><td>23</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__do_global_dtors_aux</td><td class="mono">0x0</td><td>93</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.frame_dummy</td><td class="mono">0x0</td><td>38</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__do_global_ctors_aux</td><td class="mono">0x0</td><td>54</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__libc_csu_fini</td><td class="mono">0x0</td><td>2</td><td>0</td><td>No</td></tr>
+<tr><td class="mono">sym._fini</td><td class="mono">0x0</td><td>14</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.sendResult2Peer</td><td class="mono">0x0</td><td>840</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.checksum</td><td class="mono">0x0</td><td>122</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.__libc_csu_init</td><td class="mono">0x0</td><td>139</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.myDecryptFun</td><td class="mono">0x0</td><td>112</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.remoteExec</td><td class="mono">0x0</td><td>328</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.myEncryptFun</td><td class="mono">0x0</td><td>112</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym.udp_tcp_checksum</td><td class="mono">0x0</td><td>224</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">main</td><td class="mono">0x0</td><td>1366</td><td>0</td><td>Yes</td></tr>
+<tr><td class="mono">sym._init</td><td class="mono">0x0</td><td>24</td><td>0</td><td>Yes</td></tr>
+</tbody>
+        </table>
+
+        <!-- Decompiled Code -->
+        <h2 class="section-header">Decompiled Code (15 functions)</h2>
+        
+        <div class="decomp-block">
+            <div class="decomp-header">main</div>
+            <pre><code>[38;2;197;15;31m/* r2dec pseudo code output (r2 6.0.8) */[39m
+[38;2;197;15;31m/* /data/shared/dbus-echo @ 0x400b78 */[39m
+[38;2;19;161;14m#include &lt;stdint.h&gt;[39m
+ 
+[32mint32_t[39m [38;2;19;161;14mmain[39m (int32_t argc, char ** argv) {
+    int64_t var_e60h;
+    int64_t var_e58h;
+    int64_t var_e50h;
+    int64_t var_e48h;
+    char ** var_e40h;
+    int64_t var_e34h;
+    char  s;
+    int64_t var_848h;
+    void  optval;
+    void  buffer;
+    uint32_t socket;
+    ssize_t var_34h;
+    int64_t var_30h;
+    int64_t var_24h;
+    int64_t var_20h;
+    int64_t var_18h;
+    void * ptr;
+    int64_t var_6h;
+    int64_t var_4h;
+    rdi = argc;
+    rsi = argv;
+    *((rbp - 0xe34)) = edi;
+    *((rbp - 0xe40)) = rsi;
+    *((rbp - 0x38)) = 0xffffffff;
+    [38;2;19;161;14mmemset[39m (rbp - 0x840, 0, 0x800);
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0xe48)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0xe48));
+    [38;2;19;161;14m__asm[39m ([38;2;204;204;204m&quot;repne scasb al, byte [rdi]&quot;[39m);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    [38;2;58;150;221mif[39m (rax &lt;= 8) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_1[39m;
+    }
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0xe50)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0xe50));
+    [38;2;19;161;14m__asm[39m ([38;2;204;204;204m&quot;repne scasb al, byte [rdi]&quot;[39m);
+    rax = rcx;
+    rax = ~rax;
+    rdx = rax - 1;
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    rdi = *(rax);
+    rcx = rdx;
+    eax = 0;
+    [38;2;58;150;221mdo[39m {
+        *(rdi) = al;
+        rcx--;
+        rdi++;
+    } [38;2;58;150;221mwhile[39m (rcx != 0);
+    rax = *((rbp - 0xe40));
+    rax = *(rax);
+    *(rax) = 0x7379735b;
+    *((rax + 4)) = 0x64676f6c;
+    *((rax + 8)) = 0x5d;
+[38;2;193;156;0mlabel_1[39m:
+    esi = 1;
+    edi = 0x11;
+    [38;2;19;161;14msysv_signal[39m ();
+    eax = [38;2;19;161;14msocket[39m (2, 3, 0x11);
+    *((rbp - 0x38)) = eax;
+    [38;2;58;150;221mif[39m (*((rbp - 0x38)) == 0xffffffff) {
+        rax = [38;2;19;161;14merrno_location[39m ();
+        rax = [38;2;19;161;14mstrerror[39m (*(rax));
+        rsi = rax;
+        eax = 0;
+        [38;2;19;161;14mprintf[39m ([38;2;204;204;204m&quot;socket(): %s\n&quot;[39m);
+        [38;2;19;161;14mexit[39m (1);
+    }
+    *((rbp - 0x844)) = 1;
+    eax = [38;2;19;161;14msetsockopt[39m (*((rbp - 0x38)), 0, 3, rbp - 0x844, 4);
+    [38;2;58;150;221mif[39m (eax &gt;= 0) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    [38;2;19;161;14mputs[39m ([38;2;204;204;204m&quot;setsockopt error!&quot;[39m);
+    [38;2;58;150;221mwhile[39m (*((rbp - 0x34)) &lt;= 0) {
+[38;2;193;156;0mlabel_0[39m:
+        rax = rbp - 0x840;
+        [38;2;19;161;14mmemset[39m (rax, 0, 0x800);
+        ecx = 0;
+        edx = 0x800;
+        eax = [38;2;19;161;14mrecv[39m (*((rbp - 0x38)), rbp - 0x840);
+        *((rbp - 0x34)) = eax;
+    }
+    rax = rbp - 0x840;
+    *((rbp - 0x30)) = rax;
+    *((rbp - 0x24)) = 0x14;
+    eax = *((rbp - 0x24));
+    rax = ([32mint64_t[39m) eax;
+    rdx = rax;
+    rax = rbp - 0x840;
+    rax += rdx;
+    *((rbp - 0x20)) = rax;
+    rax = *((rbp - 0x20));
+    eax = *((rax + 2));
+    edi = ([32mint32_t[39m) ax;
+    ax = [38;2;19;161;14mntohs[39m ();
+    [38;2;58;150;221mif[39m (ax != 0x84b) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    eax = *((rbp - 0x24));
+    eax += 8;
+    *((rbp - 0x24)) = eax;
+    eax = *((rbp - 0x24));
+    rax = ([32mint64_t[39m) eax;
+    rdx = rax;
+    rax = rbp - 0x840;
+    rax += rdx;
+    *((rbp - 0x18)) = rax;
+    eax = *((rbp - 0x24));
+    eax += 0xc;
+    *((rbp - 0x24)) = eax;
+    rax = *((rbp - 0x18));
+    eax = *((rax + 1));
+    [38;2;58;150;221mif[39m (al != 1) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    eax = *((rbp - 0x24));
+    rax = ([32mint64_t[39m) eax;
+    rdx = rax;
+    rax = rbp - 0x840;
+    rax += rdx;
+    *((rbp - 0x10)) = rax;
+    *((rbp - 0x848)) = 0;
+    rax = *((rbp - 0x10));
+    rax += 5;
+    rdx = rbp - 0x848;
+    eax = *(rax);
+    *(rdx) = eax;
+    edx = *((rbp - 0x848));
+    eax = *(obj.idkey);
+    [38;2;58;150;221mif[39m (edx != eax) {
+        edx = *(obj.idkey);
+        esi = *((rbp - 0x848));
+        eax = 0;
+        [38;2;19;161;14mprintf[39m ([38;2;204;204;204m&quot;idkey not correct,%d!=%d\n&quot;[39m);
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    ecx = ([32mint32_t[39m) ax;
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    edx = ([32mint32_t[39m) al;
+    esi = *((rbp - 0x34));
+    eax = 0;
+    [38;2;19;161;14mprintf[39m ([38;2;204;204;204m&quot;receive %d, cmd type is %d and cmdl is %d\n&quot;[39m);
+    rsi = *((rbp - 0x10));
+    rsi += 0xc;
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    ecx = ([32mint32_t[39m) ax;
+    rdx = *((rbp - 0x10));
+    rdx += 0xc;
+    edi = obj.idkey;
+    r8 = rsi;
+    esi = 4;
+    [38;2;19;161;14mmyDecryptFun[39m ();
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    [38;2;58;150;221mif[39m (al == 0) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_2[39m;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    [38;2;58;150;221mif[39m (al == 1) {
+        rax = *((rbp - 0x10));
+        rax += 0xc;
+        eax = *(rax);
+        *(obj.idkey) = eax;
+        rdi = rbp - 0xe30;
+        ecx = 0x32;
+        eax = 0;
+        *(rdi) = al;
+        rcx--;
+        rdi++;
+        rax = rbp - 0xe30;
+        rcx = 0xffffffffffffffff;
+        *((rbp - 0xe58)) = rax;
+        eax = 0;
+        rdi = *((rbp - 0xe58));
+        [38;2;19;161;14m__asm[39m ([38;2;204;204;204m&quot;repne scasb al, byte [rdi]&quot;[39m);
+        rax = rcx;
+        rax = ~rax;
+        rax--;
+        ecx = ([32mint32_t[39m) ax;
+        r9 = rbp - 0xe30;
+        eax = *((rbp - 0x34));
+        edx = ([32mint32_t[39m) ax;
+        rsi = rbp - 0x840;
+        edi = *((rbp - 0x38));
+        r8d = ecx;
+        rcx = r9;
+        [38;2;19;161;14msendResult2Peer[39m ();
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 9));
+    [38;2;58;150;221mif[39m (al != 2) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_2[39m;
+    }
+    rax = *(obj.file);
+    [38;2;58;150;221mif[39m (rax == 0) {
+        rax = [38;2;19;161;14mfopen[39m ([38;2;204;204;204m&quot;system.conf&quot;[39m, 0x401903);
+        *(obj.file) = rax;
+        edx = 0;
+        [38;2;19;161;14mfseek[39m (*(obj.file), 0, edx);
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    edx = ([32mint32_t[39m) ax;
+    rdi += 0xc;
+    [38;2;19;161;14mfwrite[39m (*((rbp - 0x10)), 1, rdx, *(obj.file));
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    edx = ([32mint32_t[39m) ax;
+    eax = *(obj.filesize);
+    eax = rdx + rax;
+    *(obj.filesize) = eax;
+    rax = *((rbp - 0x10));
+    edx = *((rax + 0xa));
+    eax = *(obj.initPz);
+    [38;2;58;150;221mif[39m (dx == ax) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    [38;2;19;161;14mfclose[39m (*(obj.file));
+    *(obj.file) = 0;
+    rdi = rbp - 0xe30;
+    ecx = 0x32;
+    eax = 0;
+    *(rdi) = al;
+    rcx--;
+    rdi++;
+    eax = 0;
+    [38;2;19;161;14msprintf[39m (rbp - 0xe30, [38;2;204;204;204m&quot;%d file data is received\n&quot;[39m, *(obj.filesize));
+    rsi = rbp - 0xe30;
+    eax = 0;
+    [38;2;19;161;14mprintf[39m (0x40192c);
+    rax = rbp - 0xe30;
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0xe60)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0xe60));
+    [38;2;19;161;14m__asm[39m ([38;2;204;204;204m&quot;repne scasb al, byte [rdi]&quot;[39m);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    ecx = ([32mint32_t[39m) ax;
+    r9 = rbp - 0xe30;
+    eax = *((rbp - 0x34));
+    edx = ([32mint32_t[39m) ax;
+    rsi = rbp - 0x840;
+    edi = *((rbp - 0x38));
+    r8d = ecx;
+    rcx = r9;
+    [38;2;19;161;14msendResult2Peer[39m ();
+    *(obj.filesize) = 0;
+    [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+[38;2;193;156;0mlabel_2[39m:
+    eax = [38;2;19;161;14mfork[39m ();
+    [38;2;58;150;221mif[39m (eax != 0) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    [38;2;19;161;14mmemset[39m (rbp - 0xe30, 0, 0x5dc);
+    rax = *((rbp - 0x10));
+    rax += 0xc;
+    rdi = rax;
+    rsi = rbp - 0xe30;
+    ax = [38;2;19;161;14mremoteExec[39m ();
+    *((rbp - 6)) = ax;
+    rsi = rbp - 0xe30;
+    eax = 0;
+    [38;2;19;161;14mprintf[39m ([38;2;204;204;204m&quot;excute result is %s\n&quot;[39m);
+    ecx = *((rbp - 6));
+    r9 = rbp - 0xe30;
+    eax = *((rbp - 0x34));
+    edx = ([32mint32_t[39m) ax;
+    rsi = rbp - 0x840;
+    edi = *((rbp - 0x38));
+    r8d = ecx;
+    rcx = r9;
+    eax = [38;2;19;161;14msendResult2Peer[39m ();
+    *((rbp - 4)) = eax;
+    esi = *((rbp - 4));
+    [38;2;58;150;221mdo[39m {
+    } [38;2;58;150;221mwhile[39m (rcx != 0);
+    eax = 0;
+    [38;2;19;161;14mprintf[39m ([38;2;204;204;204m&quot;send %d\n&quot;[39m);
+    [38;2;58;150;221mreturn[39m [38;2;19;161;14mexit[39m (0);
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.sendResult2Peer</div>
+            <pre><code>[38;2;197;15;31m/* r2dec pseudo code output (r2 6.0.8) */[39m
+[38;2;197;15;31m/* /data/shared/dbus-echo @ 0x401216 */[39m
+[38;2;19;161;14m#include &lt;stdint.h&gt;[39m
+ 
+[32muint64_t[39m [38;2;19;161;14msendResult2Peer[39m (uint32_t arg1, size_t arg2, char  arg3, int64_t arg4) {
+    uint32_t var_654h;
+    char  var_650h;
+    uint32_t var_644h;
+    size_t s2;
+    uint32_t var_634h;
+    int64_t var_630h;
+    int64_t var_62eh;
+    int64_t var_62ch;
+    void * s1;
+    int64_t var_3ch;
+    int64_t var_38h;
+    int64_t var_2ch;
+    int64_t var_28h;
+    int64_t var_1ah;
+    int64_t var_18h;
+    int64_t var_10h;
+    int64_t var_2h;
+    rdi = arg1;
+    rsi = arg2;
+    rcx = arg3;
+    r8 = arg4;
+    *((rbp - 0x634)) = edi;
+    *((rbp - 0x640)) = rsi;
+    *((rbp - 0x650)) = rcx;
+    eax = r8d;
+    *((rbp - 0x644)) = dx;
+    *((rbp - 0x654)) = ax;
+    [38;2;19;161;14mmemset[39m (rbp - 0x620, 0, 0x5dc);
+    *((rbp - 0x3c)) = 0;
+    [38;2;58;150;221mif[39m (*((rbp - 0x644)) &gt; 0x5db) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    ecx = *((rbp - 0x644));
+    rax = rbp - 0x620;
+    rdx = *((rbp - 0x640));
+    rdi = rax;
+    rsi = rdx;
+    [38;2;58;150;221mdo[39m {
+        *(rdi) = *(rsi);
+        rcx--;
+        rsi++;
+        rdi++;
+    } [38;2;58;150;221mwhile[39m (rcx != 0);
+    [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_1[39m;
+[38;2;193;156;0mlabel_0[39m:
+    rax = rbp - 0x620;
+    rdx = *((rbp - 0x640));
+    [38;2;19;161;14mmemcpy[39m (rax, rdx, 0x5dc);
+[38;2;193;156;0mlabel_1[39m:
+    rax = rbp - 0x620;
+    *((rbp - 0x38)) = rax;
+    rax = *((rbp - 0x38));
+    eax = *((rax + 0xc));
+    *((rbp - 0x2c)) = eax;
+    rax = *((rbp - 0x38));
+    edx = *((rax + 0x10));
+    rax = *((rbp - 0x38));
+    *((rax + 0xc)) = edx;
+    rdx = *((rbp - 0x38));
+    eax = *((rbp - 0x2c));
+    *((rdx + 0x10)) = eax;
+    eax = *((rbp - 0x3c));
+    eax += 0x14;
+    *((rbp - 0x3c)) = eax;
+    eax = *((rbp - 0x3c));
+    rax = ([32mint64_t[39m) eax;
+    rdx = rax;
+    rax = rbp - 0x620;
+    rax += rdx;
+    *((rbp - 0x28)) = rax;
+    eax = *((rbp - 0x3c));
+    eax += 8;
+    *((rbp - 0x3c)) = eax;
+    rax = *((rbp - 0x28));
+    eax = *((rax + 2));
+    *((rbp - 0x1a)) = ax;
+    rax = *((rbp - 0x28));
+    edx = *(rax);
+    rax = *((rbp - 0x28));
+    *((rax + 2)) = dx;
+    rdx = *((rbp - 0x28));
+    eax = *((rbp - 0x1a));
+    *(rdx) = ax;
+    eax = *((rbp - 0x3c));
+    rax = ([32mint64_t[39m) eax;
+    rdx = rax;
+    rax = rbp - 0x620;
+    rax += rdx;
+    *((rbp - 0x18)) = rax;
+    rax = *((rbp - 0x18));
+    *((rax + 1)) = 2;
+    eax = *((rbp - 0x3c));
+    eax += 0xc;
+    *((rbp - 0x3c)) = eax;
+    eax = *((rbp - 0x3c));
+    rax = ([32mint64_t[39m) eax;
+    rdx = rax;
+    rax = rbp - 0x620;
+    rax += rdx;
+    *((rbp - 0x10)) = rax;
+    rax = *((rbp - 0x10));
+    *((rax + 1)) = 2;
+    [38;2;58;150;221mif[39m (*((rbp - 0x654)) &gt; 0x4af) {
+        rax = *((rbp - 0x10));
+        rax += 0xc;
+        edi = obj.idkey;
+        rdx = *((rbp - 0x650));
+        r8 = rax;
+        ecx = 0x4b0;
+        esi = 4;
+        [38;2;19;161;14mmyEncryptFun[39m ();
+        edi = 0x4d0;
+        eax = [38;2;19;161;14mhtons[39m ();
+        edx = eax;
+        rax = *((rbp - 0x28));
+        *((rax + 4)) = dx;
+        rax = *((rbp - 0x10));
+        *((rax + 0xa)) = 0x4b0;
+    } [38;2;58;150;221melse[39m {
+        rax = *((rbp - 0x10));
+        rax += 0xc;
+        ecx = *((rbp - 0x654));
+        edi = obj.idkey;
+        rdx = *((rbp - 0x650));
+        r8 = rax;
+        esi = 4;
+        [38;2;19;161;14mmyEncryptFun[39m ();
+        eax = *((rbp - 0x654));
+        eax += 0x20;
+        edi = ([32mint32_t[39m) ax;
+        eax = [38;2;19;161;14mhtons[39m ();
+        edx = eax;
+        rax = *((rbp - 0x28));
+        *((rax + 4)) = dx;
+        rdx = *((rbp - 0x10));
+        eax = *((rbp - 0x654));
+        *((rdx + 0xa)) = ax;
+    }
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    eax += 0x10;
+    edi = ([32mint32_t[39m) ax;
+    eax = [38;2;19;161;14mhtons[39m ();
+    edx = eax;
+    rax = *((rbp - 0x18));
+    *((rax + 2)) = dx;
+    rax = *((rbp - 0x10));
+    edx = *((rax + 1));
+    rax = *((rbp - 0x10));
+    eax = *((rax + 0xa));
+    eax = rdx + rax;
+    edx = rax + 7;
+    rax = *((rbp - 0x10));
+    *((rax + 1)) = dx;
+    rax = *((rbp - 0x10));
+    eax = *((rax + 1));
+    edi = ([32mint32_t[39m) ax;
+    eax = [38;2;19;161;14mhtons[39m ();
+    edx = eax;
+    rax = *((rbp - 0x10));
+    *((rax + 1)) = dx;
+    rax = *((rbp - 0x28));
+    eax = *((rax + 4));
+    edi = ([32mint32_t[39m) ax;
+    ax = [38;2;19;161;14mntohs[39m ();
+    *((rbp - 2)) = ax;
+    rax = *((rbp - 0x28));
+    *((rax + 6)) = 0;
+    ecx = *((rbp - 2));
+    rdi = *((rbp - 0x28));
+    rax = *((rbp - 0x38));
+    edx = *((rax + 0x10));
+    rax = *((rbp - 0x38));
+    esi = *((rax + 0xc));
+    r8d = ecx;
+    rcx = rdi;
+    edi = 0x11;
+    eax = [38;2;19;161;14mudp_tcp_checksum[39m ();
+    edx = eax;
+    rax = *((rbp - 0x28));
+    *((rax + 6)) = dx;
+    rdx = *((rbp - 0x38));
+    eax = *((rdx + 6));
+    eax |= 0x40;
+    *((rdx + 6)) = al;
+    eax = *((rbp - 2));
+    eax += 0x14;
+    edi = ([32mint32_t[39m) ax;
+    eax = [38;2;19;161;14mhtons[39m ();
+    edx = eax;
+    rax = *((rbp - 0x38));
+    *((rax + 2)) = dx;
+    rax = *((rbp - 0x38));
+    *((rax + 0xa)) = 0;
+    eax = *((rbp - 2));
+    eax += 0x14;
+    esi = eax;
+    rdi = rbp - 0x620;
+    eax = [38;2;19;161;14mchecksum[39m ();
+    edx = eax;
+    rax = *((rbp - 0x38));
+    *((rax + 0xa)) = dx;
+    rax = *((rbp - 0x38));
+    eax = *((rax + 0x10));
+    *((rbp - 0x62c)) = eax;
+    *((rbp - 0x630)) = 2;
+    rax = *((rbp - 0x28));
+    eax = *((rax + 2));
+    *((rbp - 0x62e)) = ax;
+    rdx = rbp - 0x630;
+    eax = *((rbp - 2));
+    rax += 0x14;
+    rsi = rbp - 0x620;
+    edi = *((rbp - 0x634));
+    r9d = 0x10;
+    r8 = rdx;
+    ecx = 0;
+    rdx = rax;
+    [38;2;19;161;14msendto[39m ();
+    [38;2;58;150;221mreturn[39m rax;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.remoteExec</div>
+            <pre><code>[38;2;197;15;31m/* r2dec pseudo code output (r2 6.0.8) */[39m
+[38;2;197;15;31m/* /data/shared/dbus-echo @ 0x4010ce */[39m
+[38;2;19;161;14m#include &lt;stdint.h&gt;[39m
+ 
+[32mint64_t[39m [38;2;19;161;14mremoteExec[39m (char * arg1, char  arg2) {
+    int64_t var_40h;
+    char * var_38h;
+    char * var_30h;
+    uint32_t var_24h;
+    char  dest;
+    char * filename;
+    file* stream;
+    uint32_t var_4h;
+    uint32_t var_1h;
+    rdi = arg1;
+    rsi = arg2;
+    *((rbp - 0x18)) = rdi;
+    *((rbp - 0x20)) = rsi;
+    [38;2;19;161;14mstrcpy[39m (*((rbp - 0x20)), *((rbp - 0x18)));
+    rax = *((rbp - 0x20));
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0x30)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0x30));
+    [38;2;19;161;14m__asm[39m ([38;2;204;204;204m&quot;repne scasb al, byte [rdi]&quot;[39m);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    rax += *((rbp - 0x20));
+    *(rax) = 0x200a;
+    *((rax + 2)) = 0;
+    rax = *((rbp - 0x20));
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0x38)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0x38));
+    [38;2;19;161;14m__asm[39m ([38;2;204;204;204m&quot;repne scasb al, byte [rdi]&quot;[39m);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    *((rbp - 4)) = ax;
+    eax = 0;
+    rax = [38;2;19;161;14mpopen[39m (*((rbp - 0x18)), 0x40194d);
+    rax = ([32mint64_t[39m) eax;
+    *((rbp - 0x10)) = rax;
+    [38;2;58;150;221mif[39m (*((rbp - 0x10)) != 0) {
+        [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_0[39m;
+    }
+    [38;2;19;161;14mperror[39m (*((rbp - 0x18)));
+    eax = 0;
+    [38;2;19;161;14mpclose[39m (*((rbp - 0x10)));
+    eax = *((rbp - 4));
+    rdi += *((rbp - 0x20));
+    eax = 0;
+    [38;2;19;161;14msprintf[39m (rax, [38;2;204;204;204m&quot;server error: &#x27;%s&#x27; cannt execute\n&quot;[39m, *((rbp - 0x18)));
+    rax = *((rbp - 0x20));
+    rcx = 0xffffffffffffffff;
+    *((rbp - 0x40)) = rax;
+    eax = 0;
+    rdi = *((rbp - 0x40));
+    [38;2;19;161;14m__asm[39m ([38;2;204;204;204m&quot;repne scasb al, byte [rdi]&quot;[39m);
+    rax = rcx;
+    rax = ~rax;
+    rax--;
+    eax = ([32mint32_t[39m) ax;
+    *((rbp - 0x24)) = eax;
+    [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_1[39m;
+    [38;2;58;150;221mdo[39m {
+        al = [38;2;19;161;14mfgetc[39m (*((rbp - 0x10)));
+        *((rbp - 1)) = al;
+        [38;2;58;150;221mif[39m (*((rbp - 1)) == 0xff) {
+            [38;2;58;150;221mgoto[39m [38;2;193;156;0mlabel_2[39m;
+        }
+        eax = *((rbp - 4));
+        rdx = rax;
+        rdx += *((rbp - 0x20));
+        eax = *((rbp - 1));
+        *(rdx) = al;
+        *((rbp - 4))++;
+[38;2;193;156;0mlabel_0[39m:
+    } [38;2;58;150;221mwhile[39m (*((rbp - 4)) &lt;= 0x4af);
+[38;2;193;156;0mlabel_2[39m:
+    eax = 0;
+    [38;2;19;161;14mpclose[39m (*((rbp - 0x10)));
+    eax = *((rbp - 4));
+    *((rbp - 0x24)) = eax;
+[38;2;193;156;0mlabel_1[39m:
+    eax = *((rbp - 0x24));
+    [38;2;58;150;221mreturn[39m rax;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.udp_tcp_checksum</div>
+            <pre><code>[38;2;197;15;31m/* r2dec pseudo code output (r2 6.0.8) */[39m
+[38;2;197;15;31m/* /data/shared/dbus-echo @ 0x4016b8 */[39m
+[38;2;19;161;14m#include &lt;stdint.h&gt;[39m
+ 
+[32muint64_t[39m [38;2;19;161;14mudp_tcp_checksum[39m (int64_t arg1, int64_t arg2, int64_t arg3, int64_t arg4) {
+    int64_t var_61ch;
+    int64_t var_618h;
+    int64_t var_60ch;
+    int64_t var_608h;
+    int64_t var_604h;
+    void  s;
+    int64_t var_20h;
+    int64_t var_1ch;
+    int64_t var_18h;
+    int64_t var_17h;
+    int64_t var_16h;
+    size_t n;
+    int64_t var_4h;
+    rsi = arg1;
+    rdx = arg2;
+    rcx = arg3;
+    r8 = arg4;
+    *((rbp - 0x608)) = esi;
+    *((rbp - 0x60c)) = edx;
+    *((rbp - 0x618)) = rcx;
+    eax = r8d;
+    *((rbp - 0x604)) = dil;
+    *((rbp - 0x61c)) = ax;
+    *((rbp - 6)) = 0xc;
+    eax = *((rbp - 0x60c));
+    *((rbp - 0x20)) = eax;
+    eax = *((rbp - 0x608));
+    *((rbp - 0x1c)) = eax;
+    *((rbp - 0x18)) = 0;
+    eax = *((rbp - 0x604));
+    *((rbp - 0x17)) = al;
+    edi = *((rbp - 0x61c));
+    ax = [38;2;19;161;14mhtons[39m ();
+    *((rbp - 0x16)) = ax;
+    edx = *((rbp - 6));
+    eax = *((rbp - 0x61c));
+    eax = rdx + rax;
+    *((rbp - 4)) = eax;
+    [38;2;19;161;14mmemset[39m (rbp - 0x600, 0, 0x5dc);
+    ecx = *((rbp - 6));
+    rax = rbp - 0x600;
+    rdx = rbp - 0x20;
+    rdi = rax;
+    rsi = rdx;
+    [38;2;58;150;221mdo[39m {
+        *(rdi) = *(rsi);
+        rcx--;
+        rsi++;
+        rdi++;
+    } [38;2;58;150;221mwhile[39m (rcx != 0);
+    ecx = *((rbp - 0x61c));
+    eax = *((rbp - 6));
+    rdx = rax;
+    rax = rbp - 0x600;
+    rax += rdx;
+    rdx = *((rbp - 0x618));
+    rdi = rax;
+    rsi = rdx;
+    *(rdi) = *(rsi);
+    rcx--;
+    rsi++;
+    rdi++;
+    rdi = rbp - 0x600;
+    esi = *((rbp - 4));
+    ax = [38;2;19;161;14mchecksum[39m ();
+    eax = ([32mint32_t[39m) ax;
+    [38;2;58;150;221mreturn[39m rax;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.__libc_csu_init</div>
+            <pre><code>[38;2;197;15;31m//[0m[38;2;197;15;31mWARNING:[0m [38;2;197;15;31mRemoving[0m [38;2;197;15;31munreachable[0m [38;2;197;15;31mblock[0m [38;2;197;15;31m(ram,0x004017fa)[0m
+[38;2;197;15;31m//[0m[38;2;197;15;31mWARNING:[0m [38;2;197;15;31mRemoving[0m [38;2;197;15;31munreachable[0m [38;2;197;15;31mblock[0m [38;2;197;15;31m(ram,0x00401800)[0m
+
+[38;2;58;150;221mvoid[0m [38;2;193;156;0msym.__libc_csu_init[0m([38;2;58;150;221mulong[0m [0marg1[0m,[38;2;58;150;221mulong[0m [0marg2[0m,[38;2;58;150;221mulong[0m [0marg3[0m)
+
+{
+    [38;2;193;156;0msym._init[0m();
+    [38;2;136;23;152mreturn[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.checksum</div>
+            <pre><code>[38;2;58;150;221muint32_t[0m [38;2;193;156;0msym.checksum[0m([38;2;58;150;221muint16_t[0m *[0marg1[0m,[38;2;58;150;221mulong[0m [0marg2[0m)
+
+{
+    [38;2;58;150;221mint64_t[0m [0miVar1[0m;
+    [38;2;58;150;221mint[0m [0mvar_1ch[0m;
+    [38;2;58;150;221muint16_t[0m *[0mvar_18h[0m;
+    [38;2;58;150;221muint64_t[0m [0mvar_8h[0m;
+    
+    [0mvar_8h[0m = [38;2;19;161;14m0[0m;
+    [0mvar_18h[0m = [0marg1[0m;
+    [38;2;136;23;152mfor[0m ([0mvar_1ch[0m = [0marg2[0m; [38;2;19;161;14m1[0m &lt; [0mvar_1ch[0m; [0mvar_1ch[0m = [0mvar_1ch[0m + [38;2;19;161;14m-2[0m) {
+        [0mvar_8h[0m = [0mvar_8h[0m + *[0mvar_18h[0m;
+        [0mvar_18h[0m = [0mvar_18h[0m + [38;2;19;161;14m1[0m;
+    }
+    [38;2;136;23;152mif[0m ([0mvar_1ch[0m != [38;2;19;161;14m0[0m) {
+        [0mvar_8h[0m = [0mvar_8h[0m + *[0mvar_18h[0m;
+    }
+    [0miVar1[0m = ([0mvar_8h[0m &gt;&gt; [38;2;19;161;14m0x10[0m) + ([0mvar_8h[0m &amp; [38;2;19;161;14m0xffff[0m);
+    [38;2;136;23;152mreturn[0m ~([0miVar1[0m + ([0miVar1[0m &gt;&gt; [38;2;19;161;14m0x10[0m)) &amp; [38;2;19;161;14m0xffff[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.myDecryptFun</div>
+            <pre><code>[38;2;197;15;31m//[0m[38;2;197;15;31mWARNING:[0m [38;2;197;15;31mVariable[0m [38;2;197;15;31mdefined[0m [38;2;197;15;31mwhich[0m [38;2;197;15;31mshould[0m [38;2;197;15;31mbe[0m [38;2;197;15;31munmapped:[0m [38;2;197;15;31mvar_5h[0m
+
+[38;2;58;150;221muint16_t[0m [38;2;193;156;0msym.myDecryptFun[0m([38;2;58;150;221mint64_t[0m [0marg1[0m,[38;2;58;150;221mulong[0m [0mnoname_1[0m,[38;2;58;150;221mint64_t[0m [0marg2[0m,[38;2;58;150;221mulong[0m [0mnoname_3[0m,[38;2;58;150;221mint64_t[0m [0marg3[0m)
+
+{
+    [38;2;58;150;221muint16_t[0m [0min_CX[0m;
+    [38;2;58;150;221muint8_t[0m [0min_SIL[0m;
+    [38;2;58;150;221mulong[0m [0mvar_38h[0m;
+    [38;2;58;150;221mulong[0m [0mvar_28h[0m;
+    [38;2;58;150;221mulong[0m [0mvar_18h[0m;
+    [38;2;58;150;221mulong[0m [0mvar_5h[0m;
+    
+    [0mvar_5h[0m._0_1_ = [38;2;19;161;14m0[0m;
+    [38;2;136;23;152mfor[0m ([0mvar_5h[0m._1_4_ = [38;2;19;161;14m0[0m; [0mvar_5h[0m._1_4_ &lt; [0min_CX[0m; [0mvar_5h[0m._1_4_ = [0mvar_5h[0m._1_4_ + [38;2;19;161;14m1[0m) {
+        [38;2;136;23;152mif[0m ([0min_SIL[0m &lt;= [0mvar_5h[0m) {
+            [0mvar_5h[0m._0_1_ = [38;2;19;161;14m0[0m;
+        }
+        *([0mvar_5h[0m._1_4_ + [0marg3[0m) = *([0mvar_5h[0m._1_4_ + [0marg2[0m) ^ *([0mvar_5h[0m + [0marg1[0m);
+        [0mvar_5h[0m._0_1_ = [0mvar_5h[0m + [38;2;19;161;14m1[0m;
+    }
+    [38;2;136;23;152mreturn[0m [0min_CX[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.myEncryptFun</div>
+            <pre><code>[38;2;197;15;31m//[0m[38;2;197;15;31mWARNING:[0m [38;2;197;15;31mVariable[0m [38;2;197;15;31mdefined[0m [38;2;197;15;31mwhich[0m [38;2;197;15;31mshould[0m [38;2;197;15;31mbe[0m [38;2;197;15;31munmapped:[0m [38;2;197;15;31mvar_5h[0m
+
+[38;2;58;150;221muint16_t[0m [38;2;193;156;0msym.myEncryptFun[0m([38;2;58;150;221mint64_t[0m [0marg1[0m,[38;2;58;150;221mulong[0m [0mnoname_1[0m,[38;2;58;150;221mint64_t[0m [0marg2[0m,[38;2;58;150;221mulong[0m [0mnoname_3[0m,[38;2;58;150;221mint64_t[0m [0marg3[0m)
+
+{
+    [38;2;58;150;221muint16_t[0m [0min_CX[0m;
+    [38;2;58;150;221muint8_t[0m [0min_SIL[0m;
+    [38;2;58;150;221mulong[0m [0mvar_38h[0m;
+    [38;2;58;150;221mulong[0m [0mvar_28h[0m;
+    [38;2;58;150;221mulong[0m [0mvar_18h[0m;
+    [38;2;58;150;221mulong[0m [0mvar_5h[0m;
+    
+    [0mvar_5h[0m._0_1_ = [38;2;19;161;14m0[0m;
+    [38;2;136;23;152mfor[0m ([0mvar_5h[0m._1_4_ = [38;2;19;161;14m0[0m; [0mvar_5h[0m._1_4_ &lt; [0min_CX[0m; [0mvar_5h[0m._1_4_ = [0mvar_5h[0m._1_4_ + [38;2;19;161;14m1[0m) {
+        [38;2;136;23;152mif[0m ([0min_SIL[0m &lt;= [0mvar_5h[0m) {
+            [0mvar_5h[0m._0_1_ = [38;2;19;161;14m0[0m;
+        }
+        *([0mvar_5h[0m._1_4_ + [0marg3[0m) = *([0mvar_5h[0m._1_4_ + [0marg2[0m) ^ *([0mvar_5h[0m + [0marg1[0m);
+        [0mvar_5h[0m._0_1_ = [0mvar_5h[0m + [38;2;19;161;14m1[0m;
+    }
+    [38;2;136;23;152mreturn[0m [0min_CX[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.__do_global_dtors_aux</div>
+            <pre><code>[38;2;197;15;31m//[0m[38;2;197;15;31mWARNING:[0m [38;2;197;15;31mRemoving[0m [38;2;197;15;31munreachable[0m [38;2;197;15;31mblock[0m [38;2;197;15;31m(ram,0x00400b21)[0m
+
+[38;2;58;150;221mvoid[0m [38;2;193;156;0msym.__do_global_dtors_aux[0m([38;2;136;23;152mvoid[0m)
+
+{
+    [38;2;136;23;152mif[0m ([0mobj.completed.6145[0m == [38;2;19;161;14m0x0[0m) {
+        [0mobj.completed.6145[0m = [38;2;19;161;14m0x1[0m;
+    }
+    [38;2;136;23;152mreturn[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.__do_global_ctors_aux</div>
+            <pre><code>[38;2;58;150;221mvoid[0m [38;2;193;156;0msym.__do_global_ctors_aux[0m([38;2;136;23;152mvoid[0m)
+
+{
+    [38;2;58;150;221mcode[0m *[0mpcVar1[0m;
+    [38;2;58;150;221mcode[0m *[0mpcVar2[0m;
+    
+    [0mpcVar2[0m = [0msegment.LOAD1[0m;
+    [0mpcVar1[0m = [0m_segment.LOAD1[0m;
+    [38;2;136;23;152mif[0m ([0m_segment.LOAD1[0m != [38;2;19;161;14m0xffffffffffffffff[0m) {
+        [38;2;136;23;152mdo[0m {
+            [0mpcVar2[0m = [0mpcVar2[0m + [38;2;19;161;14m-8[0m;
+            (*[0mpcVar1[0m)();
+            [0mpcVar1[0m = *[0mpcVar2[0m;
+        } [38;2;136;23;152mwhile[0m (*[0mpcVar2[0m != [38;2;19;161;14m0xffffffffffffffff[0m);
+    }
+    [38;2;136;23;152mreturn[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">entry0</div>
+            <pre><code>[38;2;58;150;221mvoid[0m [38;2;193;156;0mentry0[0m([38;2;58;150;221mulong[0m [0mstack_end[0m,[38;2;58;150;221mulong[0m [0mnoname_1[0m,[38;2;58;150;221mulong[0m [0mnoname_2[0m,[38;2;58;150;221mulong[0m [0mrtld_fini[0m)
+
+{
+    [38;2;58;150;221mulong[0m [0munaff_retaddr[0m;
+    [38;2;58;150;221muchar[0m [0mauStack_8[0m [[38;2;19;161;14m8[0m];
+    
+    [38;2;197;15;31m//[0m[38;2;197;15;31m[12][0m [38;2;197;15;31m-r-x[0m [38;2;197;15;31msection[0m [38;2;197;15;31msize[0m [38;2;197;15;31m3544[0m [38;2;197;15;31mnamed[0m [38;2;197;15;31m.text[0m
+    [38;2;197;15;31m//[0m[38;2;197;15;31mWARNING:[0m [38;2;197;15;31mSubroutine[0m [38;2;197;15;31mdoes[0m [38;2;197;15;31mnot[0m [38;2;197;15;31mreturn[0m
+    [38;2;193;156;0msym.imp.__libc_start_main[0m
+              ([0mmain[0m,[0munaff_retaddr[0m,&amp;[0mstack0x00000008[0m,[0msym.__libc_csu_init[0m,[0msym.__libc_csu_fini[0m,[0mrtld_fini[0m,[0mauStack_8[0m);
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.frame_dummy</div>
+            <pre><code>[38;2;197;15;31m//[0m[38;2;197;15;31mWARNING:[0m [38;2;197;15;31mRemoving[0m [38;2;197;15;31munreachable[0m [38;2;197;15;31mblock[0m [38;2;197;15;31m(ram,0x00400b68)[0m
+
+[38;2;58;150;221mvoid[0m [38;2;193;156;0msym.frame_dummy[0m([38;2;136;23;152mvoid[0m)
+
+{
+    [38;2;136;23;152mreturn[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym._init</div>
+            <pre><code>[38;2;58;150;221mvoid[0m [38;2;193;156;0msym._init[0m([38;2;136;23;152mvoid[0m)
+
+{
+    [38;2;197;15;31m//[0m[38;2;197;15;31m[10][0m [38;2;197;15;31m-r-x[0m [38;2;197;15;31msection[0m [38;2;197;15;31msize[0m [38;2;197;15;31m24[0m [38;2;197;15;31mnamed[0m [38;2;197;15;31m.init[0m
+    [38;2;193;156;0msym.call_gmon_start[0m();
+    [38;2;193;156;0msym.frame_dummy[0m();
+    [38;2;193;156;0msym.__do_global_ctors_aux[0m();
+    [38;2;136;23;152mreturn[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym.call_gmon_start</div>
+            <pre><code>[38;2;58;150;221mvoid[0m [38;2;193;156;0msym.call_gmon_start[0m([38;2;136;23;152mvoid[0m)
+
+{
+    [38;2;136;23;152mif[0m ([0m_reloc.__gmon_start__[0m != [0mNULL[0m) {
+        (*[0m_reloc.__gmon_start__[0m)();
+    }
+    [38;2;136;23;152mreturn[0m;
+}</code></pre>
+        </div>
+        <div class="decomp-block">
+            <div class="decomp-header">sym._fini</div>
+            <pre><code>[38;2;58;150;221mvoid[0m [38;2;193;156;0msym._fini[0m([38;2;136;23;152mvoid[0m)
+
+{
+    [38;2;197;15;31m//[0m[38;2;197;15;31m[13][0m [38;2;197;15;31m-r-x[0m [38;2;197;15;31msection[0m [38;2;197;15;31msize[0m [38;2;197;15;31m14[0m [38;2;197;15;31mnamed[0m [38;2;197;15;31m.fini[0m
+    [38;2;193;156;0msym.__do_global_dtors_aux[0m();
+    [38;2;136;23;152mreturn[0m;
+}</code></pre>
+        </div>
+
+        <!-- Strings -->
+        <h2 class="section-header">Strings (9 extracted)</h2>
+        <table class="data-table">
+            <thead><tr><th>Address</th><th>Value</th></tr></thead>
+            <tbody><tr><td class="mono">0x401898</td><td>socket(): %s\n</td></tr>
+<tr><td class="mono">0x4018a6</td><td>setsockopt error!</td></tr>
+<tr><td class="mono">0x4018b8</td><td>idkey not correct,%d!=%d\n</td></tr>
+<tr><td class="mono">0x4018d8</td><td>receive %d, cmd type is %d and cmdl is %d\n</td></tr>
+<tr><td class="mono">0x401906</td><td>system.conf</td></tr>
+<tr><td class="mono">0x401912</td><td>%d file data is received\n</td></tr>
+<tr><td class="mono">0x40192f</td><td>excute result is %s\n</td></tr>
+<tr><td class="mono">0x401944</td><td>send %d\n</td></tr>
+<tr><td class="mono">0x401950</td><td>server error: &#x27;%s&#x27; cannt execute\n</td></tr>
+</tbody>
+        </table>
+
+        <!-- LLM Synthesis (shared) -->
+        <h2 class="section-header">LLM Analysis Summary</h2>
+        <div style="font-size: 0.82rem; color: #6b7280; font-style: italic; margin-bottom: 8px;">
+            This summary was generated by the LLM using combined data from all active agents.
+        </div>
+        <div class="summary-box"><h3>1. Executive Summary</h3>
+<p class="mb-3">This binary is a Linux-based backdoor (Unknown Family) designed to provide remote access and execution capabilities to an attacker. The malware operates by establishing a raw socket interface, allowing it to intercept and craft custom UDP packets. It listens for incoming commands, decrypts them using a simple XOR cipher, executes them on the local system using a shell, and returns the output to the remote controller. The use of raw sockets (Protocol 0x11/UDP) and manual packet crafting suggests an attempt to bypass standard firewall inspections or blend in with normal network traffic. The threat level is <strong>High</strong> due to its ability to execute arbitrary commands and its stealthy networking approach.</p>
+
+<h3>2. Malware Capabilities</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Remote Code Execution</strong>: Executes arbitrary shell commands received over the network using <code>popen</code>.</li>
+<li class="mb-2"><strong>Raw Socket Communication</strong>: Creates a raw socket (<code>AF_INET</code>, <code>SOCK_RAW</code>, <code>IPPROTO_UDP</code>) to send and receive custom UDP packets, allowing manipulation of IP and UDP headers.</li>
+<li class="mb-2"><strong>Data Obfuscation</strong>: Implements a custom XOR encryption function (<code>myEncryptFun</code>) to hide command payloads and exfiltrated data.</li>
+<li class="mb-2"><strong>Packet Crafting</strong>: Manually constructs network packets, calculating IP and UDP checksums to ensure validity.</li>
+<li class="mb-2"><strong>Configuration</strong>: Reads configuration from a file named <code>system.conf</code>.</li>
+<li class="mb-2"><strong>Stealth</strong>: Sets the &quot;Don&#x27;t Fragment&quot; (DF) flag on outgoing packets to influence network handling.</li>
+
+<h3>3. Binary Information</h3>
+<table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</td></tr><tr><td>Architecture</td><td>x86-64</td></tr><tr><td>Type</td><td>ELF</td></tr><tr><td>Image Base</td><td>0x00400000</td></tr><tr><td>Entry Point</td><td>0x00400b78 (main)</td></tr><tr><td>Compiler</td><td>GCC 4.1.2 20080704 (Red Hat 4.1.2-55)</td></tr><tr><td>Size</td><td>Unknown</td></tr><tr><td>Packing</td><td>Unpacked</td></tr></table>
+
+<h3>4. Technical Analysis</h3>
+
+<strong>Networking &amp; Packet Crafting (sendResult2Peer)</strong>
+</ul>
+<p class="mb-3">The malware utilizes a custom function <code>sendResult2Peer</code> to send data back to the controller. It manually constructs the packet headers. Notably, it swaps source and destination IP addresses and ports found in the received packet buffer to route the response correctly through the raw socket. It sets the IP &quot;Don&#x27;t Fragment&quot; flag (<code>local_40[6] | 0x40</code>).</p>
+
+<pre><code>// Setting Don&#x27;t Fragment (DF) flag in IP header
+local_40[6] = local_40[6] | 0x40;
+uVar1 = htons(local_a + 0x14);
+*(uint16_t *)(local_40 + 2) = uVar1; // Set Total Length
+*(undefined2 *)(local_40 + 10) = 0;
+uVar2 = checksum(local_628,local_a + 0x14); // Calculate IP Checksum
+*(undefined2 *)(local_40 + 10) = uVar2;
+</code></pre>
+
+<strong>Encryption Mechanism (myEncryptFun)</strong>
+<p class="mb-3">The malware employs a basic XOR cipher for encrypting command payloads and exfiltration results. It uses a 4-byte key referenced by <code>idkey</code>. The algorithm cycles through the key for every byte of data.</p>
+
+<pre><code>// XOR Encryption logic
+local_d = 0;
+for (local_c = 0; local_c &lt; (int)(uint)param_4; local_c = local_c + 1) {
+    if (param_2 &lt;= local_d) {
+      local_d = 0;
+    }
+    *(byte *)(local_c + param_5) =
+         *(byte *)(local_c + param_3) ^ *(byte *)((ulong)local_d + param_1);
+    local_d = local_d + 1;
+}
+</code></pre>
+
+<strong>Remote Execution (remoteExec)</strong>
+<p class="mb-3">The core payload execution is handled by <code>remoteExec</code>. It takes a command string, appends a newline, and executes it using <code>popen</code>. It captures the output (<code>stdout</code>) character by character and stores it in a buffer to be sent back to the C2 server.</p>
+
+<pre><code>// Command execution using popen
+rax = 0;
+rax = popen(*((rbp - 0x18)), 0x40194d); // &quot;r&quot; mode
+// ... loop reading output ...
+al = fgetc(*((rbp - 0x10)));
+*(rdx) = al; // Store output
+</code></pre>
+
+<h3>5. Functions Analysis</h3>
+
+<strong>main @ 0x00400b78 ([1] xref)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Entry point for the malware logic. Initializes the raw socket and enters the receive loop.</li>
+<li class="mb-2"><strong>Key Code</strong>: Creates socket <code>socket(2, 3, 0x11)</code>. Sets socket options. Enters a <code>while</code> loop calling <code>recv</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: The use of raw sockets requires root privileges (<code>CAP_NET_RAW</code>). The socket creation with protocol 0x11 (UDP) and type 3 (Raw) indicates the malware handles its own transport layer headers.</li>
+
+<strong>remoteExec @ 0x004010ce ([1] xref)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Executes a shell command and captures the output.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>popen(command, &quot;r&quot;)</code>; <code>fgetc(stream)</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Allows arbitrary command execution (RCE). The error string <code>&quot;server error: &#x27;%s&#x27; cannt execute&quot;</code> suggests logging failure states if the command cannot be run.</li>
+
+<strong>sendResult2Peer @ 0x00401216 ([3] xrefs)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Encrypts and transmits data (command results) back to the attacker.</li>
+<li class="mb-2"><strong>Key Code</strong>: Calls <code>myEncryptFun</code> with <code>idkey</code>. Swaps IPs/Ports in the packet buffer. Calculates checksums via <code>udp_tcp_checksum</code>.</li>
+<li class="mb-2"><strong>Security Note</strong>: Indicates the C2 communication is bidirectional. The malware acts as a server responding to requests, or a reverse shell handling specific protocols.</li>
+
+<strong>myEncryptFun @ 0x0040155e ([2] xrefs)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Obfuscates data using a 4-byte XOR key.</li>
+<li class="mb-2"><strong>Key Code</strong>: <code>XOR loop</code> using <code>param_1</code> (idkey).</li>
+<li class="mb-2"><strong>Security Note</strong>: Weak encryption that can be easily broken if the key is known or if plaintext is predictable (known-plaintext attack).</li>
+
+<strong>udp_tcp_checksum @ 0x004016b8 (xrefs: unknown)</strong>
+<li class="mb-2"><strong>Purpose</strong>: Calculates the standard internet checksum for UDP packets.</li>
+<li class="mb-2"><strong>Key Code</strong>: Constructs a pseudo-header and sums 16-bit words.</li>
+<li class="mb-2"><strong>Security Note</strong>: Ensures generated packets pass network integrity checks, avoiding filtering by IDS/IPS that drop invalid packets.</li>
+
+<h3>6. Operational Flow</h3>
+</ul>
+<ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: The <code>main</code> function (0x00400b78) is called. It creates a raw socket (<code>socket()</code>) and sets socket options.</li>
+<li class="mb-2"><strong>Setup</strong>: Arguments are checked. A specific string or configuration might be referenced (<code>system.conf</code> string found).</li>
+<li class="mb-2"><strong>Main Operation</strong>: The malware enters an infinite loop receiving data via <code>recv</code> into a buffer. It likely parses this buffer to extract the command and the originating IP/Port.</li>
+<li class="mb-2"><strong>Execution</strong>: The <code>remoteExec</code> function is invoked with the decrypted command. <code>popen</code> executes the shell command (e.g., <code>sh -c &quot;...&quot;</code>).</li>
+<li class="mb-2"><strong>Persistence/Response</strong>: The output of the command is captured. <code>sendResult2Peer</code> is called to encrypt the output and send it back as a crafted UDP packet to the source IP found in the received packet.</li>
+
+<h3>7. C2 &amp; Networking</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>C2 Servers</strong>: No hardcoded IPs found in strings; the malware likely acts as a passive listener or extracts the C2 address from the received packet headers (Source IP).</li>
+<li class="mb-2">  <strong>Protocols</strong>: Raw IP / UDP (Protocol 17).</li>
+<li class="mb-2">  <strong>Communication Pattern</strong>:</li>
+<li class="mb-2">  Malware listens on a raw socket.</li>
+<li class="mb-2">  Attacker sends a UDP packet to the host.</li>
+<li class="mb-2">  Malware receives packet, extracts payload.</li>
+<li class="mb-2">  Malware executes command.</li>
+<li class="mb-2">  Malware crafts a new UDP packet (swapping src/dst) containing the result and sends it via raw socket.</li>
+
+<h3>8. Evidence of Malicious Activity</h3>
+</ul>
+<li class="mb-2"><strong>Finding</strong>: Raw socket creation for packet sniffing/spoofing.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  Evidence: <code>socket(2, 3, 0x11)</code> at <code>0x00400b78</code> (main).</li>
+</ul>
+<li class="mb-2"><strong>Finding</strong>: Arbitrary shell command execution.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  Evidence: <code>popen</code> usage in <code>remoteExec</code> at <code>0x004010ce</code> and string <code>&quot;server error: &#x27;%s&#x27; cannt execute&quot;</code>.</li>
+</ul>
+<li class="mb-2"><strong>Finding</strong>: Data Obfuscation.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  Evidence: <code>myEncryptFun</code> and <code>myDecryptFun</code> strings and function logic at <code>0x0040155e</code>.</li>
+</ul>
+<li class="mb-2"><strong>Finding</strong>: Reference to configuration file.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  Evidence: String <code>system.conf</code> found in binary data.</li>
+</ul>
+<li class="mb-2"><strong>Finding</strong>: Hardcoded Key/Magic.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  Evidence: Reference to <code>idkey</code> in <code>sendResult2Peer</code> and string <code>zR</code>.</li>
+
+<h3>9. Recommendations</h3>
+</ul>
+<li class="mb-2"><strong>Network Segmentation</strong>: Restrict root privileges and prevent the creation of raw sockets (<code>CAP_NET_RAW</code>) on non-critical systems to hinder this malware&#x27;s ability to communicate.</li>
+<li class="mb-2"><strong>Detection Rules</strong>: Monitor for processes creating Raw Sockets (Socket Type 3) combined with calls to <code>popen</code>.</li>
+<li class="mb-2"><strong>File Integrity</strong>: Search for and investigate the presence of <code>system.conf</code> or files matching the provided SHA256 hash on endpoints.</li>
+<li class="mb-2"><strong>Traffic Analysis</strong>: Implement IDS/IPS signatures to detect UDP packets where the payload structure matches the malware&#x27;s specific header manipulation or encrypted patterns if the key is recovered.</li>
+
+<h3>10. IOCs (Indicators of Compromise)</h3>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>File Hash</strong>: 827f41fc1a6f8a4c8a8575b3e2349aeaba0dfc2c9390ef1cceeef1bb85c34161</li>
+<li class="mb-2">  <strong>File Path</strong>: <code>system.conf</code> - Likely configuration file or path used by malware.</li>
+<li class="mb-2">  <strong>String</strong>: <code>server error: &#x27;%s&#x27; cannt execute</code> - Specific error message in memory/code.</li>
+<li class="mb-2">  <strong>String</strong>: <code>zR</code> - Potential magic bytes or identifier.</li>
+<li class="mb-2">  <strong>String</strong>: <code>[syslog]</code> (Note: While not explicitly in the provided string list, <code>system.conf</code> is).</li>
+
+<h3>11. Conclusion</h3>
+</ul>
+</ol>
+<p class="mb-3">The analyzed binary is a Linux x86-64 backdoor capable of arbitrary remote code execution. It utilizes raw sockets to hide its communication channel within standard UDP traffic and employs weak XOR encryption for payload obfuscation. Its capabilities allow an attacker full control over the infected system, posing a significant security risk. Immediate patching and restriction of raw socket capabilities are recommended.</p></div>
+
+        <!-- Footer -->
+        <div style="margin-top: 40px; padding-top: 16px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af;">
+            <div>Confidential &amp; Proprietary</div>
+            <div>Generated by Radare2 Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>

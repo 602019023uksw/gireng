@@ -389,11 +389,14 @@ def build_report_html(state: Dict[str, Any]) -> str:
 | Image Base | {binary.get('image_base', 'unknown')} |
 | Entry Point | {', '.join(binary.get('entry_points', ['unknown']))} |
 | Compiler | {binary.get('compiler', 'unknown')} |
+| Ghidra Imports | {', '.join(binary.get('imports', [])[:15]) or 'N/A'} |
+| Ghidra Exports | {', '.join(binary.get('exports', [])[:15]) or 'N/A'} |
 | Functions (Ghidra) | {len(funcs.get('functions', []))} total ({len(state.get('decompilation_cache', {}))} decompiled) |
 | Functions (R2) | {len(r2_funcs.get('functions', []))} total ({len(state.get('r2_decompilation_cache', {}))} decompiled) |
 | R2 Architecture | {r2_binary.get('architecture', 'N/A')} ({r2_binary.get('bits', '?')}-bit) |
 | R2 OS | {r2_binary.get('os', 'N/A')} |
 | R2 Imports | {', '.join(r2_binary.get('imports', [])[:15]) or 'N/A'} |
+| R2 Exports | {', '.join(r2_binary.get('exports', [])[:15]) or 'N/A'} |
 | Strings (Ghidra) | {len(strings_data.get('strings', []))} extracted |
 | Strings (R2) | {len(r2_strings.get('strings', []))} extracted |"""),
         "technical_analysis": _markdown_to_html(_extract_section(summary_text, "Technical Analysis")),
@@ -668,6 +671,8 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         <tr><td class="prop">Image Base</td><td class="mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
         <tr><td class="prop">Compiler</td><td>{escape(str(binary.get('compiler', 'unknown')))}</td></tr>
         <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('entry_points', ['unknown'])[:10]))}</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])[:20]))}</td></tr>
+        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])[:20]))}</td></tr>
         <tr><td class="prop">Segments</td><td>{len(binary.get('segments', []))}</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
         <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
@@ -679,6 +684,7 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         <tr><td class="prop">Endian</td><td>{escape(str(binary.get('endian', 'unknown')))}</td></tr>
         <tr><td class="prop">Stripped</td><td>{escape(str(binary.get('stripped', 'unknown')))}</td></tr>
         <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])[:20]))}</td></tr>
+        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])[:20]))}</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
         <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
 
@@ -864,6 +870,12 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append(f"Image Base:   {binary.get('image_base', 'unknown')}")
         lines.append(f"Entry Points: {', '.join(binary.get('entry_points', []))}")
         lines.append(f"Compiler:     {binary.get('compiler', 'unknown')}")
+        gh_imports = binary.get("imports", [])
+        if gh_imports:
+            lines.append(f"Imports:      {', '.join(gh_imports[:30])}")
+        gh_exports = binary.get("exports", [])
+        if gh_exports:
+            lines.append(f"Exports:      {', '.join(gh_exports[:30])}")
         lines.append(f"Functions:    {len(funcs.get('functions', []))} ({len(decomp)} decompiled)")
         lines.append("")
 
@@ -880,6 +892,9 @@ def build_report_text(state: Dict[str, Any]) -> str:
         imports = r2_binary.get("imports", [])
         if imports:
             lines.append(f"Imports:      {', '.join(imports[:30])}")
+        exports = r2_binary.get("exports", [])
+        if exports:
+            lines.append(f"Exports:      {', '.join(exports[:30])}")
         lines.append(f"Functions:    {len(r2_funcs.get('functions', []))} ({len(r2_decomp)} decompiled)")
         lines.append("")
 

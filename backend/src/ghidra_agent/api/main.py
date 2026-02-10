@@ -28,6 +28,7 @@ from ghidra_agent.ui_adapter import (
 )
 from ghidra_agent.reporting import build_report_html, build_report_text, build_agent_report_html
 from ghidra_agent.llm import call_llm
+from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 from ghidra_agent.utils import ensure_directory, safe_basename
 
 
@@ -136,6 +137,10 @@ async def query(request: QueryRequest) -> JSONResponse:
         context_parts.append(f"Architecture: {binary.get('architecture')}, Image base: {binary.get('image_base')}")
         if binary.get("entry_points"):
             context_parts.append(f"Entry points: {', '.join(binary.get('entry_points', []))}")
+        if binary.get("imports"):
+            context_parts.append(f"Ghidra Imports: {', '.join(binary.get('imports', [])[:30])}")
+        if binary.get("exports"):
+            context_parts.append(f"Ghidra Exports: {', '.join(binary.get('exports', [])[:30])}")
 
     funcs = results.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
@@ -151,8 +156,8 @@ async def query(request: QueryRequest) -> JSONResponse:
     decomp_cache = state.get("decompilation_cache", {})
     if decomp_cache:
         context_parts.append(f"\n=== GHIDRA DECOMPILED CODE ({len(decomp_cache)} functions) ===")
-        for func_name, c_code in list(decomp_cache.items())[:10]:
-            context_parts.append(f"\n--- {func_name} ---\n{c_code[:4000]}")
+        for func_name, c_code in list(decomp_cache.items())[:15]:
+            context_parts.append(f"\n--- {func_name} ---\n{c_code[:2000]}")
 
     r2_results = state.get("r2_analysis_results", {})
     r2_decomp = state.get("r2_decompilation_cache", {})
@@ -162,10 +167,24 @@ async def query(request: QueryRequest) -> JSONResponse:
             context_parts.append(f"\nR2 Binary: arch={r2_binary.get('architecture')}, bits={r2_binary.get('bits')}, os={r2_binary.get('os')}")
             if r2_binary.get("imports"):
                 context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'][:30])}")
+            if r2_binary.get("exports"):
+                context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'][:30])}")
+        r2_syscalls = r2_results.get("syscalls", {})
+        if r2_syscalls.get("ok") and r2_syscalls.get("syscalls"):
+            syscall_desc = [f"{s.get('name')}#{s.get('number')}" for s in r2_syscalls.get("syscalls", [])[:30]]
+            context_parts.append(f"R2 Syscalls ({len(r2_syscalls.get('syscalls', []))} total): {', '.join(syscall_desc)}")
     if r2_decomp:
         context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
-        for func_name, c_code in list(r2_decomp.items())[:5]:
-            context_parts.append(f"\n--- {func_name} ---\n{c_code[:3000]}")
+        for func_name, c_code in list(r2_decomp.items())[:10]:
+            context_parts.append(f"\n--- {func_name} ---\n{c_code[:2000]}")
+
+    # Include structured IOC extraction in the follow-up context.
+    iocs = extract_iocs_from_state(state)
+    verdict, _, indicators, score = calculate_verdict(iocs, state)
+    context_parts.append(f"\nIOC Assessment: verdict={verdict}, score={score}, indicators={indicators}")
+    if not iocs.is_empty():
+        context_parts.append("\n=== EXTRACTED IOCS ===")
+        context_parts.append(format_iocs_for_report(iocs))
 
     # Include previous analysis summary for continuity
     prev_summary = state.get("summary", "")

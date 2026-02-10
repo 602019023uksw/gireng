@@ -22,6 +22,10 @@ def _analyzer_details(state: AgentState) -> Dict[str, Any]:
         static_parts.append(f"Image Base: {binary.get('image_base', 'unknown')}")
         static_parts.append(f"Entry Points: {', '.join(binary.get('entry_points', []))}")
         static_parts.append(f"Segments: {', '.join(binary.get('segments', []))}")
+        if binary.get("imports"):
+            static_parts.append(f"Imports ({len(binary['imports'])}): {', '.join(binary['imports'][:30])}")
+        if binary.get("exports"):
+            static_parts.append(f"Exports ({len(binary['exports'])}): {', '.join(binary['exports'][:30])}")
     
     funcs = findings.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
@@ -107,6 +111,8 @@ def _r2_analyzer_details(state: AgentState) -> Dict[str, Any]:
         static_parts.append(f"Stripped: {binary.get('stripped', 'unknown')}")
         if binary.get("imports"):
             static_parts.append(f"Imports ({len(binary['imports'])}): {', '.join(binary['imports'][:30])}")
+        if binary.get("exports"):
+            static_parts.append(f"Exports ({len(binary['exports'])}): {', '.join(binary['exports'][:30])}")
 
     funcs = findings.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
@@ -114,6 +120,12 @@ def _r2_analyzer_details(state: AgentState) -> Dict[str, Any]:
         static_parts.append(f"\nFunctions ({len(funcs['functions'])} total):")
         for f in sorted_funcs[:20]:
             static_parts.append(f"  - {f.get('name')} @ {f.get('address')} (size: {f.get('size', 0)})")
+
+    syscalls = findings.get("syscalls", {})
+    if syscalls.get("ok") and syscalls.get("syscalls"):
+        static_parts.append(f"\nSyscalls ({len(syscalls['syscalls'])} total):")
+        for sc in syscalls.get("syscalls", [])[:20]:
+            static_parts.append(f"  - {sc.get('name')} (#{sc.get('number')}) @ {sc.get('address', 'N/A')}")
 
     # Behavioral analysis from R2 strings
     strings_data = findings.get("strings", {})
@@ -184,6 +196,12 @@ def _build_r2_report_markdown(state: AgentState) -> str:
         entries = binary.get("entry_points", [])
         if entries:
             parts.append(f"- **Entry Points:** {', '.join(entries)}")
+        imports = binary.get("imports", [])
+        if imports:
+            parts.append(f"- **Imports:** {', '.join(imports[:30])}")
+        exports = binary.get("exports", [])
+        if exports:
+            parts.append(f"- **Exports:** {', '.join(exports[:30])}")
         parts.append("")
 
     # Functions
@@ -234,6 +252,15 @@ def _build_r2_report_markdown(state: AgentState) -> str:
             for x in xref_list[:20]:
                 parts.append(f"- `{x.get('from', '?')}` -> `{x.get('to', '?')}` ({x.get('type', '?')})")
             parts.append("")
+
+    # Syscalls
+    syscalls = r2.get("syscalls", {})
+    if syscalls.get("ok") and syscalls.get("syscalls"):
+        sc_list = syscalls.get("syscalls", [])
+        parts.append(f"## Syscalls Detected ({len(sc_list)})")
+        for sc in sc_list[:30]:
+            parts.append(f"- `{sc.get('name', 'unknown')}` (#{sc.get('number', '?')}) at `{sc.get('address', 'N/A')}`")
+        parts.append("")
 
     if len(parts) <= 1:
         parts.append("No Radare2 analysis data available for this session.")

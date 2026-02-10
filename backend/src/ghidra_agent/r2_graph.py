@@ -9,10 +9,13 @@ from ghidra_agent.r2_tools import (
     r2_list_functions,
     r2_decompile_function,
     r2_find_strings,
+    r2_syscall_analysis,
     r2_find_xrefs,
     r2_disassemble_at,
 )
 from ghidra_agent.state import AgentState
+
+R2_AUTO_DECOMPILE_MAX = 25
 
 
 async def r2_discovery(state: AgentState) -> AgentState:
@@ -27,6 +30,7 @@ async def r2_discovery(state: AgentState) -> AgentState:
     binary_info: Dict[str, Any] = {"ok": False, "error": "not run"}
     functions: Dict[str, Any] = {"ok": False, "error": "not run"}
     strings: Dict[str, Any] = {"ok": False, "error": "not run"}
+    syscalls: Dict[str, Any] = {"ok": False, "error": "not run"}
 
     try:
         binary_info = await r2_analyze_binary.ainvoke(tool_args)
@@ -46,9 +50,16 @@ async def r2_discovery(state: AgentState) -> AgentState:
         logger.error("r2_discovery_strings_failed", error=str(exc))
         strings = {"ok": False, "error": str(exc)}
 
+    try:
+        syscalls = await r2_syscall_analysis.ainvoke(tool_args)
+    except Exception as exc:
+        logger.error("r2_discovery_syscalls_failed", error=str(exc))
+        syscalls = {"ok": False, "error": str(exc)}
+
     state["r2_analysis_results"]["binary"] = binary_info
     state["r2_analysis_results"]["functions"] = functions
     state["r2_analysis_results"]["strings"] = strings
+    state["r2_analysis_results"]["syscalls"] = syscalls
 
     # Auto-decompile top functions (mirroring Ghidra pipeline)
     await _r2_auto_decompile(state, binary_info, functions)
@@ -72,8 +83,8 @@ async def _r2_auto_decompile(
     func_list = functions["functions"]
     sorted_funcs = sorted(func_list, key=lambda f: f.get("xrefs", 0) + f.get("size", 0), reverse=True)
 
-    # Select top 15 functions prioritising those with high xrefs / largest size
-    funcs_to_decompile = sorted_funcs[:15]
+    # Select top functions prioritising those with high xrefs / largest size.
+    funcs_to_decompile = sorted_funcs[:R2_AUTO_DECOMPILE_MAX]
 
     decompiled = 0
     for func in funcs_to_decompile:

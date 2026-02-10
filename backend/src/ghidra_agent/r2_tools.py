@@ -58,7 +58,7 @@ async def r2_analyze_binary(
     program_hash: str,
     binary_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Analyze binary structure with Radare2 — architecture, sections, entry point, imports."""
+    """Analyze binary structure with Radare2 — architecture, sections, entry point, imports, exports."""
     bp = _bin(binary_path)
     runner = get_runner()
 
@@ -91,6 +91,12 @@ async def r2_analyze_binary(
     if imp_result.ok and isinstance(imp_result.payload.get("json"), list):
         imports = [i.get("name", "") for i in imp_result.payload["json"] if i.get("name")]
 
+    # Exports
+    exp_result = await runner.run_json_command(bp, "iEj")
+    exports = []
+    if exp_result.ok and isinstance(exp_result.payload.get("json"), list):
+        exports = [e.get("name", "") for e in exp_result.payload["json"] if e.get("name")]
+
     return {
         "ok": True,
         "architecture": info.get("arch", "unknown"),
@@ -102,6 +108,7 @@ async def r2_analyze_binary(
         "entry_points": entry_points,
         "sections": sections,
         "imports": imports[:100],
+        "exports": exports[:100],
         "endian": info.get("endian", "unknown"),
         "stripped": info.get("stripped", False),
         "static": info.get("static", False),

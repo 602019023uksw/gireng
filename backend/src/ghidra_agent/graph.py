@@ -9,18 +9,31 @@ from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import logger
 from ghidra_agent.prompts import SYSTEM_PROMPT
 from ghidra_agent.state import AgentState
+from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 from ghidra_agent.tools import (
     ToolContext,
     analyze_binary_structure,
     list_functions,
     decompile_function,
     find_strings,
+    search_bytes,
     find_xrefs,
     get_function_graph,
     disassemble_at,
     rename_symbol,
     add_comment,
 )
+
+GHIDRA_AUTO_DECOMPILE_MAX = 25
+LLM_GHIDRA_DECOMP_LIMIT = 15
+LLM_R2_DECOMP_LIMIT = 10
+LLM_DECOMP_SNIPPET_CHARS = 2000
+
+BYTE_SIGNATURE_PATTERNS = [
+    {"id": "x64_shellcode_prologue", "pattern": "FC 48 83 E4 F0 E8"},
+    {"id": "x86_execve_binsh", "pattern": "31 C0 50 68 2F 2F 73 68"},
+    {"id": "nop_sled_16", "pattern": "90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90"},
+]
 
 
 
@@ -101,6 +114,9 @@ async def discovery(state: AgentState) -> AgentState:
         except Exception as exc:
             logger.error("r2_parallel_failed", error=str(exc))
 
+    # Extract and persist IOC data during pipeline (before LLM synthesis).
+    _refresh_ioc_context(state)
+
     state["reasoning_trace"].append("discovery_completed")
     return state
 
@@ -132,6 +148,9 @@ async def _ghidra_discovery(state: AgentState) -> None:
     state["analysis_results"]["functions"] = functions
     state["analysis_results"]["strings"] = strings
 
+    # Scan for high-signal byte patterns (shellcode-like signatures).
+    await _run_byte_signature_scan(state, tool_args)
+
     # Auto-decompile entry point and top functions
     await _auto_decompile_key_functions(state, binary_info, functions)
 
@@ -147,6 +166,56 @@ async def _safe_r2_pipeline(state: AgentState) -> None:
     except Exception as exc:
         logger.error("r2_pipeline_failed", error=str(exc))
         state["reasoning_trace"].append(f"r2_error:{exc}")
+
+
+async def _run_byte_signature_scan(state: AgentState, tool_args: Dict[str, Any]) -> None:
+    matches = []
+    for signature in BYTE_SIGNATURE_PATTERNS:
+        try:
+            result = await search_bytes.ainvoke(
+                {
+                    **tool_args,
+                    "pattern": signature["pattern"],
+                }
+            )
+        except Exception as exc:
+            logger.warning("byte_signature_scan_failed", signature=signature["id"], error=str(exc))
+            result = {"ok": False, "error": str(exc), "matches": []}
+
+        sig_matches = result.get("matches", []) if result.get("ok") else []
+        matches.append(
+            {
+                "id": signature["id"],
+                "pattern": signature["pattern"],
+                "count": len(sig_matches),
+                "addresses": sig_matches[:10],
+                "ok": bool(result.get("ok")),
+            }
+        )
+
+    state["analysis_results"]["byte_signatures"] = {"ok": True, "signatures": matches}
+    hit_count = sum(1 for m in matches if m["count"] > 0)
+    state["reasoning_trace"].append(f"byte_signature_hits:{hit_count}")
+
+
+def _refresh_ioc_context(state: AgentState) -> None:
+    iocs = extract_iocs_from_state(state)
+    verdict, verdict_class, indicators, score = calculate_verdict(iocs, state)
+    ioc_dict = iocs.to_dict()
+
+    state["analysis_results"]["iocs"] = {
+        "ok": not iocs.is_empty(),
+        "data": ioc_dict,
+        "summary": format_iocs_for_report(iocs),
+    }
+    state["analysis_results"]["ioc_assessment"] = {
+        "verdict": verdict,
+        "class": verdict_class,
+        "score": score,
+        "indicators": indicators,
+    }
+    total_ioc_items = sum(len(v) for v in ioc_dict.values())
+    state["reasoning_trace"].append(f"iocs_extracted:{total_ioc_items}")
 
 
 async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, functions: Dict) -> None:
@@ -180,8 +249,9 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
                 state["current_address"] = entry_point
                 break
     
-    # Add top 15 most referenced functions (I1 improvement - increased from 3)
-    top_funcs = [f for f in sorted_funcs[:20] if f not in funcs_to_decompile][:15]
+    # Add top referenced functions to reach the configured total target.
+    remaining_slots = max(0, GHIDRA_AUTO_DECOMPILE_MAX - len(funcs_to_decompile))
+    top_funcs = [f for f in sorted_funcs if f not in funcs_to_decompile][:remaining_slots]
     funcs_to_decompile.extend(top_funcs)
     
     # Decompile selected functions
@@ -341,6 +411,10 @@ async def synthesize(state: AgentState) -> AgentState:
         # Include entry point info
         if binary.get("entry_points"):
             context_parts.append(f"Entry points: {', '.join(binary.get('entry_points', []))}")
+        if binary.get("imports"):
+            context_parts.append(f"Ghidra Imports: {', '.join(binary.get('imports', [])[:40])}")
+        if binary.get("exports"):
+            context_parts.append(f"Ghidra Exports: {', '.join(binary.get('exports', [])[:40])}")
 
     # B4 + I5 FIX: Sort functions by xref count, include top 50
     funcs = results.get("functions", {})
@@ -360,17 +434,38 @@ async def synthesize(state: AgentState) -> AgentState:
         str_vals = [s.get("value") for s in sorted_strings[:75]]  # Increased from 30 to 75
         context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_vals)}")
 
+    # Include byte-signature findings collected in discovery.
+    byte_sigs = results.get("byte_signatures", {})
+    if byte_sigs.get("ok"):
+        sig_hits = [s for s in byte_sigs.get("signatures", []) if s.get("count", 0) > 0]
+        if sig_hits:
+            context_parts.append("\n=== BYTE SIGNATURE HITS ===")
+            for sig in sig_hits:
+                context_parts.append(
+                    f"{sig.get('id')} matched {sig.get('count')} time(s) at {', '.join(sig.get('addresses', [])[:5])}"
+                )
+
+    # Include extracted IOCs and verdict scoring explicitly.
+    iocs = extract_iocs_from_state(state)
+    verdict, _, indicators, score = calculate_verdict(iocs, state)
+    context_parts.append(f"\nIOC Assessment: verdict={verdict}, score={score}, indicators={indicators}")
+    if not iocs.is_empty():
+        context_parts.append("\n=== EXTRACTED IOCS ===")
+        context_parts.append(format_iocs_for_report(iocs))
+
     # B5 + I2 + I3 FIX: Include decompilation_cache contents (the actual C code!)
     decomp_cache = state.get("decompilation_cache", {})
     if decomp_cache:
         context_parts.append(f"\n=== DECOMPILED CODE ({len(decomp_cache)} functions) ===")
         context_parts.append("YOU MUST ANALYZE EACH FUNCTION BELOW IN DETAIL:")
-        for i, (func_name, c_code) in enumerate(list(decomp_cache.items())[:10], 1):
+        for i, (func_name, c_code) in enumerate(list(decomp_cache.items())[:LLM_GHIDRA_DECOMP_LIMIT], 1):
             context_parts.append(f"\n--- Function {i}: {func_name} ---")
-            context_parts.append(c_code[:5000])  # First 5000 chars per function
+            context_parts.append(c_code[:LLM_DECOMP_SNIPPET_CHARS])
         
-        if len(decomp_cache) > 10:
-            context_parts.append(f"\n... and {len(decomp_cache) - 5} more decompiled functions in cache")
+        if len(decomp_cache) > LLM_GHIDRA_DECOMP_LIMIT:
+            context_parts.append(
+                f"\n... and {len(decomp_cache) - LLM_GHIDRA_DECOMP_LIMIT} more decompiled functions in cache"
+            )
 
     # Include focused analysis result if available
     focus = results.get("focus", {})
@@ -398,16 +493,22 @@ async def synthesize(state: AgentState) -> AgentState:
             context_parts.append(f"R2 Binary: arch={r2_binary.get('architecture')}, bits={r2_binary.get('bits')}, os={r2_binary.get('os')}")
             if r2_binary.get("imports"):
                 context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'][:30])}")
+            if r2_binary.get("exports"):
+                context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'][:30])}")
         r2_funcs = r2_results.get("functions", {})
         if r2_funcs.get("ok") and r2_funcs.get("functions"):
             r2_sorted = sorted(r2_funcs["functions"], key=lambda f: f.get("size", 0), reverse=True)
             r2_desc = [f"{f.get('name')}(size:{f.get('size', 0)})" for f in r2_sorted[:30]]
             context_parts.append(f"R2 Functions ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
+        r2_syscalls = r2_results.get("syscalls", {})
+        if r2_syscalls.get("ok") and r2_syscalls.get("syscalls"):
+            sys_desc = [f"{s.get('name')}#{s.get('number')}" for s in r2_syscalls.get("syscalls", [])[:40]]
+            context_parts.append(f"R2 Syscalls ({len(r2_syscalls.get('syscalls', []))} total): {', '.join(sys_desc)}")
     if r2_decomp:
         context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
-        for func_name, c_code in list(r2_decomp.items())[:5]:
+        for func_name, c_code in list(r2_decomp.items())[:LLM_R2_DECOMP_LIMIT]:
             context_parts.append(f"\n--- R2 Function: {func_name} ---")
-            context_parts.append(c_code[:3000])
+            context_parts.append(c_code[:LLM_DECOMP_SNIPPET_CHARS])
 
     context = "\n".join(context_parts) if context_parts else "No analysis data available."
 
