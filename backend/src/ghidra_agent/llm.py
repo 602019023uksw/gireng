@@ -67,36 +67,49 @@ async def call_llm(prompt: str) -> str:
 
 
 def _truncate_prompt(prompt: str) -> str:
-    """Halve decompilation snippets and trim long sections for retry."""
+    """Halve decompilation snippets and trim long sections for retry.
+
+    Uses head+tail strategy: keeps the first 18 and last 10 lines of each
+    decompile block so the LLM still sees setup AND dispatch/tail logic.
+    """
     lines = prompt.split("\n")
-    out = []
+    out: list[str] = []
     in_decomp_block = False
-    decomp_lines_kept = 0
+    block_lines: list[str] = []
     max_decomp_lines = 30  # keep at most 30 lines per function on retry
+    head_lines = 18
+    tail_lines = max_decomp_lines - head_lines  # 12
+
+    def _flush_block():
+        """Flush a collected decompile block with head+tail truncation."""
+        if len(block_lines) <= max_decomp_lines:
+            out.extend(block_lines)
+        else:
+            out.extend(block_lines[:head_lines])
+            out.append("  /* ... [truncated for retry] ... */")
+            out.extend(block_lines[-tail_lines:])
 
     for line in lines:
         if line.startswith("--- Function ") or line.startswith("--- R2 Function:"):
+            if in_decomp_block:
+                _flush_block()
+                block_lines = []
             in_decomp_block = True
-            decomp_lines_kept = 0
+            block_lines = []
             out.append(line)
             continue
         if in_decomp_block:
-            # Check section/function boundaries BEFORE truncating —
-            # otherwise we'd never leave in_decomp_block once past the limit.
-            if line.startswith("--- Function ") or line.startswith("--- R2 Function:"):
-                # New decompile block starts — reset counter
-                decomp_lines_kept = 0
-                out.append(line)
-                continue
             if line.startswith("--- ") or line.startswith("=== "):
+                _flush_block()
+                block_lines = []
                 in_decomp_block = False
-                # fall through to append this line normally
+                out.append(line)
             else:
-                decomp_lines_kept += 1
-                if decomp_lines_kept > max_decomp_lines:
-                    if decomp_lines_kept == max_decomp_lines + 1:
-                        out.append("  ... [truncated for retry]")
-                    continue
+                block_lines.append(line)
+            continue
         out.append(line)
+
+    if in_decomp_block and block_lines:
+        _flush_block()
 
     return "\n".join(out)

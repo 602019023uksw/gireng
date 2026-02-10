@@ -349,6 +349,72 @@ class TestConfigR2Settings:
         assert s.r2_timeout == 60
 
 
+class TestSmartTruncate:
+    """Verify head+tail truncation of decompiled code."""
+
+    def test_short_code_unchanged(self):
+        from ghidra_agent.graph import _smart_truncate
+        code = "void foo() { return; }"
+        assert _smart_truncate(code, 4000) == code
+
+    def test_exact_limit_unchanged(self):
+        from ghidra_agent.graph import _smart_truncate
+        code = "X" * 4000
+        assert _smart_truncate(code, 4000) == code
+
+    def test_over_limit_keeps_head_and_tail(self):
+        from ghidra_agent.graph import _smart_truncate
+        head = "HEAD" * 600   # 2400 chars
+        tail = "TAIL" * 700   # 2800 chars
+        code = head + tail    # 5200 chars
+        result = _smart_truncate(code, 4000)
+        assert len(result) <= 4000
+        assert result.startswith("HEAD")
+        assert result.endswith("TAIL" * 5)  # tail preserved
+        assert "truncated middle" in result
+
+    def test_preserves_remoteExec_at_end(self):
+        """Regression: main function's remoteExec at char ~4100 must survive."""
+        from ghidra_agent.graph import _smart_truncate
+        # Simulate: 4000 chars of setup, then the critical dispatch code
+        setup = "x" * 4000
+        dispatch = "\nremoteExec(cmd);\nsendResult2Peer(sock, buf);\n"
+        code = setup + dispatch
+        result = _smart_truncate(code, 4000)
+        assert "remoteExec" in result
+        assert "sendResult2Peer" in result
+
+
+class TestTruncatePromptHeadTail:
+    """Verify _truncate_prompt uses head+tail strategy."""
+
+    def test_short_block_unchanged(self):
+        from ghidra_agent.llm import _truncate_prompt
+        lines = ["--- Function 1: foo ---"] + [f"  line {i}" for i in range(10)]
+        lines.append("=== NEXT SECTION ===")
+        prompt = "\n".join(lines)
+        result = _truncate_prompt(prompt)
+        assert result == prompt  # no truncation needed
+
+    def test_long_block_keeps_tail(self):
+        from ghidra_agent.llm import _truncate_prompt
+        lines = ["PREAMBLE", "--- Function 1: main ---"]
+        lines += [f"  line {i}" for i in range(60)]
+        lines.append("=== END ===")
+        prompt = "\n".join(lines)
+        result = _truncate_prompt(prompt)
+        # Head lines kept
+        assert "  line 0" in result
+        assert "  line 17" in result
+        # Tail lines kept
+        assert "  line 59" in result
+        assert "  line 50" in result
+        # Middle truncated
+        assert "truncated for retry" in result
+        # Section boundary preserved
+        assert "=== END ===" in result
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

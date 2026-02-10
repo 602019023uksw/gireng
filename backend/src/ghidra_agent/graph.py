@@ -32,6 +32,24 @@ LLM_GHIDRA_DECOMP_LIMIT = 15
 LLM_R2_DECOMP_LIMIT = 10
 LLM_DECOMP_SNIPPET_CHARS = 4000
 
+
+def _smart_truncate(code: str, limit: int = LLM_DECOMP_SNIPPET_CHARS) -> str:
+    """Truncate decompiled code keeping both head and tail.
+
+    Many C functions have critical control-flow (dispatch switches, command
+    handlers) at the *end* of the function body.  A naive ``code[:limit]``
+    drops exactly that part.  Instead we keep the first 60 % and last 40 %
+    of the budget so the LLM sees both variable declarations / setup AND
+    the tail logic.
+    """
+    if len(code) <= limit:
+        return code
+    head_budget = int(limit * 0.6)
+    tail_budget = limit - head_budget - 40  # 40 chars for marker line
+    marker = "\n/* ... [truncated middle] ... */\n"
+    return code[:head_budget] + marker + code[-tail_budget:]
+
+
 BYTE_SIGNATURE_PATTERNS = [
     {"id": "x64_shellcode_prologue", "pattern": "FC 48 83 E4 F0 E8"},
     {"id": "x86_execve_binsh", "pattern": "31 C0 50 68 2F 2F 73 68"},
@@ -574,7 +592,7 @@ async def synthesize(state: AgentState) -> AgentState:
         context_parts.append("YOU MUST ANALYZE EACH FUNCTION BELOW IN DETAIL:")
         for i, (func_name, c_code) in enumerate(list(decomp_cache.items())[:LLM_GHIDRA_DECOMP_LIMIT], 1):
             context_parts.append(f"\n--- Function {i}: {func_name} ---")
-            context_parts.append(c_code[:LLM_DECOMP_SNIPPET_CHARS])
+            context_parts.append(_smart_truncate(c_code))
         
         if len(decomp_cache) > LLM_GHIDRA_DECOMP_LIMIT:
             context_parts.append(
@@ -653,7 +671,7 @@ async def synthesize(state: AgentState) -> AgentState:
         context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
         for func_name, c_code in list(r2_decomp.items())[:LLM_R2_DECOMP_LIMIT]:
             context_parts.append(f"\n--- R2 Function: {func_name} ---")
-            context_parts.append(c_code[:LLM_DECOMP_SNIPPET_CHARS])
+            context_parts.append(_smart_truncate(c_code))
 
     context = "\n".join(context_parts) if context_parts else "No analysis data available."
 
