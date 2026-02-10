@@ -26,7 +26,7 @@ from ghidra_agent.tools import (
     add_comment,
 )
 
-GHIDRA_AUTO_DECOMPILE_PERCENT = 0.60  # Decompile 60% of meaningful (non-stub) functions
+GHIDRA_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 GHIDRA_AUTO_DECOMPILE_MIN = 10       # Floor: always decompile at least this many
 LLM_GHIDRA_DECOMP_LIMIT = 15
 LLM_R2_DECOMP_LIMIT = 10
