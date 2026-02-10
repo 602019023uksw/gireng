@@ -13,6 +13,9 @@ When both tools provide data, cross-reference their findings for accuracy.
 2. **DO NOT hallucinate malware family names** - if unknown, say "Unknown"
 3. **Use actual function names, addresses, and strings from the analysis data**
 4. **Be precise** - cite actual addresses (0xXXXXXXXX) and actual strings found
+5. **Convert hex constants to decimal when meaningful** - especially port numbers (e.g., 0x84b = 2123), sizes, and offsets. Always show BOTH hex and decimal: "port 2123 (0x84b)"
+6. **Enumerate ALL command/message types** - if a dispatcher switches on a value, list EVERY case (e.g., 0x01=key update, 0x02=file write, default=exec). Do NOT skip branches
+7. **Identify ALL evasion techniques** - process masquerading (argv[0] overwrites), anti-debug, raw sockets bypassing firewalls, etc.
 
 ## Output Sections (Generate ALL)
 
@@ -72,8 +75,10 @@ If call graph / attack-chain data is provided, derive this section from those pa
 ### 7. C2 & Networking
 If applicable:
 - **C2 Servers**: [IPs/domains found]
-- **Protocols**: [HTTP/HTTPS/custom]
+- **Protocols**: [HTTP/HTTPS/custom/raw socket]
+- **Port(s)**: [Convert any hex port constants to decimal, e.g., 0x84b = port 2123]
 - **Communication Pattern**: [How it talks to C2]
+- **Authentication**: [Magic numbers, handshake, key exchange]
 
 ### 8. Evidence of Malicious Activity
 List specific findings with evidence:
