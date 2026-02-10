@@ -423,6 +423,95 @@ def _prioritize_strings(strings_list: List[Dict[str, Any]]) -> List[Dict[str, An
     return sorted(strings_list, key=relevance_score, reverse=True)
 
 
+def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
+    """Generate a structured summary from raw data when the LLM is unavailable."""
+    results = state.get("analysis_results", {})
+    r2_results = state.get("r2_analysis_results", {})
+    parts: List[str] = []
+    parts.append(f"> **Note**: {error_msg}  ")
+    parts.append("> The following summary was auto-generated from raw analysis data.\n")
+
+    # Binary info
+    binary = results.get("binary", {})
+    if binary.get("ok"):
+        parts.append("## Binary Information")
+        parts.append(f"- **Architecture**: {binary.get('architecture', 'N/A')}")
+        parts.append(f"- **Image base**: {binary.get('image_base', 'N/A')}")
+        if binary.get("entry_points"):
+            parts.append(f"- **Entry points**: {', '.join(binary['entry_points'][:10])}")
+        parts.append("")
+
+    # Function summary
+    funcs = results.get("functions", {})
+    func_list = funcs.get("functions", []) if funcs.get("ok") else []
+    r2_funcs = r2_results.get("functions", {})
+    r2_func_list = r2_funcs.get("functions", []) if r2_funcs.get("ok") else []
+    if func_list or r2_func_list:
+        parts.append("## Functions")
+        if func_list:
+            top = sorted(func_list, key=lambda f: f.get("xrefs", 0), reverse=True)[:15]
+            names = [f"{f.get('name')} (xrefs:{f.get('xrefs', 0)})" for f in top]
+            parts.append(f"- **Ghidra** ({len(func_list)} total): {', '.join(names)}")
+        if r2_func_list:
+            top = sorted(r2_func_list, key=lambda f: f.get("size", 0), reverse=True)[:15]
+            names = [f"{f.get('name')} (size:{f.get('size', 0)})" for f in top]
+            parts.append(f"- **Radare2** ({len(r2_func_list)} total): {', '.join(names)}")
+        parts.append("")
+
+    # Imports/Exports
+    imports = binary.get("imports", [])
+    exports = binary.get("exports", [])
+    if imports or exports:
+        parts.append("## Imports / Exports")
+        if imports:
+            parts.append(f"- **Imports** ({len(imports)}): {', '.join(imports[:30])}")
+        if exports:
+            parts.append(f"- **Exports** ({len(exports)}): {', '.join(exports[:30])}")
+        parts.append("")
+
+    # IOCs & Verdict
+    from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict, format_iocs_for_report
+    iocs = extract_iocs_from_state(state)
+    verdict, _, indicators, score = calculate_verdict(iocs, state)
+    parts.append("## Verdict")
+    parts.append(f"- **Verdict**: {verdict} (score: {score})")
+    if indicators:
+        parts.append(f"- **Indicators**: {indicators}")
+    if not iocs.is_empty():
+        parts.append("\n### Extracted IOCs")
+        parts.append(format_iocs_for_report(iocs))
+    parts.append("")
+
+    # Call graph / attack chains
+    cga = results.get("call_graph_analysis", {})
+    r2_cga = r2_results.get("call_graph_analysis", {})
+    for label, analysis in [("Ghidra", cga), ("Radare2", r2_cga)]:
+        if analysis.get("ok"):
+            chains = analysis.get("chains", [])
+            stats = analysis.get("stats", {})
+            parts.append(f"## {label} Call Graph")
+            parts.append(f"- Nodes: {stats.get('nodes', 0)}, Edges: {stats.get('edges', 0)}, Chains: {stats.get('chains', len(chains))}")
+            if chains:
+                parts.append("\n### Attack Chains")
+                for ch in chains[:15]:
+                    parts.append(f"- **[{ch.get('category', '?')}]** {' → '.join(ch.get('path', []))}")
+            parts.append("")
+
+    # Decompiled function names
+    decomp = state.get("decompilation_cache", {})
+    r2_decomp = state.get("r2_decompilation_cache", {})
+    if decomp or r2_decomp:
+        parts.append("## Decompiled Functions")
+        if decomp:
+            parts.append(f"- **Ghidra** ({len(decomp)}): {', '.join(list(decomp.keys())[:20])}")
+        if r2_decomp:
+            parts.append(f"- **Radare2** ({len(r2_decomp)}): {', '.join(list(r2_decomp.keys())[:20])}")
+        parts.append("")
+
+    parts.append("*Use `/query` to ask specific questions about the binary.*")
+    return "\n".join(parts)
+
+
 async def synthesize(state: AgentState) -> AgentState:
     user_query = state.get("user_query", "")
     results = state.get("analysis_results", {})
@@ -596,7 +685,13 @@ Cite actual addresses (0xXXXXXXXX) and actual strings from the analysis data."""
         summary = await call_llm(prompt)
     except Exception as exc:
         logger.error("synthesize_llm_failed", error=str(exc))
-        summary = f"Analysis completed. {len(results.get('functions', {}).get('functions', []))} functions found. Use /query to ask specific questions."
+        summary = f"[LLM error: {exc}]"
+
+    # Graceful fallback: if the LLM failed or timed out, generate a
+    # structured summary from the raw data so results are never blank.
+    if summary.startswith("[LLM error:"):
+        logger.info("synthesize_fallback_summary")
+        summary = _build_fallback_summary(state, summary)
 
     state["summary"] = summary
     state["status"] = "completed"

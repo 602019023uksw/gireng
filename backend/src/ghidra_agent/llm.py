@@ -6,41 +6,89 @@ from litellm import acompletion
 from ghidra_agent.config import settings
 from ghidra_agent.logging import logger
 
-LLM_TIMEOUT_SECONDS = 300  # 5 minutes
+# Configurable via env; default bumped from 300→600 to accommodate large prompts
+LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT", "600"))
+LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
+
+
+async def _single_llm_call(prompt: str, timeout: int) -> str:
+    """Attempt a single LLM call with the given timeout."""
+    api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
+    api_base = os.environ.get("LLM_BASE_URL", "")
+    model_name = settings.llm_model_name
+    litellm_model = model_name if "/" in model_name else f"openai/{model_name}"
+
+    response = await asyncio.wait_for(
+        acompletion(
+            model=litellm_model,
+            messages=[{"role": "user", "content": prompt}],
+            api_base=api_base or None,
+            api_key=api_key or None,
+            timeout=timeout,
+        ),
+        timeout=timeout,
+    )
+
+    choices = response.get("choices") or []
+    if not choices:
+        raise ValueError("no choices returned")
+    return choices[0]["message"]["content"]
 
 
 async def call_llm(prompt: str) -> str:
     api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
     api_base = os.environ.get("LLM_BASE_URL", "")
     model_name = settings.llm_model_name
-
-    # LiteLLM needs provider prefix for custom endpoints
     litellm_model = model_name if "/" in model_name else f"openai/{model_name}"
 
     logger.info("llm_call_start", model=litellm_model, api_base=api_base, prompt_len=len(prompt))
 
-    try:
-        # Use asyncio.wait_for to enforce timeout (LiteLLM's timeout param is unreliable for async)
-        response = await asyncio.wait_for(
-            acompletion(
-                model=litellm_model,
-                messages=[{"role": "user", "content": prompt}],
-                api_base=api_base or None,
-                api_key=api_key or None,
-                timeout=LLM_TIMEOUT_SECONDS,
-            ),
-            timeout=LLM_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.error("llm_call_timeout", timeout=LLM_TIMEOUT_SECONDS)
-        return f"[LLM error: timed out after {LLM_TIMEOUT_SECONDS}s]"
-    except Exception as exc:
-        logger.error("llm_call_failed", error=str(exc))
-        return f"[LLM error: {exc}]"
+    last_error = ""
+    for attempt in range(1, LLM_MAX_RETRIES + 1):
+        try:
+            result = await _single_llm_call(prompt, LLM_TIMEOUT_SECONDS)
+            logger.info("llm_call_complete", attempt=attempt)
+            return result
+        except asyncio.TimeoutError:
+            last_error = f"timed out after {LLM_TIMEOUT_SECONDS}s"
+            logger.warning("llm_call_timeout", timeout=LLM_TIMEOUT_SECONDS, attempt=attempt)
+            # On retry: aggressively truncate prompt to reduce token count
+            if attempt < LLM_MAX_RETRIES and len(prompt) > 15000:
+                prompt = _truncate_prompt(prompt)
+                logger.info("llm_retry_truncated", new_prompt_len=len(prompt), attempt=attempt + 1)
+        except Exception as exc:
+            last_error = str(exc)
+            logger.warning("llm_call_failed", error=last_error, attempt=attempt)
+            if attempt < LLM_MAX_RETRIES:
+                await asyncio.sleep(2)
 
-    logger.info("llm_call_complete")
-    choices = response.get("choices") or []
-    if not choices:
-        logger.warning("llm_empty_choices")
-        return "[LLM error: no choices returned]"
-    return choices[0]["message"]["content"]
+    logger.error("llm_call_exhausted", retries=LLM_MAX_RETRIES, last_error=last_error)
+    return f"[LLM error: {last_error}]"
+
+
+def _truncate_prompt(prompt: str) -> str:
+    """Halve decompilation snippets and trim long sections for retry."""
+    lines = prompt.split("\n")
+    out = []
+    in_decomp_block = False
+    decomp_lines_kept = 0
+    max_decomp_lines = 30  # keep at most 30 lines per function on retry
+
+    for line in lines:
+        if line.startswith("--- Function ") or line.startswith("--- R2 Function:"):
+            in_decomp_block = True
+            decomp_lines_kept = 0
+            out.append(line)
+            continue
+        if in_decomp_block:
+            decomp_lines_kept += 1
+            if decomp_lines_kept > max_decomp_lines:
+                if decomp_lines_kept == max_decomp_lines + 1:
+                    out.append("  ... [truncated for retry]")
+                continue
+            # Check if a new section/function starts
+            if line.startswith("--- ") or line.startswith("=== "):
+                in_decomp_block = False
+        out.append(line)
+
+    return "\n".join(out)
