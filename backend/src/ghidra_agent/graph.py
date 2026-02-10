@@ -28,7 +28,6 @@ from ghidra_agent.tools import (
 
 GHIDRA_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 GHIDRA_AUTO_DECOMPILE_MIN = 10       # Floor: always decompile at least this many
-GHIDRA_AUTO_DECOMPILE_MAX = 25       # Ceiling: cap decompile count for large binaries
 LLM_GHIDRA_DECOMP_LIMIT = 15
 LLM_R2_DECOMP_LIMIT = 10
 LLM_DECOMP_SNIPPET_CHARS = 4000
@@ -268,13 +267,10 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
         reverse=True,
     )
 
-    # Percentage-based limit with floor and ceiling
-    decompile_target = min(
-        GHIDRA_AUTO_DECOMPILE_MAX,
-        max(
-            GHIDRA_AUTO_DECOMPILE_MIN,
-            int(len(meaningful_funcs) * GHIDRA_AUTO_DECOMPILE_PERCENT),
-        ),
+    # Percentage-based limit: decompile 60% of meaningful functions, min 10
+    decompile_target = max(
+        GHIDRA_AUTO_DECOMPILE_MIN,
+        int(len(meaningful_funcs) * GHIDRA_AUTO_DECOMPILE_PERCENT),
     )
 
     # Select functions to decompile: entry point first, then top ranked
