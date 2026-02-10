@@ -81,14 +81,22 @@ def _truncate_prompt(prompt: str) -> str:
             out.append(line)
             continue
         if in_decomp_block:
-            decomp_lines_kept += 1
-            if decomp_lines_kept > max_decomp_lines:
-                if decomp_lines_kept == max_decomp_lines + 1:
-                    out.append("  ... [truncated for retry]")
+            # Check section/function boundaries BEFORE truncating —
+            # otherwise we'd never leave in_decomp_block once past the limit.
+            if line.startswith("--- Function ") or line.startswith("--- R2 Function:"):
+                # New decompile block starts — reset counter
+                decomp_lines_kept = 0
+                out.append(line)
                 continue
-            # Check if a new section/function starts
             if line.startswith("--- ") or line.startswith("=== "):
                 in_decomp_block = False
+                # fall through to append this line normally
+            else:
+                decomp_lines_kept += 1
+                if decomp_lines_kept > max_decomp_lines:
+                    if decomp_lines_kept == max_decomp_lines + 1:
+                        out.append("  ... [truncated for retry]")
+                    continue
         out.append(line)
 
     return "\n".join(out)
