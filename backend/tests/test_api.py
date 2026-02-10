@@ -14,6 +14,8 @@ from tests.sample_data import (
     SAMPLE_HASH,
     SAMPLE_BINARY_INFO_GHIDRA,
     SAMPLE_BINARY_INFO_R2,
+    SAMPLE_CALL_GRAPH,
+    SAMPLE_CALL_GRAPH_ANALYSIS,
     SAMPLE_FUNCTIONS_GHIDRA,
     SAMPLE_FUNCTIONS_R2,
     SAMPLE_STRINGS_GHIDRA,
@@ -33,12 +35,16 @@ def _populated_state():
         "binary": deepcopy(SAMPLE_BINARY_INFO_GHIDRA),
         "functions": deepcopy(SAMPLE_FUNCTIONS_GHIDRA),
         "strings": deepcopy(SAMPLE_STRINGS_GHIDRA),
+        "call_graph": deepcopy(SAMPLE_CALL_GRAPH),
+        "call_graph_analysis": deepcopy(SAMPLE_CALL_GRAPH_ANALYSIS),
     }
     state["decompilation_cache"] = {"main": "int main() { return 0; }"}
     state["r2_analysis_results"] = {
         "binary": deepcopy(SAMPLE_BINARY_INFO_R2),
         "functions": deepcopy(SAMPLE_FUNCTIONS_R2),
         "strings": deepcopy(SAMPLE_STRINGS_R2),
+        "call_graph": deepcopy(SAMPLE_CALL_GRAPH),
+        "call_graph_analysis": deepcopy(SAMPLE_CALL_GRAPH_ANALYSIS),
     }
     state["r2_decompilation_cache"] = {"main": SAMPLE_DECOMPILE_R2["c"]}
     return state
@@ -162,3 +168,31 @@ class TestReportsEndpoint:
         content = resp.json()["content"]
         assert "`main` at `0x401000`" in content
         assert "`sym.send_data` at `0x401200`" in content
+
+    @pytest.mark.asyncio
+    async def test_summary_report_includes_call_graph_sections(self, client: AsyncClient):
+        resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/reports/summary")
+        assert resp.status_code == 200
+        content = resp.json()["content"]
+        assert "Ghidra Call Graph & Attack Chains" in content
+        assert "Radare2 Call Graph & Attack Chains" in content
+
+
+class TestRawResultsEndpoints:
+    @pytest.mark.asyncio
+    async def test_ghidra_results_include_call_graph(self, client: AsyncClient):
+        resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/results/ghidra")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["analyzer"] == "ghidra"
+        assert data["call_graph"]["ok"] is True
+        assert data["call_graph_analysis"]["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_radare2_results_include_call_graph(self, client: AsyncClient):
+        resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/results/radare2")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["analyzer"] == "radare2"
+        assert data["call_graph"]["ok"] is True
+        assert data["call_graph_analysis"]["ok"] is True

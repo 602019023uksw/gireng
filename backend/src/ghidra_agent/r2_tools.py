@@ -1,5 +1,6 @@
 """Radare2 analysis tools — LangChain @tool wrappers around the R2 runner."""
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -46,6 +47,56 @@ def _bin(binary_path: Optional[str]) -> Path:
     if not binary_path:
         raise ValueError("binary_path is required for R2 analysis")
     return Path(binary_path)
+
+
+def _to_int(value: Any) -> Optional[int]:
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            if raw.lower().startswith("0x"):
+                return int(raw, 16)
+            return int(raw, 10)
+        except ValueError:
+            return None
+    return None
+
+
+def _to_hex(value: Any) -> str:
+    parsed = _to_int(value)
+    if parsed is not None:
+        return hex(parsed)
+    return str(value).strip() if value is not None else ""
+
+
+def _is_call_ref(ref: Dict[str, Any]) -> bool:
+    ref_type = str(ref.get("type", "")).lower()
+    if "call" in ref_type or ref_type in {"c", "ucall", "icall"}:
+        return True
+    opcode = str(ref.get("opcode", "")).lower()
+    return "call" in opcode
+
+
+def _extract_target_name(ref: Dict[str, Any], to_addr_hex: str, addr_to_name: Dict[str, str]) -> str:
+    for key in ("to_name", "fcn_name", "name"):
+        val = ref.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+
+    opcode = str(ref.get("opcode", "")).strip()
+    if opcode:
+        match = re.search(r"\bcall(?:q)?\s+([^\s,;]+)", opcode, flags=re.IGNORECASE)
+        if match:
+            token = match.group(1).strip()
+            if token:
+                if token.lower().startswith("0x"):
+                    return addr_to_name.get(token.lower(), token.lower())
+                return token
+
+    return addr_to_name.get(to_addr_hex.lower(), to_addr_hex)
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +196,111 @@ async def r2_list_functions(
         })
 
     return {"ok": True, "functions": functions}
+
+
+@tool
+async def r2_build_call_graph(
+    session_id: str,
+    program_hash: str,
+    binary_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build inter-procedural call graph from Radare2 xrefs (nodes + CALL edges)."""
+    bp = _bin(binary_path)
+    runner = get_runner()
+
+    funcs_result = await runner.run_json_command(bp, "aaa;aflj")
+    if not funcs_result.ok:
+        return {"ok": False, "error": funcs_result.error}
+
+    funcs_raw = funcs_result.payload.get("json", [])
+    if not isinstance(funcs_raw, list):
+        return {"ok": False, "error": "Unexpected aflj output"}
+
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+    entry_points: List[str] = []
+    seen_edges = set()
+    node_names = set()
+    addr_to_name: Dict[str, str] = {}
+
+    for f in funcs_raw:
+        name = str(f.get("name", "")).strip()
+        if not name:
+            continue
+        raw_addr = f.get("addr", f.get("offset", 0))
+        addr_hex = _to_hex(raw_addr)
+        size = int(f.get("size", 0) or 0)
+        nodes.append({"name": name, "address": addr_hex, "size": size})
+        node_names.add(name)
+        if addr_hex:
+            addr_to_name[addr_hex.lower()] = name
+        if name.lower() in {"main", "_start", "entry0", "entry"}:
+            entry_points.append(addr_hex)
+
+    # Prefer concrete binary entry points when available.
+    ep_result = await runner.run_json_command(bp, "iej")
+    if ep_result.ok and isinstance(ep_result.payload.get("json"), list):
+        parsed_eps = []
+        for ep in ep_result.payload["json"]:
+            ep_hex = _to_hex(ep.get("vaddr", ep.get("paddr", 0)))
+            if ep_hex:
+                parsed_eps.append(ep_hex)
+        if parsed_eps:
+            entry_points = parsed_eps + entry_points
+
+    for f in funcs_raw:
+        from_name = str(f.get("name", "")).strip()
+        from_addr_hex = _to_hex(f.get("addr", f.get("offset", 0)))
+        if not from_name or not from_addr_hex:
+            continue
+
+        refs_result = await runner.run_json_command(bp, f"s {from_addr_hex};axfj")
+        if not refs_result.ok:
+            continue
+        refs_raw = refs_result.payload.get("json", [])
+        if not isinstance(refs_raw, list):
+            continue
+
+        for ref in refs_raw:
+            if not isinstance(ref, dict):
+                continue
+            if not _is_call_ref(ref):
+                continue
+
+            to_addr_hex = _to_hex(ref.get("to", ref.get("addr", ref.get("fcn_addr", ref.get("at", "")))))
+            if not to_addr_hex:
+                continue
+
+            to_name = _extract_target_name(ref, to_addr_hex, addr_to_name)
+            if not to_name:
+                continue
+
+            edge_key = (from_name, to_name)
+            if edge_key in seen_edges:
+                continue
+            seen_edges.add(edge_key)
+
+            edges.append(
+                {
+                    "from": from_addr_hex,
+                    "to": to_addr_hex,
+                    "from_name": from_name,
+                    "to_name": to_name,
+                    "type": "CALL",
+                }
+            )
+
+            if to_name not in node_names:
+                node_names.add(to_name)
+                nodes.append({"name": to_name, "address": to_addr_hex, "size": 0})
+                addr_to_name[to_addr_hex.lower()] = to_name
+
+    return {
+        "ok": True,
+        "nodes": nodes,
+        "edges": edges,
+        "entry_points": sorted({ep for ep in entry_points if ep}),
+    }
 
 
 @tool

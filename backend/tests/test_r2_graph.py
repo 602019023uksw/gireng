@@ -9,6 +9,7 @@ from ghidra_agent.state import AgentState
 
 from tests.sample_data import (
     SAMPLE_BINARY_INFO_R2,
+    SAMPLE_CALL_GRAPH,
     SAMPLE_DECOMPILE_R2,
     SAMPLE_FUNCTIONS_R2,
     SAMPLE_STRINGS_R2,
@@ -28,12 +29,14 @@ class TestR2Discovery:
     async def test_populates_r2_results(self, base_state: AgentState):
         with patch("ghidra_agent.r2_graph.r2_analyze_binary") as m_bin, \
              patch("ghidra_agent.r2_graph.r2_list_functions") as m_fn, \
+             patch("ghidra_agent.r2_graph.r2_build_call_graph") as m_cg, \
              patch("ghidra_agent.r2_graph.r2_find_strings") as m_str, \
              patch("ghidra_agent.r2_graph.r2_syscall_analysis") as m_sys, \
              patch("ghidra_agent.r2_graph.r2_decompile_function") as m_dec:
 
             m_bin.ainvoke = _mock_ainvoke(SAMPLE_BINARY_INFO_R2)
             m_fn.ainvoke = _mock_ainvoke(SAMPLE_FUNCTIONS_R2)
+            m_cg.ainvoke = _mock_ainvoke(SAMPLE_CALL_GRAPH)
             m_str.ainvoke = _mock_ainvoke(SAMPLE_STRINGS_R2)
             m_sys.ainvoke = _mock_ainvoke({"ok": True, "syscalls": []})
             m_dec.ainvoke = _mock_ainvoke(SAMPLE_DECOMPILE_R2)
@@ -43,6 +46,8 @@ class TestR2Discovery:
 
         assert result["r2_analysis_results"]["binary"]["ok"] is True
         assert result["r2_analysis_results"]["functions"]["ok"] is True
+        assert result["r2_analysis_results"]["call_graph"]["ok"] is True
+        assert result["r2_analysis_results"]["call_graph_analysis"]["ok"] is True
         assert result["r2_analysis_results"]["strings"]["ok"] is True
         assert result["r2_analysis_results"]["syscalls"]["ok"] is True
         assert "r2_discovery_completed" in result["reasoning_trace"]
@@ -51,12 +56,14 @@ class TestR2Discovery:
     async def test_handles_binary_failure(self, base_state: AgentState):
         with patch("ghidra_agent.r2_graph.r2_analyze_binary") as m_bin, \
              patch("ghidra_agent.r2_graph.r2_list_functions") as m_fn, \
+             patch("ghidra_agent.r2_graph.r2_build_call_graph") as m_cg, \
              patch("ghidra_agent.r2_graph.r2_find_strings") as m_str, \
              patch("ghidra_agent.r2_graph.r2_syscall_analysis") as m_sys, \
              patch("ghidra_agent.r2_graph.r2_decompile_function") as m_dec:
 
             m_bin.ainvoke = _mock_ainvoke({"ok": False, "error": "container down"})
             m_fn.ainvoke = _mock_ainvoke(SAMPLE_FUNCTIONS_R2)
+            m_cg.ainvoke = _mock_ainvoke(SAMPLE_CALL_GRAPH)
             m_str.ainvoke = _mock_ainvoke(SAMPLE_STRINGS_R2)
             m_sys.ainvoke = _mock_ainvoke({"ok": True, "syscalls": []})
             m_dec.ainvoke = _mock_ainvoke(SAMPLE_DECOMPILE_R2)
@@ -71,12 +78,14 @@ class TestR2Discovery:
     async def test_auto_decompiles_top_functions(self, base_state: AgentState):
         with patch("ghidra_agent.r2_graph.r2_analyze_binary") as m_bin, \
              patch("ghidra_agent.r2_graph.r2_list_functions") as m_fn, \
+             patch("ghidra_agent.r2_graph.r2_build_call_graph") as m_cg, \
              patch("ghidra_agent.r2_graph.r2_find_strings") as m_str, \
              patch("ghidra_agent.r2_graph.r2_syscall_analysis") as m_sys, \
              patch("ghidra_agent.r2_graph.r2_decompile_function") as m_dec:
 
             m_bin.ainvoke = _mock_ainvoke(SAMPLE_BINARY_INFO_R2)
             m_fn.ainvoke = _mock_ainvoke(SAMPLE_FUNCTIONS_R2)
+            m_cg.ainvoke = _mock_ainvoke(SAMPLE_CALL_GRAPH)
             m_str.ainvoke = _mock_ainvoke(SAMPLE_STRINGS_R2)
             m_sys.ainvoke = _mock_ainvoke({"ok": True, "syscalls": []})
             m_dec.ainvoke = _mock_ainvoke(SAMPLE_DECOMPILE_R2)
@@ -159,12 +168,14 @@ class TestRunR2Pipeline:
         """Pipeline without a focus target runs only discovery."""
         with patch("ghidra_agent.r2_graph.r2_analyze_binary") as m_bin, \
              patch("ghidra_agent.r2_graph.r2_list_functions") as m_fn, \
+             patch("ghidra_agent.r2_graph.r2_build_call_graph") as m_cg, \
              patch("ghidra_agent.r2_graph.r2_find_strings") as m_str, \
              patch("ghidra_agent.r2_graph.r2_syscall_analysis") as m_sys, \
              patch("ghidra_agent.r2_graph.r2_decompile_function") as m_dec:
 
             m_bin.ainvoke = _mock_ainvoke(SAMPLE_BINARY_INFO_R2)
             m_fn.ainvoke = _mock_ainvoke(SAMPLE_FUNCTIONS_R2)
+            m_cg.ainvoke = _mock_ainvoke(SAMPLE_CALL_GRAPH)
             m_str.ainvoke = _mock_ainvoke(SAMPLE_STRINGS_R2)
             m_sys.ainvoke = _mock_ainvoke({"ok": True, "syscalls": []})
             m_dec.ainvoke = _mock_ainvoke(SAMPLE_DECOMPILE_R2)
@@ -183,6 +194,7 @@ class TestRunR2Pipeline:
 
         with patch("ghidra_agent.r2_graph.r2_analyze_binary") as m_bin, \
              patch("ghidra_agent.r2_graph.r2_list_functions") as m_fn, \
+             patch("ghidra_agent.r2_graph.r2_build_call_graph") as m_cg, \
              patch("ghidra_agent.r2_graph.r2_find_strings") as m_str, \
              patch("ghidra_agent.r2_graph.r2_syscall_analysis") as m_sys, \
              patch("ghidra_agent.r2_graph.r2_decompile_function") as m_dec, \
@@ -191,6 +203,7 @@ class TestRunR2Pipeline:
 
             m_bin.ainvoke = _mock_ainvoke(SAMPLE_BINARY_INFO_R2)
             m_fn.ainvoke = _mock_ainvoke(SAMPLE_FUNCTIONS_R2)
+            m_cg.ainvoke = _mock_ainvoke(SAMPLE_CALL_GRAPH)
             m_str.ainvoke = _mock_ainvoke(SAMPLE_STRINGS_R2)
             m_sys.ainvoke = _mock_ainvoke({"ok": True, "syscalls": []})
             m_dec.ainvoke = _mock_ainvoke(SAMPLE_DECOMPILE_R2)

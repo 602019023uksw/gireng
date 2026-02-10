@@ -148,6 +148,21 @@ async def query(request: QueryRequest) -> JSONResponse:
         func_desc = [f"{f.get('name')}(xrefs:{f.get('xrefs', 0)})" for f in sorted_funcs[:50]]
         context_parts.append(f"Functions ({len(funcs['functions'])} total): {', '.join(func_desc)}")
 
+    gh_call_graph = results.get("call_graph", {})
+    gh_call_graph_analysis = results.get("call_graph_analysis", {})
+    if gh_call_graph.get("ok"):
+        context_parts.append(
+            f"Ghidra Call Graph: nodes={len(gh_call_graph.get('nodes', []))}, edges={len(gh_call_graph.get('edges', []))}"
+        )
+    if gh_call_graph_analysis.get("ok"):
+        chains = gh_call_graph_analysis.get("chains", [])
+        if chains:
+            chain_desc = [
+                f"[{c.get('category', 'Unknown')}] {' -> '.join(str(p) for p in c.get('path', []))}"
+                for c in chains[:12]
+            ]
+            context_parts.append(f"Ghidra Attack Chains ({len(chains)}): " + " | ".join(chain_desc))
+
     strings_data = results.get("strings", {})
     if strings_data.get("ok") and strings_data.get("strings"):
         str_vals = [s.get("value", str(s)) if isinstance(s, dict) else str(s) for s in strings_data["strings"][:50]]
@@ -169,6 +184,20 @@ async def query(request: QueryRequest) -> JSONResponse:
                 context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'][:30])}")
             if r2_binary.get("exports"):
                 context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'][:30])}")
+        r2_call_graph = r2_results.get("call_graph", {})
+        r2_call_graph_analysis = r2_results.get("call_graph_analysis", {})
+        if r2_call_graph.get("ok"):
+            context_parts.append(
+                f"R2 Call Graph: nodes={len(r2_call_graph.get('nodes', []))}, edges={len(r2_call_graph.get('edges', []))}"
+            )
+        if r2_call_graph_analysis.get("ok"):
+            chains = r2_call_graph_analysis.get("chains", [])
+            if chains:
+                chain_desc = [
+                    f"[{c.get('category', 'Unknown')}] {' -> '.join(str(p) for p in c.get('path', []))}"
+                    for c in chains[:12]
+                ]
+                context_parts.append(f"R2 Attack Chains ({len(chains)}): " + " | ".join(chain_desc))
         r2_syscalls = r2_results.get("syscalls", {})
         if r2_syscalls.get("ok") and r2_syscalls.get("syscalls"):
             syscall_desc = [f"{s.get('name')}#{s.get('number')}" for s in r2_syscalls.get("syscalls", [])[:30]]
@@ -368,11 +397,14 @@ async def ghidra_results(program_hash: str) -> JSONResponse:
     """Return raw Ghidra analysis results (functions, strings, binary info, decompiled code)."""
     for state in store.sessions.values():
         if state["program_hash"] == program_hash:
+            gh = state.get("analysis_results", {})
             return JSONResponse({
                 "analyzer": "ghidra",
-                "binary": state.get("analysis_results", {}).get("binary", {}),
-                "functions": state.get("analysis_results", {}).get("functions", {}),
-                "strings": state.get("analysis_results", {}).get("strings", {}),
+                "binary": gh.get("binary", {}),
+                "functions": gh.get("functions", {}),
+                "strings": gh.get("strings", {}),
+                "call_graph": gh.get("call_graph", {}),
+                "call_graph_analysis": gh.get("call_graph_analysis", {}),
                 "decompiled": state.get("decompilation_cache", {}),
             })
     return JSONResponse({"error": "not_found"}, status_code=404)
@@ -391,6 +423,8 @@ async def radare2_results(program_hash: str) -> JSONResponse:
                 "binary": r2.get("binary", {}),
                 "functions": r2.get("functions", {}),
                 "strings": r2.get("strings", {}),
+                "call_graph": r2.get("call_graph", {}),
+                "call_graph_analysis": r2.get("call_graph_analysis", {}),
                 "decompiled": state.get("r2_decompilation_cache", {}),
             })
     return JSONResponse({"error": "not_found"}, status_code=404)

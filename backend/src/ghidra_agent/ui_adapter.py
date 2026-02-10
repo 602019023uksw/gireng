@@ -33,6 +33,21 @@ def _analyzer_details(state: AgentState) -> Dict[str, Any]:
         static_parts.append(f"\nFunctions ({len(funcs['functions'])} total):")
         for f in sorted_funcs[:20]:
             static_parts.append(f"  - {f.get('name')} @ {f.get('address')} (xrefs: {f.get('xrefs', 0)})")
+
+    call_graph_analysis = findings.get("call_graph_analysis", {})
+    if call_graph_analysis.get("ok"):
+        static_parts.append("\nCall Graph:")
+        stats = call_graph_analysis.get("stats", {})
+        static_parts.append(
+            f"  - Nodes: {stats.get('nodes', 0)}, Edges: {stats.get('edges', 0)}, Chains: {stats.get('chains', 0)}"
+        )
+        entries = call_graph_analysis.get("entries", [])
+        if entries:
+            static_parts.append(f"  - Entry Points: {', '.join(entries[:10])}")
+        chains = call_graph_analysis.get("chains", [])
+        for chain in chains[:10]:
+            path = " -> ".join(chain.get("path", []))
+            static_parts.append(f"  - [{chain.get('category', 'Unknown')}] {path}")
     
     # Build behavioral analysis
     strings_data = findings.get("strings", {})
@@ -121,6 +136,21 @@ def _r2_analyzer_details(state: AgentState) -> Dict[str, Any]:
         for f in sorted_funcs[:20]:
             static_parts.append(f"  - {f.get('name')} @ {f.get('address')} (size: {f.get('size', 0)})")
 
+    call_graph_analysis = findings.get("call_graph_analysis", {})
+    if call_graph_analysis.get("ok"):
+        static_parts.append("\nCall Graph:")
+        stats = call_graph_analysis.get("stats", {})
+        static_parts.append(
+            f"  - Nodes: {stats.get('nodes', 0)}, Edges: {stats.get('edges', 0)}, Chains: {stats.get('chains', 0)}"
+        )
+        entries = call_graph_analysis.get("entries", [])
+        if entries:
+            static_parts.append(f"  - Entry Points: {', '.join(entries[:10])}")
+        chains = call_graph_analysis.get("chains", [])
+        for chain in chains[:10]:
+            path = " -> ".join(chain.get("path", []))
+            static_parts.append(f"  - [{chain.get('category', 'Unknown')}] {path}")
+
     syscalls = findings.get("syscalls", {})
     if syscalls.get("ok") and syscalls.get("syscalls"):
         static_parts.append(f"\nSyscalls ({len(syscalls['syscalls'])} total):")
@@ -179,7 +209,52 @@ def build_report_content(state: AgentState, report_id: str) -> Dict[str, Any]:
         content = _build_r2_report_markdown(state)
         return {"id": report_id, "name": "Radare2 Report", "timestamp": 0, "content": content}
     summary = state.get("summary", "No summary available.")
+    call_graph_sections = []
+    gh_call_graph = _build_call_graph_markdown(
+        "Ghidra",
+        state.get("analysis_results", {}).get("call_graph_analysis", {}),
+    )
+    r2_call_graph = _build_call_graph_markdown(
+        "Radare2",
+        state.get("r2_analysis_results", {}).get("call_graph_analysis", {}),
+    )
+    if gh_call_graph:
+        call_graph_sections.append(gh_call_graph)
+    if r2_call_graph:
+        call_graph_sections.append(r2_call_graph)
+    if call_graph_sections:
+        summary = summary.rstrip() + "\n\n" + "\n\n".join(call_graph_sections)
     return {"id": report_id, "name": "Analysis Report", "timestamp": 0, "content": summary}
+
+
+def _build_call_graph_markdown(source: str, analysis: Dict[str, Any]) -> str:
+    if not analysis or not analysis.get("ok"):
+        return ""
+    stats = analysis.get("stats", {})
+    entries = analysis.get("entries", []) or []
+    chains = analysis.get("chains", []) or []
+    adjacency = analysis.get("adjacency", []) or []
+    lines = [f"## {source} Call Graph & Attack Chains", ""]
+    lines.append(
+        f"- **Nodes:** {stats.get('nodes', 0)} | **Edges:** {stats.get('edges', 0)} | **Chains:** {stats.get('chains', len(chains))}"
+    )
+    if entries:
+        lines.append(f"- **Entry Points:** {', '.join(entries[:10])}")
+    if chains:
+        lines.append("")
+        lines.append("### Attack Chains")
+        for chain in chains[:15]:
+            path = " -> ".join(chain.get("path", []))
+            lines.append(f"- **[{chain.get('category', 'Unknown')}]** {path}")
+    if adjacency:
+        lines.append("")
+        lines.append("### Adjacency (Who Calls Whom)")
+        for row in adjacency[:20]:
+            fn = row.get("function", "")
+            calls = row.get("calls", []) or []
+            calls_text = ", ".join(calls[:10]) if calls else "-"
+            lines.append(f"- `{fn}` -> {calls_text}")
+    return "\n".join(lines)
 
 
 def _build_r2_report_markdown(state: AgentState) -> str:
@@ -260,6 +335,11 @@ def _build_r2_report_markdown(state: AgentState) -> str:
         parts.append(f"## Syscalls Detected ({len(sc_list)})")
         for sc in sc_list[:30]:
             parts.append(f"- `{sc.get('name', 'unknown')}` (#{sc.get('number', '?')}) at `{sc.get('address', 'N/A')}`")
+        parts.append("")
+
+    call_graph_section = _build_call_graph_markdown("Radare2", r2.get("call_graph_analysis", {}))
+    if call_graph_section:
+        parts.append(call_graph_section)
         parts.append("")
 
     if len(parts) <= 1:

@@ -269,3 +269,50 @@ class TestR2SyscallAnalysis:
         assert result["ok"] is True
         assert len(result["syscalls"]) == 2
         assert result["syscalls"][0]["name"] == "read"
+
+
+class TestR2BuildCallGraph:
+    @pytest.mark.asyncio
+    async def test_success(self):
+        from ghidra_agent.r2_tools import r2_build_call_graph
+
+        funcs = [
+            {"name": "main", "offset": 0x401000, "size": 256},
+            {"name": "sym.worker", "offset": 0x401100, "size": 128},
+        ]
+        refs_main = [
+            {"type": "CALL", "to": 0x401100, "opcode": "call sym.worker"},
+            {"type": "CALL", "to": 0x403010, "opcode": "call sym.imp.connect"},
+        ]
+        refs_worker = [
+            {"type": "CALL", "to": 0x403018, "opcode": "call sym.imp.send"},
+        ]
+        mock_runner = _make_mock_runner()
+        mock_runner.run_json_command = AsyncMock(
+            side_effect=[
+                _ok_json(funcs),                 # aaa;aflj
+                _ok_json([{"vaddr": 0x401000}]), # aaa;iej
+                _ok_json(refs_main),             # aaa;s main;axfj
+                _ok_json(refs_worker),           # aaa;s worker;axfj
+            ]
+        )
+        with patch("ghidra_agent.r2_tools.get_runner", return_value=mock_runner):
+            result = await r2_build_call_graph.ainvoke(TOOL_ARGS)
+
+        assert result["ok"] is True
+        assert len(result["nodes"]) >= 4  # includes imported call targets
+        assert any(e["from_name"] == "main" and e["to_name"] == "sym.worker" for e in result["edges"])
+        assert any("sym.imp.connect" in e["to_name"] for e in result["edges"])
+        assert "0x401000" in result["entry_points"]
+
+    @pytest.mark.asyncio
+    async def test_failure(self):
+        from ghidra_agent.r2_tools import r2_build_call_graph
+
+        mock_runner = _make_mock_runner()
+        mock_runner.run_json_command = AsyncMock(return_value=_err("aflj failed"))
+        with patch("ghidra_agent.r2_tools.get_runner", return_value=mock_runner):
+            result = await r2_build_call_graph.ainvoke(TOOL_ARGS)
+
+        assert result["ok"] is False
+        assert "aflj failed" in result["error"]

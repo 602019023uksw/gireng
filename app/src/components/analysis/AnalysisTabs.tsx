@@ -1,14 +1,15 @@
 import { motion } from 'framer-motion';
 
 interface AnalysisTabsProps {
-  activeTab: 'overview' | 'analyzers';
-  onTabChange: (tab: 'overview' | 'analyzers') => void;
+  activeTab: 'overview' | 'analyzers' | 'callgraph';
+  onTabChange: (tab: 'overview' | 'analyzers' | 'callgraph') => void;
 }
 
 export function AnalysisTabs({ activeTab, onTabChange }: AnalysisTabsProps) {
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'analyzers', label: 'Analyzers Details' },
+    { id: 'callgraph', label: 'Call Graph' },
   ] as const;
 
   return (

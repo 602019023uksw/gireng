@@ -26,6 +26,9 @@ import {
   getFileContent,
   getReports,
   getReportContent,
+  getGhidraResults,
+  getRadare2Results,
+  type CallGraphAnalysis,
 } from '@/lib/api';
 
 import {
@@ -39,6 +42,7 @@ import type { Message, Analyzer, FileNode, CodeFile, Report, Analysis } from '@/
 
 type ViewState = 'welcome' | 'chat' | 'analysis';
 type RightPanelTab = 'resources' | 'code' | 'report';
+type CallGraphPanel = { source: 'Ghidra' | 'Radare2'; analysis: CallGraphAnalysis };
 
 const currentUser = { name: '' };
 
@@ -46,7 +50,7 @@ function App() {
   const [viewState, setViewState] = useState<ViewState>('welcome');
   const [selectedModelId, setSelectedModelId] = useState('glm-4.7');
   const [messages, setMessages] = useState<Message[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'analyzers'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analyzers' | 'callgraph'>('overview');
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('resources');
   const [activeCodeFileId, setActiveCodeFileId] = useState<string>('');
@@ -60,6 +64,7 @@ function App() {
   const [reports, setReports] = useState<Report[]>([]);
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [activeReport, setActiveReport] = useState<Report | null>(null);
+  const [callGraphPanels, setCallGraphPanels] = useState<CallGraphPanel[]>([]);
 
   // Track current session
   const sessionRef = useRef<{ id: string; hash: string } | null>(null);
@@ -81,10 +86,12 @@ function App() {
   // Fetch all side-panel data for a completed analysis
   const fetchAnalysisData = useCallback(async (hash: string) => {
     try {
-      const [analyzersData, filesData, reportsData] = await Promise.all([
+      const [analyzersData, filesData, reportsData, ghidraResults, radare2Results] = await Promise.all([
         getAnalyzers(hash),
         getFiles(hash),
         getReports(hash),
+        getGhidraResults(hash),
+        getRadare2Results(hash),
       ]);
       setAnalyzers(analyzersData || []);
       if (filesData?.children) {
@@ -124,6 +131,17 @@ function App() {
         verdict: overallVerdict,
         threatScore: threatScoreMap[overallVerdict] ?? 0,
       }));
+
+      const callGraphData: CallGraphPanel[] = [];
+      const ghAnalysis = ghidraResults?.call_graph_analysis;
+      if (ghAnalysis?.ok) {
+        callGraphData.push({ source: 'Ghidra', analysis: ghAnalysis });
+      }
+      const r2Analysis = radare2Results?.call_graph_analysis;
+      if (r2Analysis?.ok) {
+        callGraphData.push({ source: 'Radare2', analysis: r2Analysis });
+      }
+      setCallGraphPanels(callGraphData);
 
       setAnalyses([{
         id: hash,
@@ -289,6 +307,7 @@ function App() {
     setCodeFiles([]);
     setReports([]);
     setAnalyses([]);
+    setCallGraphPanels([]);
     setViewState('welcome');
   };
 
@@ -532,6 +551,7 @@ function App() {
                             </p>
                           )}
                         </AnalysisSection>
+
                       </motion.div>
                     )}
 
@@ -542,6 +562,68 @@ function App() {
                         transition={{ duration: 0.3 }}
                       >
                         <AnalyzerList analyzers={analyzers} />
+                      </motion.div>
+                    )}
+
+                    {activeTab === 'callgraph' && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <AnalysisSection title="Call Graph & Attack Chains">
+                          {callGraphPanels.length > 0 ? (
+                            <div className="space-y-4">
+                              {callGraphPanels.map((panel) => {
+                                const stats = panel.analysis.stats || {};
+                                const entries = panel.analysis.entries || [];
+                                const chains = panel.analysis.chains || [];
+
+                                return (
+                                  <div
+                                    key={panel.source}
+                                    className="rounded-xl p-4"
+                                    style={{
+                                      background: 'rgba(10, 16, 28, 0.45)',
+                                      border: '1px solid rgba(100, 120, 180, 0.18)',
+                                    }}
+                                  >
+                                    <h4 className="text-sm font-semibold text-text-primary mb-2">{panel.source}</h4>
+                                    <p className="text-xs text-text-secondary">
+                                      Nodes: {stats.nodes ?? 0} | Edges: {stats.edges ?? 0} | Chains: {stats.chains ?? chains.length}
+                                    </p>
+                                    {entries.length > 0 && (
+                                      <p className="text-xs text-text-muted mt-1">
+                                        Entry points: {entries.slice(0, 8).join(', ')}
+                                      </p>
+                                    )}
+
+                                    <div className="mt-3">
+                                      {chains.length > 0 ? (
+                                        <ul className="space-y-1">
+                                          {chains.slice(0, 12).map((chain, idx) => (
+                                            <li key={`${panel.source}-${idx}`} className="text-xs text-text-secondary">
+                                              <span className="text-accent-blue">[{chain.category || 'Unknown'}]</span>{' '}
+                                              {(chain.path || []).join(' -> ')}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <p className="text-xs text-text-muted italic">
+                                          No sink-reaching attack chains were detected.
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-text-muted italic">
+                              Call graph data is not available for this analysis.
+                            </p>
+                          )}
+                        </AnalysisSection>
                       </motion.div>
                     )}
                   </div>

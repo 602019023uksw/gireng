@@ -17,6 +17,7 @@ from tests.sample_data import (
     SAMPLE_HASH,
     SAMPLE_BINARY_INFO_GHIDRA,
     SAMPLE_BINARY_INFO_R2,
+    SAMPLE_CALL_GRAPH,
     SAMPLE_FUNCTIONS_GHIDRA,
     SAMPLE_FUNCTIONS_R2,
     SAMPLE_STRINGS_GHIDRA,
@@ -55,6 +56,8 @@ def _ghidra_tool_mocks():
             ainvoke=AsyncMock(return_value=SAMPLE_BINARY_INFO_GHIDRA)),
         "ghidra_agent.graph.list_functions": AsyncMock(
             ainvoke=AsyncMock(return_value=SAMPLE_FUNCTIONS_GHIDRA)),
+        "ghidra_agent.graph.build_call_graph": AsyncMock(
+            ainvoke=AsyncMock(return_value=SAMPLE_CALL_GRAPH)),
         "ghidra_agent.graph.find_strings": AsyncMock(
             ainvoke=AsyncMock(return_value=SAMPLE_STRINGS_GHIDRA)),
         "ghidra_agent.graph.decompile_function": AsyncMock(
@@ -81,6 +84,8 @@ def _r2_tool_mocks():
             ainvoke=AsyncMock(return_value=SAMPLE_BINARY_INFO_R2)),
         "ghidra_agent.r2_graph.r2_list_functions": AsyncMock(
             ainvoke=AsyncMock(return_value=SAMPLE_FUNCTIONS_R2)),
+        "ghidra_agent.r2_graph.r2_build_call_graph": AsyncMock(
+            ainvoke=AsyncMock(return_value=SAMPLE_CALL_GRAPH)),
         "ghidra_agent.r2_graph.r2_find_strings": AsyncMock(
             ainvoke=AsyncMock(return_value=SAMPLE_STRINGS_R2)),
         "ghidra_agent.r2_graph.r2_decompile_function": AsyncMock(
@@ -133,12 +138,16 @@ class TestE2EDualAgentFlow:
                 assert state["analysis_results"]["binary"]["ok"] is True
                 assert state["analysis_results"]["functions"]["ok"] is True
                 assert state["analysis_results"]["strings"]["ok"] is True
+                assert state["analysis_results"]["call_graph"]["ok"] is True
+                assert state["analysis_results"]["call_graph_analysis"]["ok"] is True
                 assert state["analysis_results"]["iocs"]["ok"] is True
 
                 # Verify R2 results
                 assert state["r2_analysis_results"]["binary"]["ok"] is True
                 assert state["r2_analysis_results"]["functions"]["ok"] is True
                 assert state["r2_analysis_results"]["strings"]["ok"] is True
+                assert state["r2_analysis_results"]["call_graph"]["ok"] is True
+                assert state["r2_analysis_results"]["call_graph_analysis"]["ok"] is True
                 assert state["r2_analysis_results"]["syscalls"]["ok"] is True
                 assert "discovery_completed" in state["reasoning_trace"]
 
@@ -193,6 +202,8 @@ class TestE2EDualAgentFlow:
             "ghidra_agent.r2_graph.r2_analyze_binary": AsyncMock(
                 ainvoke=AsyncMock(side_effect=Exception("container not running"))),
             "ghidra_agent.r2_graph.r2_list_functions": AsyncMock(
+                ainvoke=AsyncMock(side_effect=Exception("container not running"))),
+            "ghidra_agent.r2_graph.r2_build_call_graph": AsyncMock(
                 ainvoke=AsyncMock(side_effect=Exception("container not running"))),
             "ghidra_agent.r2_graph.r2_find_strings": AsyncMock(
                 ainvoke=AsyncMock(side_effect=Exception("container not running"))),

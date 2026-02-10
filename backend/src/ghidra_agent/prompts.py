@@ -67,6 +67,8 @@ Step-by-step execution flow:
 3. **Main Operation**: [Core malware activity]
 4. **Persistence**: [How it survives reboot]
 
+If call graph / attack-chain data is provided, derive this section from those paths (entry -> sink).
+
 ### 7. C2 & Networking
 If applicable:
 - **C2 Servers**: [IPs/domains found]

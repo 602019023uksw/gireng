@@ -350,6 +350,60 @@ def _render_iocs(iocs: List[Dict[str, str]]) -> str:
     return html
 
 
+def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
+    """Render call-graph adjacency and attack chains for one analyzer."""
+    if not analysis or not analysis.get("ok"):
+        return f'<div class="text-gray-500 italic mb-4">{escape(source)}: call graph data not available.</div>'
+
+    stats = analysis.get("stats", {})
+    entries = analysis.get("entries", []) or []
+    chains = analysis.get("chains", []) or []
+    cycles = analysis.get("cycles", []) or []
+    adjacency = analysis.get("adjacency", []) or []
+
+    parts = [
+        f'<h3>{escape(source)} Call Graph</h3>',
+        (
+            f'<p class="mb-3"><strong>Nodes:</strong> {stats.get("nodes", 0)} | '
+            f'<strong>Edges:</strong> {stats.get("edges", 0)} | '
+            f'<strong>Entries:</strong> {escape(", ".join(entries[:10])) or "N/A"} | '
+            f'<strong>Attack Chains:</strong> {stats.get("chains", len(chains))}</p>'
+        ),
+    ]
+
+    if chains:
+        parts.append('<h4>Attack Chains</h4>')
+        parts.append('<ul class="list-disc pl-6 mb-4">')
+        for chain in chains[:20]:
+            category = escape(str(chain.get("category", "Unknown")))
+            path = " &rarr; ".join(escape(str(p)) for p in chain.get("path", []))
+            parts.append(f'<li class="mb-2"><strong>[{category}]</strong> {path}</li>')
+        parts.append('</ul>')
+    else:
+        parts.append('<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>')
+
+    if adjacency:
+        parts.append('<h4>Adjacency (Who Calls Whom)</h4>')
+        parts.append('<table class="w-full text-left border-collapse">')
+        parts.append('<tr><th>Function</th><th>Calls</th></tr>')
+        for row in adjacency[:30]:
+            fn = escape(str(row.get("function", "")))
+            calls = row.get("calls", []) or []
+            calls_text = escape(", ".join(str(c) for c in calls[:12])) if calls else "-"
+            parts.append(f'<tr><td><code>{fn}</code></td><td>{calls_text}</td></tr>')
+        parts.append('</table>')
+
+    if cycles:
+        cycle_lines = [escape(" -> ".join(str(n) for n in c)) for c in cycles[:10]]
+        parts.append('<h4>Detected Cycles</h4>')
+        parts.append('<ul class="list-disc pl-6 mb-4">')
+        for c in cycle_lines:
+            parts.append(f'<li class="mb-2"><code>{c}</code></li>')
+        parts.append('</ul>')
+
+    return "\n".join(parts)
+
+
 def build_report_html(state: Dict[str, Any]) -> str:
     """Build HTML report matching professional template format."""
     
@@ -364,6 +418,8 @@ def build_report_html(state: Dict[str, Any]) -> str:
     r2_funcs = r2_results.get("functions", {})
     strings_data = analysis_results.get("strings", {})
     r2_strings = r2_results.get("strings", {})
+    gh_call_graph_analysis = analysis_results.get("call_graph_analysis", {})
+    r2_call_graph_analysis = r2_results.get("call_graph_analysis", {})
     
     program_hash = state.get("program_hash", "unknown")
     summary_text = state.get("summary", "")
@@ -407,6 +463,11 @@ def build_report_html(state: Dict[str, Any]) -> str:
         "recommendations": _extract_recommendations(summary_text),
         "iocs": _parse_iocs_for_template(iocs),
         "conclusion": _markdown_to_html(_extract_section(summary_text, "Conclusion")),
+        "call_graph": (
+            _render_call_graph_section("Ghidra", gh_call_graph_analysis)
+            + "\n"
+            + _render_call_graph_section("Radare2", r2_call_graph_analysis)
+        ),
     }
     
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -495,6 +556,12 @@ def build_report_html(state: Dict[str, Any]) -> str:
             <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
                 {report_data['conclusion'] if report_data['conclusion'] else f'<p>This binary has been classified as <strong>{verdict}</strong> with a risk score of {score}/100. Review the technical analysis and IOCs above for detection and response guidance.</p>'}
             </div>
+        </div>
+
+        <!-- Call Graph -->
+        <div>
+            <h2 class="section-header">12. Call Graph &amp; Attack Chains</h2>
+            <div class="markdown-content">{report_data['call_graph']}</div>
         </div>
     '''
     
@@ -848,6 +915,8 @@ def build_report_text(state: Dict[str, Any]) -> str:
     r2_binary = state.get("r2_analysis_results", {}).get("binary", {})
     funcs = state.get("analysis_results", {}).get("functions", {})
     r2_funcs = state.get("r2_analysis_results", {}).get("functions", {})
+    gh_call_graph_analysis = state.get("analysis_results", {}).get("call_graph_analysis", {})
+    r2_call_graph_analysis = state.get("r2_analysis_results", {}).get("call_graph_analysis", {})
     decomp = state.get("decompilation_cache", {})
     r2_decomp = state.get("r2_decompilation_cache", {})
 
@@ -906,6 +975,36 @@ def build_report_text(state: Dict[str, Any]) -> str:
         summary,
         "",
     ])
+
+    def _append_call_graph_text(source: str, analysis: Dict[str, Any]) -> None:
+        if not analysis or not analysis.get("ok"):
+            return
+        stats = analysis.get("stats", {})
+        entries = analysis.get("entries", []) or []
+        chains = analysis.get("chains", []) or []
+        lines.append(f"{source}: nodes={stats.get('nodes', 0)}, edges={stats.get('edges', 0)}, entries={len(entries)}")
+        if entries:
+            lines.append(f"  Entry points: {', '.join(entries[:10])}")
+        if chains:
+            lines.append("  Attack chains:")
+            for chain in chains[:20]:
+                path = " -> ".join(chain.get("path", []))
+                lines.append(f"    - [{chain.get('category', 'Unknown')}] {path}")
+        else:
+            lines.append("  Attack chains: none detected")
+        cycles = analysis.get("cycles", []) or []
+        if cycles:
+            lines.append("  Cycles:")
+            for cycle in cycles[:10]:
+                lines.append(f"    - {' -> '.join(cycle)}")
+        lines.append("")
+
+    if gh_call_graph_analysis.get("ok") or r2_call_graph_analysis.get("ok"):
+        lines.append("-" * 70)
+        lines.append("CALL GRAPH & ATTACK CHAINS")
+        lines.append("-" * 70)
+        _append_call_graph_text("Ghidra", gh_call_graph_analysis)
+        _append_call_graph_text("Radare2", r2_call_graph_analysis)
 
     # Decompiled code appendix
     if decomp:

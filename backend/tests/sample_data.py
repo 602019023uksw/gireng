@@ -66,6 +66,40 @@ SAMPLE_DISASM_R2: Dict[str, Any] = {
     ],
 }
 
+SAMPLE_CALL_GRAPH: Dict[str, Any] = {
+    "ok": True,
+    "nodes": [
+        {"name": "main", "address": "0x401000", "size": 256},
+        {"name": "sym.send_data", "address": "0x401200", "size": 128},
+        {"name": "sym.connect_c2", "address": "0x401300", "size": 96},
+        {"name": "sym.imp.connect", "address": "0x403010", "size": 0},
+        {"name": "sym.imp.send", "address": "0x403018", "size": 0},
+    ],
+    "edges": [
+        {"from": "0x401000", "to": "0x401300", "from_name": "main", "to_name": "sym.connect_c2", "type": "CALL"},
+        {"from": "0x401000", "to": "0x401200", "from_name": "main", "to_name": "sym.send_data", "type": "CALL"},
+        {"from": "0x401300", "to": "0x403010", "from_name": "sym.connect_c2", "to_name": "sym.imp.connect", "type": "CALL"},
+        {"from": "0x401200", "to": "0x403018", "from_name": "sym.send_data", "to_name": "sym.imp.send", "type": "CALL"},
+    ],
+    "entry_points": ["0x401000"],
+}
+
+SAMPLE_CALL_GRAPH_ANALYSIS: Dict[str, Any] = {
+    "ok": True,
+    "entries": ["main"],
+    "adjacency": [
+        {"function": "main", "calls": ["sym.connect_c2", "sym.send_data"]},
+        {"function": "sym.connect_c2", "calls": ["sym.imp.connect"]},
+        {"function": "sym.send_data", "calls": ["sym.imp.send"]},
+    ],
+    "chains": [
+        {"category": "Network", "sink": "sym.imp.connect", "path": ["main", "sym.connect_c2", "sym.imp.connect"]},
+        {"category": "Network", "sink": "sym.imp.send", "path": ["main", "sym.send_data", "sym.imp.send"]},
+    ],
+    "cycles": [],
+    "stats": {"nodes": 5, "edges": 4, "entries": 1, "chains": 2, "cycles": 0},
+}
+
 # Ghidra equivalents
 SAMPLE_BINARY_INFO_GHIDRA: Dict[str, Any] = {
     "ok": True,

@@ -3,10 +3,12 @@
 import asyncio
 from typing import Any, Dict, List
 
+from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.logging import logger
 from ghidra_agent.r2_tools import (
     r2_analyze_binary,
     r2_list_functions,
+    r2_build_call_graph,
     r2_decompile_function,
     r2_find_strings,
     r2_syscall_analysis,
@@ -30,6 +32,7 @@ async def r2_discovery(state: AgentState) -> AgentState:
     # Run binary analysis, function listing, and string extraction
     binary_info: Dict[str, Any] = {"ok": False, "error": "not run"}
     functions: Dict[str, Any] = {"ok": False, "error": "not run"}
+    call_graph: Dict[str, Any] = {"ok": False, "error": "not run"}
     strings: Dict[str, Any] = {"ok": False, "error": "not run"}
     syscalls: Dict[str, Any] = {"ok": False, "error": "not run"}
 
@@ -46,6 +49,12 @@ async def r2_discovery(state: AgentState) -> AgentState:
         functions = {"ok": False, "error": str(exc)}
 
     try:
+        call_graph = await r2_build_call_graph.ainvoke(tool_args)
+    except Exception as exc:
+        logger.error("r2_discovery_call_graph_failed", error=str(exc))
+        call_graph = {"ok": False, "error": str(exc)}
+
+    try:
         strings = await r2_find_strings.ainvoke(tool_args)
     except Exception as exc:
         logger.error("r2_discovery_strings_failed", error=str(exc))
@@ -59,6 +68,8 @@ async def r2_discovery(state: AgentState) -> AgentState:
 
     state["r2_analysis_results"]["binary"] = binary_info
     state["r2_analysis_results"]["functions"] = functions
+    state["r2_analysis_results"]["call_graph"] = call_graph
+    state["r2_analysis_results"]["call_graph_analysis"] = analyze_call_graph(call_graph)
     state["r2_analysis_results"]["strings"] = strings
     state["r2_analysis_results"]["syscalls"] = syscalls
 

@@ -11,6 +11,37 @@ export interface StatusResponse {
   state: Record<string, any>;
 }
 
+export interface AttackChain {
+  category: string;
+  sink: string;
+  path: string[];
+  description?: string;
+}
+
+export interface CallGraphAnalysis {
+  ok?: boolean;
+  entries?: string[];
+  chains?: AttackChain[];
+  cycles?: string[][];
+  stats?: {
+    nodes?: number;
+    edges?: number;
+    entries?: number;
+    chains?: number;
+    cycles?: number;
+  };
+}
+
+export interface AnalyzerRawResults {
+  analyzer: 'ghidra' | 'radare2' | string;
+  binary?: Record<string, any>;
+  functions?: Record<string, any>;
+  strings?: Record<string, any>;
+  call_graph?: Record<string, any>;
+  call_graph_analysis?: CallGraphAnalysis;
+  decompiled?: Record<string, string>;
+}
+
 // Upload a binary file for analysis
 export async function uploadBinary(file: File): Promise<UploadResponse> {
   const form = new FormData();
@@ -88,6 +119,18 @@ export async function getReports(hash: string) {
 
 export async function getReportContent(hash: string, reportId: string) {
   const res = await fetch(`${API_BASE}/api/analysis/${hash}/reports/${reportId}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function getGhidraResults(hash: string): Promise<AnalyzerRawResults | null> {
+  const res = await fetch(`${API_BASE}/api/analysis/${hash}/results/ghidra`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function getRadare2Results(hash: string): Promise<AnalyzerRawResults | null> {
+  const res = await fetch(`${API_BASE}/api/analysis/${hash}/results/radare2`);
   if (!res.ok) return null;
   return res.json();
 }

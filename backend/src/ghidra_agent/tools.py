@@ -63,6 +63,17 @@ async def list_functions(
 
 
 @tool
+async def build_call_graph(
+    session_id: str,
+    program_hash: str,
+    binary_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Build an inter-procedural function call graph (nodes + CALL edges)."""
+    context = build_context(session_id, program_hash, binary_path)
+    return await _run_tool("build_call_graph.py", context, {})
+
+
+@tool
 async def decompile_function(
     session_id: str,
     program_hash: str,

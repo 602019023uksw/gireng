@@ -9,11 +9,13 @@ from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import logger
 from ghidra_agent.prompts import SYSTEM_PROMPT
 from ghidra_agent.state import AgentState
+from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 from ghidra_agent.tools import (
     ToolContext,
     analyze_binary_structure,
     list_functions,
+    build_call_graph,
     decompile_function,
     find_strings,
     search_bytes,
@@ -144,10 +146,17 @@ async def _ghidra_discovery(state: AgentState) -> None:
     except Exception as exc:
         logger.error("discovery_strings_failed", error=str(exc))
         strings = {"ok": False, "error": str(exc)}
+    try:
+        call_graph = await build_call_graph.ainvoke(tool_args)
+    except Exception as exc:
+        logger.error("discovery_call_graph_failed", error=str(exc))
+        call_graph = {"ok": False, "error": str(exc)}
 
     state["analysis_results"]["binary"] = binary_info
     state["analysis_results"]["functions"] = functions
     state["analysis_results"]["strings"] = strings
+    state["analysis_results"]["call_graph"] = call_graph
+    state["analysis_results"]["call_graph_analysis"] = analyze_call_graph(call_graph)
 
     # Scan for high-signal byte patterns (shellcode-like signatures).
     await _run_byte_signature_scan(state, tool_args)
@@ -240,7 +249,7 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
         reverse=True,
     )
 
-    # Percentage-based limit: decompile 50% of meaningful functions, min 10
+    # Percentage-based limit: decompile 60% of meaningful functions, min 10
     decompile_target = max(
         GHIDRA_AUTO_DECOMPILE_MIN,
         int(len(meaningful_funcs) * GHIDRA_AUTO_DECOMPILE_PERCENT),
@@ -499,6 +508,26 @@ async def synthesize(state: AgentState) -> AgentState:
     if xrefs.get("ok"):
         context_parts.append(f"\nXRefs to: {xrefs.get('to', [])}, from: {xrefs.get('from', [])}")
 
+    # Include call-graph summary + detected attack chains for data-driven flow analysis.
+    call_graph = results.get("call_graph", {})
+    call_graph_analysis = results.get("call_graph_analysis", {})
+    if call_graph.get("ok"):
+        context_parts.append(
+            f"\nGhidra Call Graph: nodes={len(call_graph.get('nodes', []))}, edges={len(call_graph.get('edges', []))}"
+        )
+    if call_graph_analysis.get("ok"):
+        context_parts.append("\n=== GHIDRA ATTACK CHAINS ===")
+        entries = call_graph_analysis.get("entries", [])
+        if entries:
+            context_parts.append(f"Entry functions: {', '.join(entries)}")
+        for chain in call_graph_analysis.get("chains", [])[:20]:
+            path = " -> ".join(chain.get("path", []))
+            context_parts.append(f"[{chain.get('category', 'Unknown')}] {path}")
+        cycles = call_graph_analysis.get("cycles", [])
+        if cycles:
+            cycle_preview = [" -> ".join(c) for c in cycles[:5]]
+            context_parts.append(f"Detected recursive/cyclic paths: {', '.join(cycle_preview)}")
+
     # Include Radare2 results if available
     r2_results = state.get("r2_analysis_results", {})
     r2_decomp = state.get("r2_decompilation_cache", {})
@@ -516,6 +545,17 @@ async def synthesize(state: AgentState) -> AgentState:
             r2_sorted = sorted(r2_funcs["functions"], key=lambda f: f.get("size", 0), reverse=True)
             r2_desc = [f"{f.get('name')}(size:{f.get('size', 0)})" for f in r2_sorted[:30]]
             context_parts.append(f"R2 Functions ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
+        r2_call_graph = r2_results.get("call_graph", {})
+        if r2_call_graph.get("ok"):
+            context_parts.append(
+                f"R2 Call Graph: nodes={len(r2_call_graph.get('nodes', []))}, edges={len(r2_call_graph.get('edges', []))}"
+            )
+        r2_call_graph_analysis = r2_results.get("call_graph_analysis", {})
+        if r2_call_graph_analysis.get("ok"):
+            context_parts.append("\n=== R2 ATTACK CHAINS ===")
+            for chain in r2_call_graph_analysis.get("chains", [])[:20]:
+                path = " -> ".join(chain.get("path", []))
+                context_parts.append(f"[{chain.get('category', 'Unknown')}] {path}")
         r2_syscalls = r2_results.get("syscalls", {})
         if r2_syscalls.get("ok") and r2_syscalls.get("syscalls"):
             sys_desc = [f"{s.get('name')}#{s.get('number')}" for s in r2_syscalls.get("syscalls", [])[:40]]

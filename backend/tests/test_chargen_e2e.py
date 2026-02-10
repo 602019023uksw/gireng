@@ -59,6 +59,24 @@ CHARGEN_FUNCTIONS_GHIDRA = {
     ],
 }
 
+CHARGEN_CALL_GRAPH = {
+    "ok": True,
+    "nodes": [
+        {"name": "main", "address": "0x00401190", "size": 512},
+        {"name": "setup_socket", "address": "0x00401600", "size": 192},
+        {"name": "handle_client", "address": "0x00401400", "size": 384},
+        {"name": "sym.imp.accept", "address": "0x00403010", "size": 0},
+        {"name": "sym.imp.send", "address": "0x00403020", "size": 0},
+    ],
+    "edges": [
+        {"from": "0x00401190", "to": "0x00401600", "from_name": "main", "to_name": "setup_socket", "type": "CALL"},
+        {"from": "0x00401190", "to": "0x00401400", "from_name": "main", "to_name": "handle_client", "type": "CALL"},
+        {"from": "0x00401400", "to": "0x00403010", "from_name": "handle_client", "to_name": "sym.imp.accept", "type": "CALL"},
+        {"from": "0x00401400", "to": "0x00403020", "from_name": "handle_client", "to_name": "sym.imp.send", "type": "CALL"},
+    ],
+    "entry_points": ["0x00401190"],
+}
+
 CHARGEN_STRINGS_GHIDRA = {
     "ok": True,
     "strings": [
@@ -181,6 +199,8 @@ def _ghidra_tool_mocks():
             ainvoke=AsyncMock(return_value=CHARGEN_BINARY_INFO_GHIDRA)),
         "ghidra_agent.graph.list_functions": AsyncMock(
             ainvoke=AsyncMock(return_value=CHARGEN_FUNCTIONS_GHIDRA)),
+        "ghidra_agent.graph.build_call_graph": AsyncMock(
+            ainvoke=AsyncMock(return_value=CHARGEN_CALL_GRAPH)),
         "ghidra_agent.graph.find_strings": AsyncMock(
             ainvoke=AsyncMock(return_value=CHARGEN_STRINGS_GHIDRA)),
         "ghidra_agent.graph.decompile_function": AsyncMock(
@@ -202,6 +222,8 @@ def _r2_tool_mocks():
             ainvoke=AsyncMock(return_value=CHARGEN_BINARY_INFO_R2)),
         "ghidra_agent.r2_graph.r2_list_functions": AsyncMock(
             ainvoke=AsyncMock(return_value=CHARGEN_FUNCTIONS_R2)),
+        "ghidra_agent.r2_graph.r2_build_call_graph": AsyncMock(
+            ainvoke=AsyncMock(return_value=CHARGEN_CALL_GRAPH)),
         "ghidra_agent.r2_graph.r2_find_strings": AsyncMock(
             ainvoke=AsyncMock(return_value=CHARGEN_STRINGS_R2)),
         "ghidra_agent.r2_graph.r2_decompile_function": AsyncMock(
@@ -305,12 +327,16 @@ class TestChargenPipelineFlow:
                 assert state["analysis_results"]["functions"]["ok"] is True
                 assert len(state["analysis_results"]["functions"]["functions"]) == 7
                 assert state["analysis_results"]["strings"]["ok"] is True
+                assert state["analysis_results"]["call_graph"]["ok"] is True
+                assert state["analysis_results"]["call_graph_analysis"]["ok"] is True
 
                 # Verify R2 results populated
                 assert state["r2_analysis_results"]["binary"]["ok"] is True
                 assert state["r2_analysis_results"]["binary"]["architecture"] == "x86"
                 assert state["r2_analysis_results"]["functions"]["ok"] is True
                 assert state["r2_analysis_results"]["strings"]["ok"] is True
+                assert state["r2_analysis_results"]["call_graph"]["ok"] is True
+                assert state["r2_analysis_results"]["call_graph_analysis"]["ok"] is True
 
                 # Verify dual discovery trace
                 assert "discovery_completed" in state["reasoning_trace"]
