@@ -106,6 +106,16 @@ export async function getAnalysis(hash: string) {
   return res.json();
 }
 
+// Export report as HTML — returns the URL to open
+export function getExportHtmlUrl(hash: string): string {
+  return `${API_BASE}/api/analysis/${hash}/export/html`;
+}
+
+// Export report as text — returns the URL to open
+export function getExportTextUrl(hash: string): string {
+  return `${API_BASE}/api/analysis/${hash}/export/text`;
+}
+
 export async function getAnalyzers(hash: string) {
   const res = await fetch(`${API_BASE}/api/analysis/${hash}/analyzers`);
   if (!res.ok) return [];

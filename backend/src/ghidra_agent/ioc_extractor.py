@@ -70,7 +70,21 @@ def _is_valid_domain(match_str: str) -> bool:
     if len(parts) != 2:
         return False
     tld = parts[1].lower()
-    return tld in IANA_TLDS
+    if tld not in IANA_TLDS:
+        return False
+    # Filter out common library filenames and ELF artifacts
+    name_lower = match_str.lower()
+    if any(name_lower.endswith(ext) for ext in ('.so', '.o', '.a', '.dylib')):
+        return False
+    if any(name_lower.startswith(pfx) for pfx in ('lib', 'note.', 'ld-', 'ld.')):
+        return False
+    if name_lower.endswith('.build') or name_lower.endswith('.property'):
+        return False
+    # Single-label before the dot is unlikely a real domain
+    label = parts[0]
+    if '.' not in label and len(label) <= 3:
+        return False
+    return True
 
 EMAIL_PATTERN = re.compile(
     r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'

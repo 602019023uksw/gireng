@@ -29,6 +29,7 @@ import {
   getReportContent,
   getGhidraResults,
   getRadare2Results,
+  getExportHtmlUrl,
   type CallGraphAnalysis,
   type CallGraphRaw,
 } from '@/lib/api';
@@ -276,6 +277,24 @@ function App() {
       return;
     }
 
+    // Detect report generation commands
+    const lower = content.toLowerCase().trim();
+    const isReportCommand = /\b(create|generate|export|print|download|make|show)\b.*\b(report|pdf|html)\b/i.test(lower)
+      || /\breport\b/i.test(lower) && lower.length < 40;
+    if (isReportCommand && sessionRef.current.hash) {
+      const reportUrl = getExportHtmlUrl(sessionRef.current.hash);
+      window.open(reportUrl, '_blank');
+      const reportMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `Report generated and opened in a new tab. You can also print it to PDF from there.\n\n[Open Report](${reportUrl})`,
+        isUser: false,
+        timestamp: new Date(),
+        toolCalls: [{ id: '1', name: 'Report Generation', status: 'completed' }],
+      };
+      setMessages(prev => [...prev, reportMsg]);
+      return;
+    }
+
     // Send query to backend
     const thinkingMsg: Message = {
       id: (Date.now() + 1).toString(),
@@ -305,13 +324,21 @@ function App() {
       // Refresh side panel data
       await fetchAnalysisData(sessionRef.current.hash);
     } catch (err: any) {
+      // If analysis is still running, give a more helpful message
+      const isNotCompleted = err.message?.includes('400');
+      const errContent = isNotCompleted
+        ? 'The analysis is still in progress. Please wait for it to complete before asking questions. You can ask follow-up questions once the analysis finishes.'
+        : `Error: ${err.message}`;
       const errMsg: Message = {
         id: (Date.now() + 3).toString(),
-        content: `Error: ${err.message}`,
+        content: errContent,
         isUser: false,
         timestamp: new Date(),
       };
-      setMessages(prev => [...prev, errMsg]);
+      setMessages(prev => {
+        const filtered = prev.filter(m => m.id !== thinkingMsg.id);
+        return [...filtered, errMsg];
+      });
     }
   }, [fetchAnalysisData]);
 

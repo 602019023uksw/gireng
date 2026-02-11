@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, ExternalLink } from 'lucide-react';
 import type { Analyzer } from '@/types';
+import { MarkdownContent } from '@/components/common/MarkdownContent';
 
 interface AnalyzerItemProps {
   analyzer: Analyzer;
@@ -86,9 +87,7 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
                 <h5 className="text-lg font-semibold text-text-primary mb-3">
                   Executive Summary
                 </h5>
-                <p className="text-sm text-text-secondary leading-relaxed">
-                  {analyzer.details.executiveSummary}
-                </p>
+                <MarkdownContent content={analyzer.details.executiveSummary} compact />
               </section>
 
               {/* Static Analysis */}
@@ -96,32 +95,7 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
                 <h5 className="text-lg font-semibold text-text-primary mb-3">
                   Static Analysis
                 </h5>
-                <div className="text-sm text-text-secondary leading-relaxed whitespace-pre-line">
-                  {analyzer.details.staticAnalysis.split('\n').map((line, index) => (
-                    <p key={index} className={line.startsWith('•') ? 'ml-4 mt-2' : 'mt-2'}>
-                      {line.includes('__') ? (
-                        <>
-                          {line.split(/(__.*?__)/).map((part, i) => 
-                            part.startsWith('__') && part.endsWith('__') ? (
-                              <code key={i} className="px-1.5 py-0.5 rounded text-text-primary font-mono text-xs"
-                                style={{
-                                  background: 'rgba(88, 166, 255, 0.1)',
-                                  border: '1px solid rgba(88, 166, 255, 0.2)',
-                                }}
-                              >
-                                {part.replace(/__/g, '')}
-                              </code>
-                            ) : (
-                              part
-                            )
-                          )}
-                        </>
-                      ) : (
-                        line
-                      )}
-                    </p>
-                  ))}
-                </div>
+                <MarkdownContent content={analyzer.details.staticAnalysis} compact />
               </section>
 
               {/* Behavioral Analysis */}
@@ -129,9 +103,7 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
                 <h5 className="text-lg font-semibold text-text-primary mb-3">
                   Behavioral Analysis
                 </h5>
-                <p className="text-sm text-text-secondary leading-relaxed">
-                  {analyzer.details.behavioralAnalysis}
-                </p>
+                <MarkdownContent content={analyzer.details.behavioralAnalysis} compact />
               </section>
 
               {/* IOCs */}
@@ -139,9 +111,7 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
                 <h5 className="text-lg font-semibold text-text-primary mb-3">
                   Indicators of Compromise (IOCs)
                 </h5>
-                <p className="text-sm text-text-secondary leading-relaxed">
-                  {analyzer.details.iocs}
-                </p>
+                <MarkdownContent content={analyzer.details.iocs} compact />
               </section>
 
               {/* Conclusion */}
@@ -149,9 +119,7 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
                 <h5 className="text-lg font-semibold text-text-primary mb-3">
                   Conclusion
                 </h5>
-                <p className="text-sm text-text-secondary leading-relaxed">
-                  {analyzer.details.conclusion}
-                </p>
+                <MarkdownContent content={analyzer.details.conclusion} compact />
               </section>
 
               {/* Execution Logs */}

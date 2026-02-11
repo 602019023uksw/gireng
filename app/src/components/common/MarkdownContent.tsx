@@ -1,4 +1,5 @@
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 interface MarkdownContentProps {
   content: string;
@@ -36,6 +37,7 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
   return (
     <div className={`max-w-none ${className}`.trim()}>
       <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => <h1 className={heading1Class}>{children}</h1>,
           h2: ({ children }) => <h2 className={heading2Class}>{children}</h2>,
@@ -103,6 +105,39 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
               className={`${compact ? 'my-3' : 'my-4'}`}
               style={{ borderColor: 'rgba(100, 120, 180, 0.2)' }}
             />
+          ),
+          table: ({ children }) => (
+            <div className={`overflow-x-auto ${compact ? 'my-3' : 'my-4'}`}>
+              <table
+                className="w-full text-left border-collapse"
+                style={{ border: '1px solid rgba(100, 120, 180, 0.2)' }}
+              >
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead style={{ background: 'rgba(20, 28, 50, 0.6)' }}>{children}</thead>
+          ),
+          tbody: ({ children }) => <tbody>{children}</tbody>,
+          tr: ({ children }) => (
+            <tr
+              className="border-b"
+              style={{ borderColor: 'rgba(100, 120, 180, 0.12)' }}
+            >
+              {children}
+            </tr>
+          ),
+          th: ({ children }) => (
+            <th
+              className="px-3 py-2 text-xs font-semibold uppercase text-text-secondary"
+              style={{ borderBottom: '2px solid rgba(100, 120, 180, 0.25)' }}
+            >
+              {children}
+            </th>
+          ),
+          td: ({ children }) => (
+            <td className="px-3 py-2 text-sm text-text-secondary">{children}</td>
           ),
         }}
       >
