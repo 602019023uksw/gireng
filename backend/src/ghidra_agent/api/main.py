@@ -1,4 +1,6 @@
 import asyncio
+import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -340,6 +342,9 @@ def _create_tracked_task(coro) -> asyncio.Task:
 async def _run_with_events(state: Dict[str, Any]) -> None:
     session_id = state["session_id"]
     try:
+        state["started_at"] = time.time()
+        state["started_at_iso"] = datetime.now(timezone.utc).isoformat()
+        store.update_session(session_id, state)
         await manager.broadcast(session_id, {"type": "analysis:progress", "session_id": session_id, "payload": {"status": "started"}})
         await manager.broadcast(session_id, {"type": "message:typing", "session_id": session_id, "payload": {"status": "running"}})
         async def on_progress(step: str, pct: int) -> None:
@@ -357,6 +362,9 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
             )
 
         result = await run_graph(state, progress_callback=on_progress)
+        result["completed_at"] = time.time()
+        result["completed_at_iso"] = datetime.now(timezone.utc).isoformat()
+        result["duration_seconds"] = round(result["completed_at"] - result.get("started_at", result["completed_at"]), 1)
         store.update_session(session_id, result)
         await manager.broadcast(session_id, {"type": "analysis:completed", "session_id": session_id, "payload": {"status": result["status"]}})
     except Exception as exc:
@@ -370,7 +378,23 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
 async def analysis_status(program_hash: str) -> JSONResponse:
     for state in store.sessions.values():
         if state["program_hash"] == program_hash:
-            return JSONResponse({"hash": program_hash, "status": state["status"], "analyzer": "ghidra"})
+            duration_secs = state.get("duration_seconds", 0)
+            if duration_secs:
+                mins = int(duration_secs // 60)
+                secs = int(duration_secs % 60)
+                duration_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+            else:
+                duration_str = ""
+            started_iso = state.get("started_at_iso", "")
+            completed_iso = state.get("completed_at_iso", "")
+            return JSONResponse({
+                "hash": program_hash,
+                "status": state["status"],
+                "analyzer": "ghidra",
+                "duration": duration_str,
+                "started": started_iso,
+                "completed": completed_iso,
+            })
     return JSONResponse({"hash": program_hash, "status": "not_found"}, status_code=404)
 
 

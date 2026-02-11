@@ -67,15 +67,15 @@ export function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
         </div>
         <div>
           <p className="text-xs text-text-muted uppercase tracking-wider mb-1">DURATION</p>
-          <p className="text-sm text-text-primary font-medium">{analysis.duration}</p>
+          <p className="text-sm text-text-primary font-medium">{analysis.duration || '—'}</p>
         </div>
         <div>
           <p className="text-xs text-text-muted uppercase tracking-wider mb-1">STARTED</p>
-          <p className="text-sm text-text-primary font-medium">{analysis.started}</p>
+          <p className="text-sm text-text-primary font-medium">{analysis.started || '—'}</p>
         </div>
         <div>
           <p className="text-xs text-text-muted uppercase tracking-wider mb-1">COMPLETED</p>
-          <p className="text-sm text-text-primary font-medium">{analysis.completed}</p>
+          <p className="text-sm text-text-primary font-medium">{analysis.completed || '—'}</p>
         </div>
       </div>
 

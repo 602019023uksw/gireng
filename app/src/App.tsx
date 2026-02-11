@@ -22,6 +22,7 @@ import {
   uploadBinary,
   sendQuery,
   pollStatus,
+  getAnalysis,
   getAnalyzers,
   getFiles,
   getFileContent,
@@ -93,7 +94,8 @@ function App() {
   // Fetch all side-panel data for a completed analysis
   const fetchAnalysisData = useCallback(async (hash: string) => {
     try {
-      const [analyzersData, filesData, reportsData, ghidraResults, radare2Results] = await Promise.all([
+      const [analysisInfo, analyzersData, filesData, reportsData, ghidraResults, radare2Results] = await Promise.all([
+        getAnalysis(hash),
         getAnalyzers(hash),
         getFiles(hash),
         getReports(hash),
@@ -137,6 +139,9 @@ function App() {
         ...prev,
         verdict: overallVerdict,
         threatScore: threatScoreMap[overallVerdict] ?? 0,
+        ...(analysisInfo?.duration ? { duration: analysisInfo.duration } : {}),
+        ...(analysisInfo?.started ? { started: new Date(analysisInfo.started).toLocaleString() } : {}),
+        ...(analysisInfo?.completed ? { completed: new Date(analysisInfo.completed).toLocaleString() } : {}),
       }));
 
       const callGraphData: CallGraphPanel[] = [];
@@ -236,12 +241,22 @@ function App() {
       });
 
       // Populate side panel data
+      const endTime = Date.now();
+      const totalSecs = Math.round((endTime - startTime) / 1000);
+      const dMins = Math.floor(totalSecs / 60);
+      const dSecs = totalSecs % 60;
+      const durationStr = dMins > 0 ? `${dMins}m ${dSecs}s` : `${dSecs}s`;
+      const startedStr = new Date(startTime).toLocaleString();
+      const completedStr = new Date(endTime).toLocaleString();
       setCurrentAnalysis({
         ...mockAnalysisResult,
         hash,
         status: result.status.toUpperCase(),
         type: result.state.analysis_results?.binary?.architecture || 'Unknown',
         verdict: '',
+        duration: durationStr,
+        started: startedStr,
+        completed: completedStr,
       });
       await fetchAnalysisData(hash);
     } catch (err: any) {
