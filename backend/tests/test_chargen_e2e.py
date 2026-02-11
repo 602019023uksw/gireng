@@ -793,7 +793,7 @@ class TestChargenConfig:
         assert hasattr(s, "r2_timeout")
         assert hasattr(s, "enable_r2")
         assert s.r2_container_name == "radare2"
-        assert s.r2_timeout == 60
+        assert s.r2_timeout == 90
         assert s.enable_r2 is True
 
     def test_llm_provider_setting(self):

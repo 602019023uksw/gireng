@@ -356,7 +356,7 @@ class TestConfigR2Settings:
         assert hasattr(s, "r2_shared_root")
         assert hasattr(s, "r2_timeout")
         assert s.r2_container_name == "radare2"
-        assert s.r2_timeout == 60
+        assert s.r2_timeout == 90
 
 
 class TestSmartTruncate:
@@ -372,27 +372,30 @@ class TestSmartTruncate:
         code = "X" * 4000
         assert _smart_truncate(code, 4000) == code
 
-    def test_over_limit_keeps_head_and_tail(self):
+    def test_over_limit_keeps_head(self):
         from ghidra_agent.graph import _smart_truncate
         head = "HEAD" * 600   # 2400 chars
         tail = "TAIL" * 700   # 2800 chars
         code = head + tail    # 5200 chars
         result = _smart_truncate(code, 4000)
-        assert len(result) <= 4000
+        # Result = first 4000 chars + truncation marker
         assert result.startswith("HEAD")
-        assert result.endswith("TAIL" * 5)  # tail preserved
-        assert "truncated middle" in result
+        assert "truncated at 4000 chars" in result
+        # Only the head portion is kept (100% head strategy)
+        assert result[:4000] == code[:4000]
 
-    def test_preserves_remoteExec_at_end(self):
-        """Regression: main function's remoteExec at char ~4100 must survive."""
+    def test_truncates_beyond_limit(self):
+        """Content beyond the limit is dropped (100% head strategy)."""
         from ghidra_agent.graph import _smart_truncate
-        # Simulate: 4000 chars of setup, then the critical dispatch code
+        # Simulate: 4000 chars of setup, then dispatch code beyond the limit
         setup = "x" * 4000
         dispatch = "\nremoteExec(cmd);\nsendResult2Peer(sock, buf);\n"
         code = setup + dispatch
         result = _smart_truncate(code, 4000)
-        assert "remoteExec" in result
-        assert "sendResult2Peer" in result
+        # Tail content is intentionally dropped — 100% head keeps only the first 4000 chars
+        assert result[:4000] == code[:4000]
+        assert "truncated at 4000 chars" in result
+        assert "remoteExec" not in result
 
 
 class TestTruncatePromptHeadTail:
