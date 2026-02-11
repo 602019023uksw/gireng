@@ -322,6 +322,64 @@ def extract_iocs_from_state(state: Dict[str, Any]) -> IOCs:
     return extract_iocs_from_strings(all_strings)
 
 
+def _extract_llm_verdict(summary: str) -> str | None:
+    """Parse the LLM summary to extract its explicit verdict.
+    
+    Returns one of: 'Malware', 'Suspicious', 'Clean', or None if not found.
+    """
+    if not summary:
+        return None
+    lower = summary.lower()
+
+    # Look for explicit "Verdict: X" pattern (highest priority)
+    import re
+    verdict_match = re.search(r'\*\*verdict:\s*(malware|suspicious|clean|benign|not[_ ]?malicious|false[_ ]?positive)\*\*', lower)
+    if verdict_match:
+        v = verdict_match.group(1)
+        if v in ('clean', 'benign', 'not malicious', 'not_malicious', 'false positive', 'false_positive'):
+            return 'Clean'
+        if v == 'suspicious':
+            return 'Suspicious'
+        return 'Malware'
+
+    # Fallback: look for strong verdict signals in conclusion section
+    # Extract the conclusion section if present
+    conclusion_match = re.search(r'(?:##\s*(?:11\.?)?\s*conclusion|\bconclusion\b)(.*?)(?:##|$)', lower, re.DOTALL)
+    conclusion = conclusion_match.group(1) if conclusion_match else lower[-2000:]
+
+    # Strong benign signals
+    benign_patterns = [
+        r'false positive',
+        r'no (?:evidence|indication|sign)s? of (?:malicious|malware)',
+        r'(?:benign|legitimate|standard|unmodified) (?:binary|library|component|tool|software|program)',
+        r'not (?:malicious|malware)',
+        r'no malicious (?:capabilities|behavior|activity|intent|code|logic)',
+        r'assessed as (?:clean|benign|not malicious|a false positive)',
+        r'verdict:\s*clean',
+    ]
+    benign_score = sum(1 for p in benign_patterns if re.search(p, conclusion))
+    
+    # Strong malicious signals
+    malicious_patterns = [
+        r'(?:confirmed|identified as|classified as) (?:malware|malicious|trojan|backdoor|ransomware|rat)',
+        r'c2 (?:communication|server|infrastructure|beacon)',
+        r'(?:exfiltrat|steal|harvest)(?:es?|ing|ion) (?:data|credentials|information)',
+        r'exploit (?:payload|code|chain)',
+        r'verdict:\s*malware',
+    ]
+    mal_score = sum(1 for p in malicious_patterns if re.search(p, conclusion))
+
+    if benign_score >= 2 and mal_score == 0:
+        return 'Clean'
+    if mal_score >= 2 and benign_score == 0:
+        return 'Malware'
+    if benign_score > mal_score:
+        return 'Clean'
+    if mal_score > benign_score:
+        return 'Malware'
+    return None
+
+
 def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
     """Calculate malware verdict based on IOCs and analysis state.
     
@@ -380,7 +438,22 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
             score += 25
             indicators.append("Command execution capability detected")
     
-    # Determine verdict – labels match frontend taxonomy exactly
+    # Check if the LLM summary provides a clear verdict (expert override)
+    llm_verdict = _extract_llm_verdict(state.get("summary", ""))
+    
+    if llm_verdict:
+        # LLM expert analysis overrides the naive IOC heuristic
+        if llm_verdict == 'Clean':
+            indicators.append("LLM analysis: benign / false positive")
+            return "Clean", "clean", indicators, min(score, 9)
+        elif llm_verdict == 'Suspicious':
+            indicators.append("LLM analysis: suspicious")
+            return "Suspicious", "suspicious", indicators, max(score, 40)
+        elif llm_verdict == 'Malware':
+            indicators.append("LLM analysis: confirmed malicious")
+            return "Malware", "malicious", indicators, max(score, 80)
+
+    # Fallback: IOC-based heuristic when LLM verdict is unavailable
     if score >= 80:
         return "Malware", "malicious", indicators, score
     elif score >= 40:

@@ -101,6 +101,13 @@ List ALL IOCs found — do not truncate:
 ### 11. Conclusion
 2-3 sentences summarizing findings and priority.
 
+**IMPORTANT: You MUST include an explicit overall verdict in one of these exact forms:**
+- `**Verdict: Malware**` — if malicious code, C2, exploits, or payload delivery is confirmed with code evidence
+- `**Verdict: Suspicious**` — if some indicators exist but no definitive malicious code found
+- `**Verdict: Clean**` — if the binary is benign, a legitimate tool, standard library, or the suspicious indicators are clearly false positives
+
+Do NOT default to "Malware" just because the binary contains networking functions, crypto routines, or system paths — these are normal in system libraries and legitimate software. A binary is only Malware if there is concrete evidence of malicious INTENT (e.g., C2 communication targeting external attacker infrastructure, data exfiltration, exploit payloads, deliberate obfuscation to hide malicious behavior).
+
 ## Analysis Quality Checklist
 - [ ] Used ONLY data from the provided analysis
 - [ ] Did not invent malware family names
