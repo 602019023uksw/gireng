@@ -167,7 +167,7 @@ async def _r2_auto_decompile(
 
     funcs_to_decompile = sorted_funcs[:decompile_target]
 
-    sem = asyncio.Semaphore(3)
+    sem = asyncio.Semaphore(5)
     total_funcs = len(funcs_to_decompile)
 
     async def _decompile_one(func: Dict[str, Any], idx: int) -> int:
