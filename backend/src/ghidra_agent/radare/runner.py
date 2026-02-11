@@ -58,7 +58,7 @@ class Radare2Runner:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=15)
+            stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=45)
             if proc.returncode == 0:
                 version = stdout.decode("utf-8", errors="ignore").strip().split("\n")[0]
                 logger.info("r2_container_verified", version=version)
@@ -88,7 +88,7 @@ class Radare2Runner:
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                 )
-                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=15)
+                _, stderr = await asyncio.wait_for(proc.communicate(), timeout=45)
                 # If stderr contains "unknown command" → not installed
                 err_text = stderr.decode("utf-8", errors="ignore").lower()
                 if "unknown" not in err_text and "invalid" not in err_text:

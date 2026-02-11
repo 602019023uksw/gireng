@@ -15,6 +15,8 @@ import re
 from typing import Dict, List, Any, Set
 from dataclasses import dataclass, field
 
+from ghidra_agent.iana_tlds import IANA_TLDS
+
 
 @dataclass
 class IOCs:
@@ -55,10 +57,20 @@ URL_PATTERN = re.compile(
     re.IGNORECASE
 )
 
-DOMAIN_PATTERN = re.compile(
-    r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+(?:com|net|org|io|ru|cn|tk|xyz|info|biz|cc|top|pw|club|work|live|online|site|tech|co)\b',
+# Domain pattern: match any plausible domain, then validate TLD against IANA set
+_DOMAIN_CANDIDATE_PATTERN = re.compile(
+    r'\b(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+([a-zA-Z]{2,63})\b',
     re.IGNORECASE
 )
+
+
+def _is_valid_domain(match_str: str) -> bool:
+    """Check if a domain candidate has a valid IANA TLD."""
+    parts = match_str.rsplit('.', 1)
+    if len(parts) != 2:
+        return False
+    tld = parts[1].lower()
+    return tld in IANA_TLDS
 
 EMAIL_PATTERN = re.compile(
     r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
@@ -146,9 +158,10 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
                 seen_urls.add(url)
                 iocs.urls.append(url)
         
-        # Extract domains (but not IPs)
-        for domain in DOMAIN_PATTERN.findall(value):
-            if domain not in seen_domains and not IP_PATTERN.match(domain):
+        # Extract domains (but not IPs) — validate TLD against IANA set
+        for m in _DOMAIN_CANDIDATE_PATTERN.finditer(value):
+            domain = m.group(0)
+            if domain not in seen_domains and not IP_PATTERN.match(domain) and _is_valid_domain(domain):
                 seen_domains.add(domain)
                 iocs.domains.append(domain)
         

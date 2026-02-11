@@ -21,7 +21,7 @@ from ghidra_agent.state import AgentState
 
 R2_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 R2_AUTO_DECOMPILE_MIN = 10         # Floor: always decompile at least this many
-R2_AUTO_DECOMPILE_MAX = 25         # Ceiling: cap decompilation to avoid runaway on large binaries
+R2_AUTO_DECOMPILE_MAX = 40         # Ceiling: cap decompilation to avoid runaway on large binaries
 
 
 def _to_num(value: Any) -> float:

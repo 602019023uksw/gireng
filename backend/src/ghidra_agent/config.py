@@ -16,14 +16,14 @@ class Settings(BaseModel):
     docker_cli_path: str = Field(default="/usr/bin/docker", alias="DOCKER_CLI_PATH")
     llm_model_name: str = Field(default="glm-4.7", alias="LLM_MODEL_NAME")
     llm_provider: str = Field(default="anthropic", alias="LLM_PROVIDER")
-    max_decompilation_time: int = Field(default=30, alias="MAX_DECOMPILATION_TIME")
-    default_analysis_timeout: int = Field(default=120, alias="DEFAULT_ANALYSIS_TIMEOUT")
+    max_decompilation_time: int = Field(default=60, alias="MAX_DECOMPILATION_TIME")
+    default_analysis_timeout: int = Field(default=150, alias="DEFAULT_ANALYSIS_TIMEOUT")
     max_upload_bytes: int = Field(default=200 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")  # 200 MB
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     # Radare2 settings
     r2_container_name: str = Field(default="radare2", alias="R2_CONTAINER_NAME")
     r2_shared_root: str = Field(default="/data/shared", alias="R2_SHARED_ROOT")
-    r2_timeout: int = Field(default=60, alias="R2_TIMEOUT")
+    r2_timeout: int = Field(default=90, alias="R2_TIMEOUT")
     enable_r2: bool = Field(default=True, alias="ENABLE_R2")
     function_priority_alpha: float = Field(default=0.7, alias="FUNCTION_PRIORITY_ALPHA")
     function_priority_beta: float = Field(default=0.3, alias="FUNCTION_PRIORITY_BETA")

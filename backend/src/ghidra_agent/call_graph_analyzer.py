@@ -16,7 +16,7 @@ SINK_PATTERNS = {
     "Crypto": {"encrypt", "decrypt", "crypt", "aes", "rsa"},
 }
 
-MAX_CHAIN_DEPTH = 8
+MAX_CHAIN_DEPTH = 10
 MAX_CHAINS = 80
 
 

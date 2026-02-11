@@ -7,7 +7,7 @@ from ghidra_agent.config import settings
 from ghidra_agent.logging import logger
 
 # Configurable via env; default bumped from 300→600 to accommodate large prompts
-LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT", "600"))
+LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT", "630"))
 LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
 
 

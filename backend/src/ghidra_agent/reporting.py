@@ -217,22 +217,22 @@ def _markdown_to_html(text: str) -> str:
 
 
 def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
-    """Parse IOCs into template format."""
+    """Parse IOCs into template format — include ALL IOCs without truncation."""
     results = []
     
-    for ip in iocs.ips[:10]:
+    for ip in iocs.ips:
         results.append({"type": "IP/Domain", "value": ip})
-    for domain in iocs.domains[:10]:
+    for domain in iocs.domains:
         results.append({"type": "Domain", "value": domain})
-    for url in iocs.urls[:5]:
+    for url in iocs.urls:
         results.append({"type": "URL", "value": url})
-    for path in iocs.file_paths[:10]:
+    for path in iocs.file_paths:
         results.append({"type": "File Path", "value": path})
-    for email in iocs.emails[:5]:
+    for email in iocs.emails:
         results.append({"type": "Email", "value": email})
-    for reg in iocs.registry_keys[:5]:
+    for reg in iocs.registry_keys:
         results.append({"type": "Registry", "value": reg})
-    for mutex in iocs.mutexes[:5]:
+    for mutex in iocs.mutexes:
         results.append({"type": "Mutex", "value": mutex})
     
     return results
@@ -271,7 +271,7 @@ def _extract_recommendations(summary: str) -> List[str]:
                 if line and len(line) > 10:
                     recs.append(line)
     
-    return recs[:10] if recs else ["Conduct dynamic analysis in sandbox environment", "Monitor network traffic for C2 communications"]
+    return recs if recs else ["Conduct dynamic analysis in sandbox environment", "Monitor network traffic for C2 communications"]
 
 
 def _extract_evidence(summary: str) -> List[str]:
@@ -304,13 +304,19 @@ def _extract_evidence(summary: str) -> List[str]:
                     cleaned = re.sub(r'^[-*\d.\s]+', '', line).strip()
                     if cleaned and len(cleaned) > 5:
                         evidence.append(cleaned)
-    return evidence[:15]
+    return evidence
 
 
 def _render_evidence(evidence: List[str]) -> str:
     """Render evidence items as HTML."""
     if not evidence:
         return '<div class="text-gray-500 italic">Evidence extracted from analysis data. Review summary for details.</div>'
+
+    # Heuristic to detect code-like content (hex addrs, C operators, decompiler output)
+    _CODE_RE = re.compile(
+        r'(0x[0-9a-fA-F]{4,}|FUN_[0-9a-fA-F]+|->|<<|>>|\bparam_\d+|\buVar\d+|\biVar\d+|\bint \*)',
+    )
+
     html = ''
     for i, item in enumerate(evidence, 1):
         # Split on " - Evidence:" if present
@@ -318,9 +324,42 @@ def _render_evidence(evidence: List[str]) -> str:
         if len(parts) == 2:
             title = parts[0].strip()
             desc = parts[1].strip()
-            html += f'<div class="finding-item"><div class="finding-title">{escape(title)}</div><div class="finding-desc text-sm leading-relaxed pl-4">Evidence: {escape(desc)}</div></div>'
         else:
-            html += f'<div class="finding-item"><div class="finding-title">Finding {i}</div><div class="finding-desc text-sm leading-relaxed pl-4">{escape(item)}</div></div>'
+            title = f'Finding {i}'
+            desc = item.strip()
+
+        # Separate code snippets from narrative text
+        desc_lines = desc.split('\n') if '\n' in desc else [desc]
+        narrative_parts: List[str] = []
+        code_parts: List[str] = []
+        for line in desc_lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if _CODE_RE.search(stripped):
+                code_parts.append(stripped)
+            else:
+                narrative_parts.append(stripped)
+
+        # If the whole desc looks like code (single line with hex/func refs), treat it as code
+        if not code_parts and len(narrative_parts) == 1 and _CODE_RE.search(narrative_parts[0]):
+            code_parts = narrative_parts
+            narrative_parts = []
+
+        block = f'<div class="finding-item"><div class="finding-title">{escape(title)}</div>'
+        if narrative_parts:
+            block += f'<div class="finding-desc text-sm leading-relaxed pl-4">{escape(" ".join(narrative_parts))}</div>'
+        if code_parts:
+            snippet = escape("\n".join(code_parts))
+            block += (
+                f'<pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;'
+                f'border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;'
+                f'font-family:\'Roboto Mono\',monospace;font-size:0.8rem;line-height:1.6;'
+                f'color:#374151;white-space:pre-wrap;word-break:break-word;">'
+                f'<code>{snippet}</code></pre>'
+            )
+        block += '</div>'
+        html += block
     return html
 
 
@@ -374,7 +413,7 @@ def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
     if chains:
         parts.append('<h4>Attack Chains</h4>')
         parts.append('<ul class="list-disc pl-6 mb-4">')
-        for chain in chains[:20]:
+        for chain in chains:
             category = escape(str(chain.get("category", "Unknown")))
             path = " &rarr; ".join(escape(str(p)) for p in chain.get("path", []))
             parts.append(f'<li class="mb-2"><strong>[{category}]</strong> {path}</li>')
@@ -383,25 +422,101 @@ def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
         parts.append('<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>')
 
     if adjacency:
-        parts.append('<h4>Adjacency (Who Calls Whom)</h4>')
+        top_adj = adjacency[:10]
+        parts.append(f'<h4>Adjacency — Top {len(top_adj)} of {len(adjacency)} Functions</h4>')
         parts.append('<table class="w-full text-left border-collapse">')
         parts.append('<tr><th>Function</th><th>Calls</th></tr>')
-        for row in adjacency[:30]:
+        for row in top_adj:
             fn = escape(str(row.get("function", "")))
             calls = row.get("calls", []) or []
-            calls_text = escape(", ".join(str(c) for c in calls[:12])) if calls else "-"
+            calls_text = escape(", ".join(str(c) for c in calls)) if calls else "-"
             parts.append(f'<tr><td><code>{fn}</code></td><td>{calls_text}</td></tr>')
         parts.append('</table>')
 
     if cycles:
-        cycle_lines = [escape(" -> ".join(str(n) for n in c)) for c in cycles[:10]]
-        parts.append('<h4>Detected Cycles</h4>')
+        top_cycles = cycles[:5]
+        cycle_lines = [escape(" -> ".join(str(n) for n in c)) for c in top_cycles]
+        parts.append(f'<h4>Detected Cycles — Top {len(top_cycles)} of {len(cycles)}</h4>')
         parts.append('<ul class="list-disc pl-6 mb-4">')
         for c in cycle_lines:
             parts.append(f'<li class="mb-2"><code>{c}</code></li>')
         parts.append('</ul>')
 
     return "\n".join(parts)
+
+
+# Suspicious API patterns that indicate malicious or interesting behavior
+_SUSPICIOUS_APIS = {
+    "system", "popen", "execve", "execv", "execl", "exec", "fork",
+    "socket", "connect", "send", "sendto", "recv", "recvfrom", "bind", "listen", "accept",
+    "fopen", "fwrite", "open", "write", "read", "unlink", "remove", "rename",
+    "encrypt", "decrypt", "crypt", "aes", "rsa",
+    "mmap", "mprotect", "ptrace", "dlopen", "dlsym",
+    "createprocess", "winexec", "shellexecute", "virtualalloc", "virtualprotect",
+    "writeprocessmemory", "createremotethread", "ntcreatethreadex",
+    "regsetvalue", "regcreatekey", "createservice", "schtasks",
+    "getprocaddress", "loadlibrary", "getenvironmentvariable",
+    "strcmp", "strstr", "memcpy", "memset", "malloc", "free", "realloc",
+}
+
+
+def _render_code_evidence(state: Dict[str, Any]) -> str:
+    """Render code evidence section showing malicious/interesting code snippets.
+
+    Scans all decompiled functions for suspicious API calls and renders
+    the relevant lines with their function name and address context.
+    """
+    decomp_cache = state.get("decompilation_cache", {})
+    r2_decomp_cache = state.get("r2_decompilation_cache", {})
+    func_data = state.get("analysis_results", {}).get("functions", {})
+    r2_func_data = state.get("r2_analysis_results", {}).get("functions", {})
+
+    # Build name→address lookup
+    addr_map: Dict[str, str] = {}
+    for flist in [func_data.get("functions", []), r2_func_data.get("functions", [])]:
+        for f in flist:
+            addr_map[f.get("name", "")] = f.get("address", "?")
+
+    evidence_blocks: List[str] = []
+
+    for source, cache in [("Ghidra", decomp_cache), ("Radare2", r2_decomp_cache)]:
+        for func_name, code in cache.items():
+            code_lower = code.lower()
+            # Check if function contains suspicious API calls
+            found_apis = [api for api in _SUSPICIOUS_APIS if api in code_lower]
+            if not found_apis:
+                continue
+
+            addr = addr_map.get(func_name, "?")
+
+            # Extract the specific lines containing the suspicious calls (max 10 lines)
+            interesting_lines: List[str] = []
+            for line in code.split("\n"):
+                line_lower = line.strip().lower()
+                if any(api in line_lower for api in found_apis):
+                    interesting_lines.append(line.rstrip())
+                    if len(interesting_lines) >= 10:
+                        break
+
+            if not interesting_lines:
+                continue
+
+            snippet = escape("\n".join(interesting_lines))
+            apis_str = ", ".join(sorted(set(found_apis)))
+
+            evidence_blocks.append(
+                f'<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;">'
+                f'<div style="background:#1f2937;color:white;padding:8px 14px;font-family:\'Roboto Mono\',monospace;font-size:0.82rem;">'
+                f'<strong>[{escape(source)}]</strong> {escape(func_name)} @ {escape(str(addr))} — '
+                f'<span style="color:#fbbf24;">{escape(apis_str)}</span></div>'
+                f'<pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;">'
+                f'<code>{snippet}</code></pre></div>'
+            )
+
+    if not evidence_blocks:
+        return '<div class="text-gray-500 italic">No suspicious API calls detected in decompiled code.</div>'
+
+    return "\n".join(evidence_blocks)
 
 
 def build_report_html(state: Dict[str, Any]) -> str:
@@ -445,14 +560,14 @@ def build_report_html(state: Dict[str, Any]) -> str:
 | Image Base | {binary.get('image_base', 'unknown')} |
 | Entry Point | {', '.join(binary.get('entry_points', ['unknown']))} |
 | Compiler | {binary.get('compiler', 'unknown')} |
-| Ghidra Imports | {', '.join(binary.get('imports', [])[:15]) or 'N/A'} |
-| Ghidra Exports | {', '.join(binary.get('exports', [])[:15]) or 'N/A'} |
+| Ghidra Imports | {', '.join(binary.get('imports', [])) or 'N/A'} |
+| Ghidra Exports | {', '.join(binary.get('exports', [])) or 'N/A'} |
 | Functions (Ghidra) | {len(funcs.get('functions', []))} total ({len(state.get('decompilation_cache', {}))} decompiled) |
 | Functions (R2) | {len(r2_funcs.get('functions', []))} total ({len(state.get('r2_decompilation_cache', {}))} decompiled) |
 | R2 Architecture | {r2_binary.get('architecture', 'N/A')} ({r2_binary.get('bits', '?')}-bit) |
 | R2 OS | {r2_binary.get('os', 'N/A')} |
-| R2 Imports | {', '.join(r2_binary.get('imports', [])[:15]) or 'N/A'} |
-| R2 Exports | {', '.join(r2_binary.get('exports', [])[:15]) or 'N/A'} |
+| R2 Imports | {', '.join(r2_binary.get('imports', [])) or 'N/A'} |
+| R2 Exports | {', '.join(r2_binary.get('exports', [])) or 'N/A'} |
 | Strings (Ghidra) | {len(strings_data.get('strings', []))} extracted |
 | Strings (R2) | {len(r2_strings.get('strings', []))} extracted |"""),
         "technical_analysis": _markdown_to_html(_extract_section(summary_text, "Technical Analysis")),
@@ -468,6 +583,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             + "\n"
             + _render_call_graph_section("Radare2", r2_call_graph_analysis)
         ),
+        "code_evidence": _render_code_evidence(state),
     }
     
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
@@ -519,6 +635,13 @@ def build_report_html(state: Dict[str, Any]) -> str:
         <div>
             <h2 class="section-header">6. Evidence of Malicious Activity</h2>
             <div>{_render_evidence(report_data['evidence'])}</div>
+        </div>
+
+        <!-- Code Evidence -->
+        <div>
+            <h2 class="section-header">6b. Code Evidence (Suspicious API Calls)</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Exact code locations where suspicious or malicious API calls were found in decompiled functions. Only factual findings from both Ghidra and Radare2.</div>
+            <div>{report_data['code_evidence']}</div>
         </div>
 
         <!-- Operational Flow -->
@@ -738,8 +861,8 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         <tr><td class="prop">Image Base</td><td class="mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
         <tr><td class="prop">Compiler</td><td>{escape(str(binary.get('compiler', 'unknown')))}</td></tr>
         <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('entry_points', ['unknown'])[:10]))}</td></tr>
-        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])[:20]))}</td></tr>
-        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])[:20]))}</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])))}</td></tr>
+        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])))}</td></tr>
         <tr><td class="prop">Segments</td><td>{len(binary.get('segments', []))}</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
         <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
@@ -750,8 +873,8 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         <tr><td class="prop">OS</td><td>{escape(str(binary.get('os', 'unknown')))}</td></tr>
         <tr><td class="prop">Endian</td><td>{escape(str(binary.get('endian', 'unknown')))}</td></tr>
         <tr><td class="prop">Stripped</td><td>{escape(str(binary.get('stripped', 'unknown')))}</td></tr>
-        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])[:20]))}</td></tr>
-        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])[:20]))}</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])))}</td></tr>
+        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])))}</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
         <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
 
@@ -776,7 +899,7 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
 
     # --- Strings Table ---
     string_rows = ""
-    for s in string_list[:100]:  # Cap at 100 for readability
+    for s in string_list:  # Include all strings
         if isinstance(s, dict):
             val = s.get("value", s.get("string", str(s)))
             addr = s.get("address", s.get("vaddr", ""))
@@ -941,10 +1064,10 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append(f"Compiler:     {binary.get('compiler', 'unknown')}")
         gh_imports = binary.get("imports", [])
         if gh_imports:
-            lines.append(f"Imports:      {', '.join(gh_imports[:30])}")
+            lines.append(f"Imports:      {', '.join(gh_imports)}")
         gh_exports = binary.get("exports", [])
         if gh_exports:
-            lines.append(f"Exports:      {', '.join(gh_exports[:30])}")
+            lines.append(f"Exports:      {', '.join(gh_exports)}")
         lines.append(f"Functions:    {len(funcs.get('functions', []))} ({len(decomp)} decompiled)")
         lines.append("")
 
@@ -960,10 +1083,10 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append(f"Stripped:     {r2_binary.get('stripped', 'unknown')}")
         imports = r2_binary.get("imports", [])
         if imports:
-            lines.append(f"Imports:      {', '.join(imports[:30])}")
+            lines.append(f"Imports:      {', '.join(imports)}")
         exports = r2_binary.get("exports", [])
         if exports:
-            lines.append(f"Exports:      {', '.join(exports[:30])}")
+            lines.append(f"Exports:      {', '.join(exports)}")
         lines.append(f"Functions:    {len(r2_funcs.get('functions', []))} ({len(r2_decomp)} decompiled)")
         lines.append("")
 
@@ -994,8 +1117,8 @@ def build_report_text(state: Dict[str, Any]) -> str:
             lines.append("  Attack chains: none detected")
         cycles = analysis.get("cycles", []) or []
         if cycles:
-            lines.append("  Cycles:")
-            for cycle in cycles[:10]:
+            lines.append(f"  Cycles (top 5 of {len(cycles)}):")
+            for cycle in cycles[:5]:
                 lines.append(f"    - {' -> '.join(cycle)}")
         lines.append("")
 
@@ -1011,18 +1134,22 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append("-" * 70)
         lines.append(f"APPENDIX A: GHIDRA DECOMPILED FUNCTIONS ({len(decomp)})")
         lines.append("-" * 70)
-        for name, code in list(decomp.items())[:10]:
+        for name, code in decomp.items():
             lines.append(f"\n--- {name} ---")
-            lines.append(code[:3000])
+            lines.append(code[:4000])
+            if len(code) > 4000:
+                lines.append("/* ... [truncated at 4000 chars] ... */")
         lines.append("")
 
     if r2_decomp:
         lines.append("-" * 70)
         lines.append(f"APPENDIX B: RADARE2 DECOMPILED FUNCTIONS ({len(r2_decomp)})")
         lines.append("-" * 70)
-        for name, code in list(r2_decomp.items())[:10]:
+        for name, code in r2_decomp.items():
             lines.append(f"\n--- {name} ---")
-            lines.append(code[:3000])
+            lines.append(code[:4000])
+            if len(code) > 4000:
+                lines.append("/* ... [truncated at 4000 chars] ... */")
         lines.append("")
 
     lines.extend([

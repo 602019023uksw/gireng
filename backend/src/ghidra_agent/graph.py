@@ -29,27 +29,22 @@ from ghidra_agent.tools import (
 
 GHIDRA_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 GHIDRA_AUTO_DECOMPILE_MIN = 10       # Floor: always decompile at least this many
-GHIDRA_AUTO_DECOMPILE_MAX = 25       # Ceiling: cap decompilation to avoid runaway on large binaries
-LLM_GHIDRA_DECOMP_LIMIT = 15
-LLM_R2_DECOMP_LIMIT = 10
+GHIDRA_AUTO_DECOMPILE_MAX = 40       # Ceiling: cap decompilation to avoid runaway on large binaries
+LLM_GHIDRA_DECOMP_LIMIT = 25
+LLM_R2_DECOMP_LIMIT = 25
 LLM_DECOMP_SNIPPET_CHARS = 4000
 
 
 def _smart_truncate(code: str, limit: int = LLM_DECOMP_SNIPPET_CHARS) -> str:
-    """Truncate decompiled code keeping both head and tail.
+    """Truncate decompiled code keeping 100% head.
 
-    Many C functions have critical control-flow (dispatch switches, command
-    handlers) at the *end* of the function body.  A naive ``code[:limit]``
-    drops exactly that part.  Instead we keep the first 60 % and last 40 %
-    of the budget so the LLM sees both variable declarations / setup AND
-    the tail logic.
+    Keeps from the beginning of the function up to the character limit so
+    the LLM sees the full setup, declarations, and as much logic as fits.
     """
     if len(code) <= limit:
         return code
-    head_budget = int(limit * 0.6)
-    tail_budget = limit - head_budget - 40  # 40 chars for marker line
-    marker = "\n/* ... [truncated middle] ... */\n"
-    return code[:head_budget] + marker + code[-tail_budget:]
+    marker = "\n/* ... [truncated at %d chars] ... */" % limit
+    return code[:limit] + marker
 
 
 BYTE_SIGNATURE_PATTERNS = [
@@ -593,9 +588,9 @@ async def synthesize(state: AgentState) -> AgentState:
         if binary.get("entry_points"):
             context_parts.append(f"Entry points: {', '.join(binary.get('entry_points', []))}")
         if binary.get("imports"):
-            context_parts.append(f"Ghidra Imports: {', '.join(binary.get('imports', [])[:40])}")
+            context_parts.append(f"Ghidra Imports: {', '.join(binary.get('imports', []))}")
         if binary.get("exports"):
-            context_parts.append(f"Ghidra Exports: {', '.join(binary.get('exports', [])[:40])}")
+            context_parts.append(f"Ghidra Exports: {', '.join(binary.get('exports', []))}")
 
     # Rank functions by composite score (xrefs + size), include top 100.
     funcs = results.get("functions", {})
@@ -654,11 +649,14 @@ async def synthesize(state: AgentState) -> AgentState:
     focus = results.get("focus", {})
     if focus.get("ok"):
         if focus.get("c"):
-            context_parts.append(f"\n=== FOCUSED DECOMPILE ===\n{focus['c'][:3000]}")
+            focused_code = focus['c'][:4000]
+            if len(focus['c']) > 4000:
+                focused_code += "\n/* ... [truncated at 4000 chars] ... */"
+            context_parts.append(f"\n=== FOCUSED DECOMPILE ===\n{focused_code}")
         elif focus.get("instructions"):
             instr_str = "\n".join(
                 f"  {i.get('address')}: {i.get('mnemonic')} {i.get('operands', '')}"
-                for i in focus["instructions"][:20]
+                for i in focus["instructions"][:40]
             )
             context_parts.append(f"\n=== FOCUSED DISASSEMBLY ===\n{instr_str}")
 
@@ -695,15 +693,15 @@ async def synthesize(state: AgentState) -> AgentState:
         if r2_binary.get("ok"):
             context_parts.append(f"R2 Binary: arch={r2_binary.get('architecture')}, bits={r2_binary.get('bits')}, os={r2_binary.get('os')}")
             if r2_binary.get("imports"):
-                context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'][:30])}")
+                context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'])}")
             if r2_binary.get("exports"):
-                context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'][:30])}")
+                context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'])}")
         r2_funcs = r2_results.get("functions", {})
         if r2_funcs.get("ok") and r2_funcs.get("functions"):
             r2_sorted = sorted(r2_funcs["functions"], key=_function_priority_key, reverse=True)
             r2_desc = [
                 f"{f.get('name')}(score:{f.get('priority_score', 0)},xrefs:{f.get('xrefs', 0)},size:{f.get('size', 0)})"
-                for f in r2_sorted[:30]
+                for f in r2_sorted[:40]
             ]
             context_parts.append(f"R2 Functions by priority ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
         r2_call_graph = r2_results.get("call_graph", {})
