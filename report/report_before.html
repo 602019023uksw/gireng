@@ -1,0 +1,1037 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malware Analysis Report - chargen</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
+        .font-mono { font-family: 'Roboto Mono', monospace; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
+        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
+        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
+        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
+        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
+        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
+        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
+        .markdown-content li { margin-bottom: 6px; }
+        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
+        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
+        .markdown-content pre code { color: #374151; background: none; padding: 0; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
+        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
+        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
+        .finding-desc { color: #4b5563; }
+        /* Utility classes used by markdown renderer */
+        .w-full { width: 100%; }
+        .text-left { text-align: left; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-800 { color: #1f2937; }
+        .italic { font-style: italic; }
+        .font-bold { font-weight: 700; }
+        .break-all { word-break: break-all; }
+        .list-disc { list-style-type: disc; }
+        .pl-4 { padding-left: 1rem; }
+        .pl-6 { padding-left: 1.5rem; }
+        .pt-half { padding-top: 0.125rem; }
+        .pb-4 { padding-bottom: 1rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .gap-4 { gap: 1rem; }
+        .items-start { align-items: flex-start; }
+        .flex { display: flex; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border-b { border-bottom: 1px solid #e5e7eb; }
+        .border-dashed { border-style: dashed; }
+        .border-gray-200 { border-color: #e5e7eb; }
+
+        .leading-relaxed { line-height: 1.625; }
+        .uppercase { text-transform: uppercase; }
+        .border-l-2 { border-left: 2px solid; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .pl-3 { padding-left: 0.75rem; }
+        .border-collapse { border-collapse: collapse; }
+        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Print / Save PDF
+        </button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
+            <div>
+                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
+                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
+                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
+            </div>
+        </div>
+
+        <!-- Metadata -->
+        <div class="meta-box">
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">chargen</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">5ca96705</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>2026-02-11 08:51 UTC</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
+            </div>
+        </div>
+
+        <!-- Risk Banner -->
+        <div class="risk-banner risk-critical">
+            THREAT ASSESSMENT: MALWARE
+        </div>
+
+        
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">1. Executive Summary</h2>
+            <div class="markdown-content"><p class="mb-3">The analyzed binary is a 32-bit Linux ELF malware written in C++. It functions as a bot or Remote Access Trojan (RAT) designed to execute commands received from a Command and Control (C2) server. The malware utilizes robust cryptographic capabilities, including RSA, AES, MD5, and SHA-1, likely to secure communications, encrypt payloads, or handle digital certificates. It establishes network connections to resolve hostnames and send/receive data using a custom protocol. The binary contains code to execute a shell (<code>/bin/sh</code>), indicating the ability to gain remote control over the infected host. The presence of entropy gathering from <code>/dev/urandom</code> and manipulation of system files suggests a persistent and sophisticated operation.</p></div>
+        </div>
+
+        <!-- Malware Capabilities -->
+        <div>
+            <h2 class="section-header">2. Malware Capabilities</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Cryptographic Operations (SHA-1, MD5)</strong>:</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_08082500</code> @ <code>0x08082500</code> — <code>uVar19 = *(int *)(param_1 + 0x18) + 0x5a827999 + (uVar8 &gt;&gt; 0x1b | uVar8 &lt;&lt; 5) + ((uVar11 ^ uVar10) &amp; uVar9 ^ uVar11) + uVar20;</code> (SHA-1 constant <code>0x5a827999</code> used in transformation round).</li>
+<li class="mb-2">  <strong>Cryptographic Operations (MD5)</strong>:</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_0807bb60</code> @ <code>0x0807bb60</code> — <code>uVar4 = *(int *)(param_1 + 8) + -0x28955b88 + ((uVar3 ^ uVar2) &amp; uVar1 ^ uVar3) + local_6c;</code> (Bitwise operations and constants characteristic of MD5 algorithm).</li>
+<li class="mb-2">  <strong>Network Connection (TCP/DNS)</strong>:</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_080d73e9</code> @ <code>0x080d73e9</code> — <code>local_1e8 = FUN_080cfe22((undefined2)local_190[0],2,0x11);</code> (Socket creation call: <code>socket(AF_INET=2, SOCK_STREAM=1, IPPROTO_IP=0)</code>).</li>
+<li class="mb-2">  <strong>Encrypted Key Parsing (PEM)</strong>:</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_08087ee0</code> @ <code>0x08087ee0</code> — <code>iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);</code> (String comparison identifying encrypted PEM headers).</li>
+<li class="mb-2">  <strong>Command Execution</strong>:</li>
+<li class="mb-2">  <strong>Evidence</strong>: Strings @ <code>/bin/sh</code> — String reference indicating the capability to spawn a shell for command execution.</li>
+<li class="mb-2">  <strong>Bignum Arithmetic (RSA Support)</strong>:</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_08075310</code> @ <code>0x08075310</code> — <code>iVar3 = (2 - iVar3 * uVar11) * iVar3;</code> (Logic consistent with modular arithmetic and Montgomery multiplication used in RSA operations).</li>
+</ul></div>
+        </div>
+
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">3. Binary Information</h2>
+            <div class="markdown-content"><table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>36f14431ea9f2482cd1af05c74d3b0e726dfed19a7db83b52ae41ad019320e61</td></tr><tr><td>Architecture</td><td>x86</td></tr><tr><td>Type</td><td>ELF/PE (inferred)</td></tr><tr><td>Image Base</td><td>08048000</td></tr><tr><td>Entry Point</td><td>08048e84</td></tr><tr><td>Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@311fd276</td></tr><tr><td>Ghidra Imports</td><td>N/A</td></tr><tr><td>Ghidra Exports</td><td>entry</td></tr><tr><td>Functions (Ghidra)</td><td>4574 total (40 decompiled)</td></tr><tr><td>Functions (R2)</td><td>3341 total (41 decompiled)</td></tr><tr><td>R2 Architecture</td><td>x86 (32-bit)</td></tr><tr><td>R2 OS</td><td>linux</td></tr><tr><td>R2 Imports</td><td>N/A</td></tr><tr><td>R2 Exports</td><td>N/A</td></tr><tr><td>Strings (Ghidra)</td><td>690 extracted</td></tr><tr><td>Strings (R2)</td><td>1011 extracted</td></tr></table></div>
+        </div>
+
+        <!-- Technical Analysis -->
+        <div>
+            <h2 class="section-header">4. Technical Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
+            <div class="markdown-content"><strong>[Cryptography - Hashing &amp; Encryption]</strong>
+<p class="mb-3">The binary contains implementations for standard cryptographic algorithms. <code>FUN_08082500</code> implements the SHA-1 hashing algorithm, as evidenced by the use of the constant <code>0x5a827999</code> and specific bitwise rotation operations (&gt;&gt; 27, &lt;&lt; 5). <code>FUN_0807bb60</code> implements the MD5 hashing algorithm. These are likely used for integrity checks or generating signatures. Additionally, <code>FUN_08087ee0</code> parses PEM-formatted key blocks, specifically looking for headers like &quot;Proc-Type: 4,ENCRYPTED&quot; and &quot;DEK-Info: AES-&quot;, indicating the ability to handle encrypted RSA or AES private keys.</p>
+
+<strong>Code Evidence</strong> (<code>FUN_08087ee0</code> @ <code>0x08087ee0</code>):
+<pre><code>iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);
+if (iVar5 != 0) {
+    local_44 = 0;
+    bVar1 = false;
+}
+// ... code handling DEK-Info parsing ...
+iVar7 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-128-CBC,&quot;,0x12);
+</code></pre>
+
+<strong>[Network Communication]</strong>
+<p class="mb-3">The malware establishes TCP connections to remote hosts. <code>FUN_080d73e9</code> handles the resolution of hostnames (likely using <code>getaddrinfo</code> wrappers) and creates a socket (<code>FUN_080cfe22</code> is likely <code>socket()</code>) and connects (<code>FUN_080cfb1d</code> is likely <code>connect()</code>). It references the IP <code>8.8.8.8</code> in the strings, potentially used for connectivity checks or as a hardcoded C2 address.</p>
+
+<strong>Code Evidence</strong> (<code>FUN_080d73e9</code> @ <code>0x080d73e9</code>):
+<pre><code>iVar8 = FUN_080d7f1d(&amp;local_14c,puVar4,0x200); // getaddrinfo equivalent
+if (-1 &lt; iVar8) {
+  local_194 = 1;
+  local_1e8 = FUN_080cfe22((undefined2)local_190[0],2,0x11); // socket()
+  if ((-1 &lt; local_1e8) &amp;&amp; (iVar7 = FUN_080cfb1d(local_1e8,local_190,0x1c), -1 &lt; iVar7)) { // connect()
+      // ... connection logic ...
+</code></pre>
+
+<strong>[Command Handling]</strong>
+<p class="mb-3"><code>FUN_08053f9c</code> acts as a dispatcher for incoming network commands. It parses a packet header and switches based on the command type (cases 1, 3, 5, 6, 7, 9, 0xc). Case 7 appears to trigger a complex set of operations involving thread handling (<code>FUN_0808b6e4</code>) and buffer processing.</p>
+
+<strong>Code Evidence</strong> (<code>FUN_08053f9c</code> @ <code>0x08053f9c</code>):
+<pre><code>switch(local_20[2]) {
+  case 1: // ... handling type 1
+  case 3: // ... handling type 3
+  case 7:
+    FUN_08055c66(param_1 + 0x124);
+    FUN_0808b6e4(&amp;local_3d);
+    FUN_0809b02c(local_44,param_2,param_3,&amp;local_3d);
+    break;
+  // ...
+</code></pre></div>
+        </div>
+
+        <!-- Functions Analysis -->
+        <div>
+            <h2 class="section-header">5. Functions Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
+            <div class="markdown-content"><strong>[entry] @ [0x08048e84] ([0] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Main entry point of the binary.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard entry setup.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>FUN_080d3937(FUN_08066d43,param_2,&amp;stack0x00000004,&amp;LAB_080480b4,&amp;LAB_080d83dc,param_1,auStack_4);
+do {
+} while( true );
+</code></pre>
+
+<strong>[FUN_08082500] @ [0x08082500] ([16] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Implements the SHA-1 hash transformation rounds.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Used for cryptographic hashing.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>uVar19 = *(int *)(param_1 + 0x18) + 0x5a827999 + (uVar8 &gt;&gt; 0x1b | uVar8 &lt;&lt; 5) +
+         ((uVar11 ^ uVar10) &amp; uVar9 ^ uVar11) + uVar20;
+</code></pre>
+
+<strong>[FUN_08075310] @ [0x08075310] ([6] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Performs &quot;bignum&quot; (large integer) arithmetic, likely modular multiplication or exponentiation for RSA.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Essential for public-key crypto operations.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>iVar3 = (uVar11 * 2 + 4 &amp; 8) + uVar11;
+// ...
+iVar3 = (2 - iVar3 * uVar11) * iVar3; // Modular Inverse logic or reduction
+</code></pre>
+
+<strong>[FUN_080a4d6e] @ [0x080a4d6e] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Initializes function pointers and structures for the malware&#x27;s operation (likely the C2 client object).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Sets up the malicious runtime environment.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>DAT_08124468 = &amp;PTR_FUN_08118b28;
+DAT_08124470 = 0;
+FUN_080a6574(param_1,PTR_DAT_081194e8,&amp;DAT_08124ae0);
+</code></pre>
+
+<strong>[FUN_080846c0] @ [0x080846c0] ([12] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Implements a cryptographic hashing algorithm (likely MD5 or SHA-1 variant).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Crypto primitive.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>iVar5 = local_20 +
+        ((uVar10 &gt;&gt; 0xb | uVar10 &lt;&lt; 0x15) ^ (uVar10 &gt;&gt; 6 | uVar10 &lt;&lt; 0x1a) ^
+        (uVar10 &gt;&gt; 0x19 | uVar10 &lt;&lt; 7)) + local_13c[iVar4] + (&amp;DAT_080d9940)[iVar4];
+</code></pre>
+
+<strong>[FUN_080d73e9] @ [0x080d73e9] ([2] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Establishes a TCP connection to a remote server.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — C2 communication.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>local_1e8 = FUN_080cfe22((undefined2)local_190[0],2,0x11);
+iVar7 = FUN_080cfb1d(local_1e8,local_190,0x1c);
+if ((-1 &lt; local_1e8) &amp;&amp; (-1 &lt; iVar7)) {
+    // send/recv logic
+</code></pre>
+
+<strong>[FUN_08053f9c] @ [0x08053f9c] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Parses incoming network packets and dispatches commands.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Core command processing.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>switch(local_20[2]) {
+  case 1: ...
+  case 7: FUN_08055c66(param_1 + 0x124); // Thread handling?
+</code></pre>
+
+<strong>[FUN_0807bb60] @ [0x0807bb60] ([16] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: MD5 Hash implementation.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Crypto primitive.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>uVar4 = *(int *)(param_1 + 8) + -0x28955b88 + ((uVar3 ^ uVar2) &amp; uVar1 ^ uVar3) + local_6c;
+</code></pre>
+
+<strong>[FUN_08087ee0] @ [0x08087ee0] ([4] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Parses PEM formatted data (keys).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Used to load configuration or crypto keys.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);
+iVar7 = FUN_080cd655(pcVar11,&quot;DEK-Info: DES-EDE3-CBC,&quot;,0x17);
+</code></pre></div>
+        </div>
+
+        <!-- Evidence -->
+        <div>
+            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
+            <div><div class="finding-item"><div class="finding-title">Finding 1</div><div class="finding-desc text-sm leading-relaxed pl-4">Cryptographic Algorithm Implementation (SHA-1) - Function: `FUN_08082500` @ `0x08082500` - Code: `uVar19 = *(int *)(param_1 + 0x18) + 0x5a827999 + (uVar8 &gt;&gt; 0x1b | uVar8 &lt;&lt; 5) + ((uVar11 ^ uVar10) &amp; uVar9 ^ uVar11) + uVar20;`</div></div><div class="finding-item"><div class="finding-title">Finding 2</div><div class="finding-desc text-sm leading-relaxed pl-4">Cryptographic Algorithm Implementation (MD5) - Function: `FUN_0807bb60` @ `0x0807bb60` - Code: `uVar4 = *(int *)(param_1 + 8) + -0x28955b88 + ((uVar3 ^ uVar2) &amp; uVar1 ^ uVar3) + local_6c;`</div></div><div class="finding-item"><div class="finding-title">Finding 3</div><div class="finding-desc text-sm leading-relaxed pl-4">Encrypted Key Header Parsing - Function: `FUN_08087ee0` @ `0x08087ee0` - Code: `iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);`</div></div><div class="finding-item"><div class="finding-title">Finding 4</div><div class="finding-desc text-sm leading-relaxed pl-4">TCP Socket Creation and Connection - Function: `FUN_080d73e9` @ `0x080d73e9` - Code: `local_1e8 = FUN_080cfe22((undefined2)local_190[0],2,0x11); iVar7 = FUN_080cfb1d(local_1e8,local_190,0x1c);`</div></div><div class="finding-item"><div class="finding-title">Finding 5</div><div class="finding-desc text-sm leading-relaxed pl-4">Shell Execution Capability - Function: `Strings` @ `Global` - Code: `/bin/sh`</div></div><div class="finding-item"><div class="finding-title">Finding 6</div><div class="finding-desc text-sm leading-relaxed pl-4">Information Gathering - Function: `Strings` @ `Global` - Code: `/etc/passwd`</div></div></div>
+        </div>
+
+        <!-- Code Evidence -->
+        <div>
+            <h2 class="section-header">6b. Code Evidence (Suspicious API Calls)</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Exact code locations where suspicious or malicious API calls were found in decompiled functions. Only factual findings from both Ghidra and Radare2.</div>
+            <div><div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_08087ee0 @ 08087ee0 — <span style="color:#fbbf24;">aes, crypt, encrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>     (iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16), iVar5 != 0)) {
+    if ((iVar5 &lt; 0xe) || (iVar7 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-&quot;,0xe), iVar7 != 0)) {
+      iVar5 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-128-CBC,&quot;,0x16);
+        iVar5 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-192-CBC,&quot;,0x16);
+          iVar5 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-256-CBC,&quot;,0x16);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.08087ee0 @ 0x8087ee0 — <span style="color:#fbbf24;">aes, crypt, encrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    if ((pcVar4 - pcVar11 &lt; 0x16) || (iVar5 = fcn.080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16), iVar5 != 0)) {
+        if ((iVar5 &lt; 0xe) || (iVar7 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-&quot;,0xe), iVar7 != 0)) {
+            iVar5 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-128-CBC,&quot;,0x16);
+                iVar5 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-192-CBC,&quot;,0x16);
+                    iVar5 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-256-CBC,&quot;,0x16);</code></pre></div></div>
+        </div>
+
+        <!-- Operational Flow -->
+        <div>
+            <h2 class="section-header">7. Operational Flow</h2>
+            <div class="markdown-content"><ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: The <code>entry</code> point at <code>0x08048e84</code> calls <code>FUN_080d3937</code>, which likely triggers global constructors and library initialization (C++ runtime).</li>
+<li class="mb-2"><strong>Setup</strong>: <code>FUN_080a4d6e</code> is called to configure the main controller object. It sets up callback functions and initializes data structures required for the C2 protocol.</li>
+<li class="mb-2"><strong>Main Operation</strong>: The malware enters a loop where it initiates network connections. <code>FUN_080d73e9</code> resolves the hostname (possibly <code>8.8.8.8</code> or a domain resolved via DNS) and establishes a TCP socket.</li>
+<li class="mb-2"><strong>Persistence &amp; Communication</strong>: Once connected, the malware receives data. <code>FUN_08053f9c</code> parses the data. If the command type matches specific IDs (e.g., 7), it spawns threads or executes actions.</li>
+<li class="mb-2"><strong>Command Execution</strong>: Based on the strings found (<code>/bin/sh</code>), the malware likely executes shell commands received from the C2 server.</li>
+</ol></div>
+        </div>
+
+        <!-- C2 & Networking -->
+        <div>
+            <h2 class="section-header">8. C2 & Networking</h2>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>C2 Servers</strong>:</li>
+<li class="mb-2">  <code>8.8.8.8</code> — Evidence: String @ <code>8.8.8.8</code>.</li>
+<li class="mb-2">  Note: <code>data.rel.ro</code> is listed in the IOC section as a domain, but this is a standard ELF section name (<code>.data.rel.ro</code>). It is likely a false positive from the string extraction tool rather than an actual C2 domain.</li>
+<li class="mb-2">  <strong>Protocols</strong>: TCP (Custom protocol over raw TCP/IP).</li>
+<li class="mb-2">  <strong>Communication Pattern</strong>: The malware creates a socket, connects to the server, and enters a read loop. It uses a dispatcher function to handle different message types (IDs), suggesting a structured binary protocol.</li>
+</ul></div>
+        </div>
+
+        <!-- Recommendations -->
+        <div>
+            <h2 class="section-header">9. Recommendations</h2>
+            <div class="space-y-4"><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">1</div><div class="text-sm pt-half text-gray-800">Block Network Traffic: Firewall rules should be implemented to block outgoing connections to the identified IP address <code>8.8.8.8</code> if not legitimately required by the network policy, and monitor for traffic to unknown destinations on non-standard ports.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">2</div><div class="text-sm pt-half text-gray-800">Scan for IOCs: Utilize the provided SHA256 hash (<code>36f14431ea9f2482cd1af05c74d3b0e726dfed19a7db83b52ae41ad019320e61</code>) to scan all endpoints for the presence of this binary.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">3</div><div class="text-sm pt-half text-gray-800">Monitor Processes: Monitor Linux systems for suspicious processes spawning <code>/bin/sh</code> or establishing unexpected socket connections, particularly those linked to C++ runtime libraries given the binary&#x27;s construction.</div></div></div>
+        </div>
+
+        <!-- IOCs -->
+        <div>
+            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
+                    <tbody><tr><td class="font-bold text-xs text-gray-500 uppercase">IP/Domain</td><td class="font-mono text-sm break-all">8.8.8.8</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">data.rel.ro</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/urandom</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/random</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/sys/kernel/version</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/self/maps</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/bin/sh</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/mounts</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/fstab</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/shm/sem.</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/shm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/TZ</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/localtime</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/passwd</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/ptmx</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/pts/</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/null</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/bin</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/stat</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/cpuinfo</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/sys/devices/system/cpu</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/resolv.conf</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/hosts</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/rc.d/init.d/networkd</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">md5WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha224WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha256WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIwLb1EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIwLb0EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">NSt6locale5facetE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIcLb1EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIcLb0EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">npxXoudifFeEgGaACScs</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conclusion -->
+        <div>
+            <h2 class="section-header">11. Conclusion</h2>
+            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                <p class="mb-3">The binary analyzed is a sophisticated 32-bit Linux ELF malware featuring a C++ codebase. It incorporates standard cryptographic libraries (MD5, SHA-1, RSA/AES support) and establishes TCP connections to remote servers (e.g., 8.8.8.8). Its primary capabilities include command execution via shell access and parsing of encrypted key material. The presence of C++ threading primitives and structured network packet handling suggests a modern, likely modular bot or RAT design. Immediate remediation involves blocking the associated IPs and removing the file using the provided SHA256 hash.</p>
+            </div>
+        </div>
+
+        <!-- Call Graph -->
+        <div>
+            <h2 class="section-header">12. Call Graph &amp; Attack Chains</h2>
+            <div class="markdown-content"><h3>Ghidra Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 4564 | <strong>Edges:</strong> 10664 | <strong>Entries:</strong> entry | <strong>Attack Chains:</strong> 0</p>
+<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>
+<h4>Adjacency (Who Calls Whom)</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>FUN_080480d0</code></td><td>FUN_0804b47b, FUN_0804b668, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_080484ba</code></td><td>FUN_08049180</td></tr>
+<tr><td><code>FUN_080484cb</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_080484dc</code></td><td>FUN_0804b47b, FUN_0804b668, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_080488c7</code></td><td>FUN_08049180</td></tr>
+<tr><td><code>FUN_080488d8</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_080488e9</code></td><td>FUN_0804b47b</td></tr>
+<tr><td><code>FUN_08048c62</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_08048c73</code></td><td>FUN_080989f2, FUN_08098a1e, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08048ca7</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08048ccc</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_08048d78</code></td><td>FUN_08098ba0, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08048dd8</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_08048eaa</code></td><td>-</td></tr>
+<tr><td><code>FUN_08048ed4</code></td><td>-</td></tr>
+<tr><td><code>FUN_08048f09</code></td><td>FUN_08048eaa, FUN_080c55d6</td></tr>
+<tr><td><code>FUN_08048f68</code></td><td>FUN_08048ed4, FUN_080c542a</td></tr>
+<tr><td><code>FUN_08048fbd</code></td><td>FUN_080d2afb, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08049010</code></td><td>-</td></tr>
+<tr><td><code>FUN_08049040</code></td><td>-</td></tr>
+<tr><td><code>FUN_08049070</code></td><td>-</td></tr>
+<tr><td><code>FUN_080490c0</code></td><td>-</td></tr>
+<tr><td><code>FUN_080490e0</code></td><td>-</td></tr>
+<tr><td><code>FUN_08049110</code></td><td>-</td></tr>
+<tr><td><code>FUN_08049180</code></td><td>-</td></tr>
+<tr><td><code>FUN_080491d0</code></td><td>-</td></tr>
+<tr><td><code>FUN_080492a0</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_08049390</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_080494e0</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_080495e0</code></td><td>FUN_08049040, FUN_080490e0, FUN_0804a8df, FUN_0804aa11, FUN_0804b760, FUN_0804b7b0, FUN_0804eea9</td></tr>
+<tr><td><code>FUN_08049990</code></td><td>FUN_08049040, FUN_080490e0, FUN_0804a8df, FUN_0804aa11, FUN_0804b760, FUN_0804b7b0, FUN_0804eea9</td></tr>
+<tr><td><code>FUN_08049cb0</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_08049d90</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_08049f10</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804a070</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804a120</code></td><td>FUN_08049040, FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804a1f0</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a270</code></td><td>FUN_0804b760, FUN_0804b7b0, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a3a0</code></td><td>FUN_0804b760, FUN_0804b7b0, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a434</code></td><td>FUN_0804a594</td></tr>
+<tr><td><code>FUN_0804a4c0</code></td><td>FUN_0804b80a, FUN_0804b825, FUN_0805078a, FUN_080c5bd6, __i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804a594</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804a5ae</code></td><td>FUN_080cd4da, FUN_080cd902, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a63f</code></td><td>FUN_0804a758, FUN_080cd492, FUN_080d08bf, FUN_080d0e35, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a6f9</code></td><td>FUN_080cd4da, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a758</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a7ee</code></td><td>FUN_0804a758, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804a869</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804a897</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804a8df</code></td><td>FUN_080480d0, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804aa11</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804aa25</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804aa33</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804aa41</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804aa4f</code></td><td>FUN_080c64ca, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804aa68</code></td><td>FUN_080d284e, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804aa81</code></td><td>FUN_0804b3f9, FUN_08050732, FUN_080c61dc, FUN_080c65b2, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ab78</code></td><td>FUN_080c5f09, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ac22</code></td><td>FUN_080c6626, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ac67</code></td><td>FUN_0804ac22, FUN_080ca981, FUN_080cd547, FUN_080cd57b, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ad48</code></td><td>FUN_080c5ed3, FUN_080c6135, FUN_080c6626, FUN_080c6b6b, FUN_080cd547, FUN_080cd57b, FUN_080d2bef, FUN_080d2ca0, FUN_080d2d10, FUN_080d2df0, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b026</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b0a7</code></td><td>FUN_0804b026, FUN_0804b760, FUN_0804b7b0</td></tr>
+<tr><td><code>FUN_0804b0ff</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b17e</code></td><td>FUN_0804b0ff, FUN_0804b760, FUN_0804b7b0</td></tr>
+<tr><td><code>FUN_0804b1c8</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b236</code></td><td>FUN_0804b1c8, FUN_0804b760, FUN_0804b7b0</td></tr>
+<tr><td><code>FUN_0804b2a0</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b2b9</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b2f5</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804b301</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804b30d</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b36a</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b3ce</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b3d1</code></td><td>FUN_080c6005, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b3f9</code></td><td>FUN_080c5b65, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b443</code></td><td>FUN_080c63ca, FUN_080c63fa, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b47b</code></td><td>FUN_0804b443, FUN_080c6394, FUN_080c642a, FUN_080c6490, FUN_080d07b3, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b668</code></td><td>FUN_080c6394, FUN_080c642a, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804b723</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804b733</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804b743</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804b753</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804b760</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804b7b0</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b80a</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b825</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b82f</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b851</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b875</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b8bf</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804b925</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804b975</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804b9f1</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ba0a</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804ba23</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ba24</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ba25</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ba3f</code></td><td>FUN_080c67f9, FUN_080cd92c, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804bafd</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804bbca</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804bc42</code></td><td>FUN_0804ba3f, FUN_080c5b65, FUN_080c5e9d, FUN_080d234b, FUN_080d2a91, FUN_080d2f86, FUN_080d33c7, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804bebb</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bf16</code></td><td>FUN_080d0e35, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804bf3b</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bf4e</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bf5e</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bf73</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bf82</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bf92</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bfa8</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bfb8</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804bfd3</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804bff8</code></td><td>FUN_080c5e77, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c023</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c047</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c055</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c079</code></td><td>FUN_080c63ca, FUN_080c63fa, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c0db</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c0f7</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c119</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c12b</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c151</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c16c</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c16f</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c17e</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c18b</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c1a2</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c241</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c244</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c258</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c26a</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c277</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c298</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c2b6</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c3df</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804c3f1</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804c3fe</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804c40b</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804c41b</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804c428</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804c438</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804c445</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804c455</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c4c2</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c4ed</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c535</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c567</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c598</code></td><td>FUN_0804c4c2, FUN_080c61a6, FUN_080d0fc3, FUN_080d35a7, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c61c</code></td><td>FUN_0804c4c2, FUN_0804c567, FUN_0804c598, FUN_080d35a7, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c6a9</code></td><td>FUN_0804a434, FUN_0804c61c, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c7f6</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804c7fc</code></td><td>FUN_0804c4c2, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804c9ba</code></td><td>FUN_0804c4ed, FUN_0804c535, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804cbac</code></td><td>FUN_080cd4da, FUN_080cd902, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804cca9</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804cda5</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ce18</code></td><td>FUN_080d0e35, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804cf17</code></td><td>FUN_0804c61c, FUN_080d0e35, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804cf66</code></td><td>FUN_0804b760, FUN_0804b7b0, FUN_0804ba24, FUN_0804ce18, FUN_0804cf17, FUN_080c5c06, FUN_080c5e77, FUN_080c60fb, FUN_080d1d7e, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804d1cc</code></td><td>FUN_0804ba23, FUN_0804c4c2, FUN_0804c567, FUN_0804c61c, FUN_0804c6a9, FUN_080c5c5a, FUN_080c5e77, FUN_080c616c, FUN_080c61a6, FUN_080cd4da, FUN_080d3454, FUN_080d357e, FUN_080d35a7, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804d868</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d878</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d888</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d898</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d8a8</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d8b8</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d8c8</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d8d8</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d8e8</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d8f8</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d908</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d918</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d928</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d938</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d948</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d958</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d968</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d978</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d988</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d998</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d9a8</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804d9b8</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d9c8</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804d9d8</code></td><td>FUN_0804cf17</td></tr>
+<tr><td><code>FUN_0804da26</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804da35</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804da56</code></td><td>FUN_0804a6f9, FUN_080c5e9d, FUN_080ca244, FUN_080ca44c, FUN_080ca4dc, FUN_080cb480, FUN_080cc368, FUN_080d08bf, FUN_080d0e35, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804dcbd</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804dccd</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804dcda</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804dcec</code></td><td>FUN_080c6394, FUN_080c642a, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ddba</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804ddca</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804ddd7</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804de39</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804de4a</code></td><td>FUN_0804b760, FUN_0804b7b0, FUN_0804b82f, FUN_0804b851, FUN_0804cf17, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804df63</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804dfc2</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804e005</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e008</code></td><td>FUN_0804b443, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804e04f</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e066</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e078</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e08d</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e0a1</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e0ae</code></td><td>FUN_0804b443, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804e108</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e12e</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e154</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e17a</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e19a</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e1be</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804e1dd</code></td><td>FUN_0804b443, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804e2c4</code></td><td>FUN_080484dc, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804e3f6</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804e404</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804e412</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804e41d</code></td><td>FUN_0804b47b, FUN_0804b668, FUN_080c5ed3, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804ea70</code></td><td>FUN_08049070</td></tr>
+<tr><td><code>FUN_0804ea80</code></td><td>FUN_08049070</td></tr>
+<tr><td><code>FUN_0804ea90</code></td><td>FUN_08049070</td></tr>
+<tr><td><code>FUN_0804eaa0</code></td><td>FUN_080491d0</td></tr>
+<tr><td><code>FUN_0804eab0</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804eac1</code></td><td>FUN_0804b47b, FUN_0804b668</td></tr>
+<tr><td><code>FUN_0804ee98</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804eea9</code></td><td>FUN_080488e9</td></tr>
+<tr><td><code>FUN_0804ef27</code></td><td>FUN_0804eea9</td></tr>
+<tr><td><code>FUN_0804ef35</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804ef40</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ef43</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ef52</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ef62</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ef76</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804ef8d</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804efa6</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804efa9</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804eff0</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804f041</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804f04c</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804f057</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804f09a</code></td><td>FUN_08049040</td></tr>
+<tr><td><code>FUN_0804f0a5</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_0804f0b0</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804f0b7</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804f13a</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804f1ca</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804f1eb</code></td><td>FUN_0804f2ef, FUN_0804f325, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f255</code></td><td>FUN_0804f35f, FUN_0804f399, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f2bf</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804f2ef</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f325</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f35f</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f399</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f3cf</code></td><td>FUN_080c6490, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f471</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804f47e</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804f48b</code></td><td>FUN_080c645a, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f521</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804f52e</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804f53b</code></td><td>FUN_080d07b3, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f603</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804f633</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_0804f664</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804f66f</code></td><td>FUN_08049110, FUN_0804b760, FUN_0804b7b0, FUN_0804b82f, FUN_0804b851, FUN_0804cf17, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f777</code></td><td>FUN_0804cf17</td></tr>
+<tr><td><code>FUN_0804f7df</code></td><td>FUN_0804b3f9, FUN_080d2e60, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804f89b</code></td><td>FUN_0804b3f9, FUN_0804b925, FUN_0804b975, FUN_080c5d34, FUN_080c5d6e, FUN_080c65b2, FUN_080d2e60, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804fc19</code></td><td>FUN_0804b760, FUN_0804b7b0, FUN_0804f89b, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804fc75</code></td><td>FUN_0804fc19, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804fc95</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804fca5</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804fcb5</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804fcc5</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804fcd5</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804fce5</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804fcf5</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804fd05</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804fd15</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804fd2a</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804fd4d</code></td><td>FUN_080c61a6, FUN_080c8219, FUN_080c8350, FUN_080d0e35, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0804fe1e</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0804fe2e</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0804fe3b</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804fe3e</code></td><td>-</td></tr>
+<tr><td><code>FUN_0804fe4d</code></td><td>__i686.get_pc_thunk.cx</td></tr>
+<tr><td><code>FUN_0804fe91</code></td><td>FUN_080c6686, FUN_080c7ed7, FUN_080c814a, FUN_080cd547, FUN_080cd57b, FUN_080cd902, FUN_080cdada, FUN_080cffbe, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08050028</code></td><td>FUN_080c5c5a, FUN_080c6b0b, FUN_080c8166, FUN_080c81da, FUN_080cd492, FUN_080cffbe, FUN_080d0e35, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_080501dc</code></td><td>FUN_080cd547, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08050247</code></td><td>FUN_0804a4c0, FUN_0804ad48, FUN_08050028, FUN_080c5c5a, FUN_080c5fcf, FUN_080c61a6, FUN_080c6829, FUN_080c6b6b, FUN_080cd57b, FUN_080cd902, FUN_080d2ca0, FUN_080d2d80, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0805050d</code></td><td>FUN_08049010</td></tr>
+<tr><td><code>FUN_0805051d</code></td><td>FUN_080490c0</td></tr>
+<tr><td><code>FUN_0805052d</code></td><td>FUN_0804a4c0, FUN_080c6829, FUN_080cd57b, FUN_080cd902, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0805060c</code></td><td>FUN_080c3d1d, FUN_080c6005, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_080506fb</code></td><td>FUN_080cd57b, FUN_080d0fc3, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08050732</code></td><td>FUN_080c3ffb, FUN_080d0fc3, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_0805078a</code></td><td>FUN_08050732</td></tr>
+<tr><td><code>FUN_08050796</code></td><td>-</td></tr>
+<tr><td><code>FUN_080507a8</code></td><td>FUN_0804da26</td></tr>
+<tr><td><code>FUN_080507c2</code></td><td>-</td></tr>
+</table>
+<h4>Detected Cycles</h4>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><code>FUN_080cffbe -&gt; FUN_080cffbe</code></li>
+<li class="mb-2"><code>FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_080d07b3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_08050732 -&gt; FUN_080c3ffb -&gt; FUN_080c3a9c -&gt; FUN_0804a4c0 -&gt; FUN_0805078a -&gt; FUN_08050732</code></li>
+<li class="mb-2"><code>FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_080d0e35 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804b975</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0c8b -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35 -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_080d0c8b -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0c8b</code></li>
+<li class="mb-2"><code>FUN_080d0e35 -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0c8b -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35 -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804ef27 -&gt; FUN_0804eea9 -&gt; FUN_080488e9 -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080c3ffb -&gt; FUN_080c3a9c -&gt; FUN_080c2ce5 -&gt; FUN_080c56e4 -&gt; FUN_080c4ed9 -&gt; FUN_080cffbe -&gt; FUN_0804b975</code></li>
+<li class="mb-2"><code>FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080c3ffb -&gt; FUN_080c3a9c -&gt; FUN_080c2ce5 -&gt; FUN_080c56e4 -&gt; FUN_080c4ed9 -&gt; FUN_080d0e35 -&gt; FUN_0804b975</code></li>
+<li class="mb-2"><code>FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080c3ffb -&gt; FUN_080c3c50 -&gt; FUN_080c2ce5 -&gt; FUN_080c56e4 -&gt; FUN_080c4ed9 -&gt; FUN_080cffbe -&gt; FUN_0804b975</code></li>
+<li class="mb-2"><code>FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080c3ffb -&gt; FUN_080c3c50 -&gt; FUN_080c2ce5 -&gt; FUN_080c56e4 -&gt; FUN_080c4ed9 -&gt; FUN_080d0e35 -&gt; FUN_0804b975</code></li>
+<li class="mb-2"><code>FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_0804b975</code></li>
+<li class="mb-2"><code>FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3 -&gt; FUN_0804ef27 -&gt; FUN_0804eea9 -&gt; FUN_080488e9 -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804b975</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35 -&gt; FUN_080d0c8b -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_080d0e35 -&gt; FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080c3ffb -&gt; FUN_080c3a9c -&gt; FUN_080c2ce5 -&gt; FUN_080c56e4 -&gt; FUN_080c4ed9 -&gt; FUN_080d0e35</code></li>
+<li class="mb-2"><code>FUN_080d0e35 -&gt; FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080c3ffb -&gt; FUN_080c3c50 -&gt; FUN_080c2ce5 -&gt; FUN_080c56e4 -&gt; FUN_080c4ed9 -&gt; FUN_080d0e35</code></li>
+<li class="mb-2"><code>FUN_080d0e35 -&gt; FUN_080d0c8b -&gt; FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35</code></li>
+<li class="mb-2"><code>FUN_080d0e35 -&gt; FUN_080d0fc3 -&gt; FUN_0804ef27 -&gt; FUN_0804eea9 -&gt; FUN_080488e9 -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35 -&gt; FUN_080d0c8b -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804ef27 -&gt; FUN_0804eea9 -&gt; FUN_080488e9 -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804b975 -&gt; FUN_08050732 -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804ef27 -&gt; FUN_0804eea9 -&gt; FUN_080488e9 -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0c8b -&gt; FUN_080d0fc3</code></li>
+<li class="mb-2"><code>FUN_080d0fc3 -&gt; FUN_0804ef27 -&gt; FUN_0804eea9 -&gt; FUN_080488e9 -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_080d0e35 -&gt; FUN_080d0fc3</code></li>
+</ul>
+<h3>Radare2 Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 3341 | <strong>Edges:</strong> 0 | <strong>Entries:</strong> entry0, main | <strong>Attack Chains:</strong> 0</p>
+<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>
+<h4>Adjacency (Who Calls Whom)</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>entry0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048ea6</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048eaa</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048f09</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048f68</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049001</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049010</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049040</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049070</code></td><td>-</td></tr>
+<tr><td><code>fcn.080490c0</code></td><td>-</td></tr>
+<tr><td><code>fcn.080490e0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049110</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049180</code></td><td>-</td></tr>
+<tr><td><code>fcn.080491d0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049390</code></td><td>-</td></tr>
+<tr><td><code>fcn.080494e0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049990</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049cac</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a392</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a434</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a48f</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a4c0</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a6f9</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a758</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a897</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804a8df</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804aa11</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804aa68</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804aa81</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ac22</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ad48</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b026</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b0ff</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b1c8</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b3f9</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b443</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b47b</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b668</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b760</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b7b0</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b80a</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b825</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b82f</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b851</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b925</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804b975</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ba0a</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ba23</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ba24</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ba25</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ba3f</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804bc42</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804bf16</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804bff8</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c151</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c1a2</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c2b6</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c4c2</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c4ed</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c535</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c567</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c598</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c61c</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804c6a9</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ce18</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804cf17</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804d1cc</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804d9d8</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804da26</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804de4a</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804e2c4</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804eac1</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804eea9</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804ef27</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804f0b0</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804f2ef</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804f325</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804f35f</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804f399</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804f603</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804f89b</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804fc19</code></td><td>-</td></tr>
+<tr><td><code>fcn.0804fc75</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050028</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050732</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805078a</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050796</code></td><td>-</td></tr>
+<tr><td><code>fcn.080507a8</code></td><td>-</td></tr>
+<tr><td><code>fcn.080507c2</code></td><td>-</td></tr>
+<tr><td><code>fcn.080507d3</code></td><td>-</td></tr>
+<tr><td><code>fcn.080507f5</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050832</code></td><td>-</td></tr>
+<tr><td><code>fcn.080509f6</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050ad0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050aee</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050b22</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050bb0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050bf4</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050d20</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050ddc</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050f18</code></td><td>-</td></tr>
+<tr><td><code>fcn.08050f7c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051330</code></td><td>-</td></tr>
+<tr><td><code>fcn.080513b6</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805141c</code></td><td>-</td></tr>
+<tr><td><code>fcn.080514aa</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051568</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051582</code></td><td>-</td></tr>
+<tr><td><code>fcn.080515a4</code></td><td>-</td></tr>
+<tr><td><code>fcn.080515ac</code></td><td>-</td></tr>
+<tr><td><code>fcn.080515b2</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051600</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805160e</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805162e</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805164a</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051674</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805167e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051694</code></td><td>-</td></tr>
+<tr><td><code>fcn.080516a8</code></td><td>-</td></tr>
+<tr><td><code>fcn.080516fa</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051718</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051720</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051728</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805173e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051752</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051812</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805187e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051886</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805188e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051896</code></td><td>-</td></tr>
+<tr><td><code>fcn.080518a9</code></td><td>-</td></tr>
+<tr><td><code>fcn.080518b2</code></td><td>-</td></tr>
+<tr><td><code>fcn.080518cc</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051909</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051911</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051919</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051921</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051937</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051940</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805195a</code></td><td>-</td></tr>
+<tr><td><code>fcn.080519aa</code></td><td>-</td></tr>
+<tr><td><code>fcn.080519c4</code></td><td>-</td></tr>
+<tr><td><code>fcn.080519de</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051a29</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051a32</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051a5c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051a64</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051aa8</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051ab0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051ab8</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051abe</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051ad8</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051b06</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051b46</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051b7e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051bb6</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051c1c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051c2a</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051c6c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051cb0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051cc4</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051cd7</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051d0e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051d30</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051d36</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051d3c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051d6e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051df5</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051dfd</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051e06</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051ed2</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051f07</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051f0c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051f20</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051f33</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051f55</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051f94</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051fb6</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051fbc</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051fc2</code></td><td>-</td></tr>
+<tr><td><code>fcn.08051ff9</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052038</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805204c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052056</code></td><td>-</td></tr>
+<tr><td><code>fcn.080520f2</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805210c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052120</code></td><td>-</td></tr>
+<tr><td><code>fcn.080521ca</code></td><td>-</td></tr>
+<tr><td><code>fcn.080521d0</code></td><td>-</td></tr>
+<tr><td><code>fcn.080521d6</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052206</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052229</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052252</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805227c</code></td><td>-</td></tr>
+<tr><td><code>fcn.080522ba</code></td><td>-</td></tr>
+<tr><td><code>fcn.080522dc</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052316</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052364</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052476</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052490</code></td><td>-</td></tr>
+<tr><td><code>fcn.080524aa</code></td><td>-</td></tr>
+<tr><td><code>fcn.080524c1</code></td><td>-</td></tr>
+<tr><td><code>fcn.080524db</code></td><td>-</td></tr>
+<tr><td><code>fcn.080524f5</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052508</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805251b</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805252e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052542</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805257e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052596</code></td><td>-</td></tr>
+<tr><td><code>fcn.080525aa</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052766</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052770</code></td><td>-</td></tr>
+<tr><td><code>fcn.080527f2</code></td><td>-</td></tr>
+<tr><td><code>fcn.080529a0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052a24</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052a36</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052a5e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052a86</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052cb2</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052d8c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08052f94</code></td><td>-</td></tr>
+<tr><td><code>fcn.08053428</code></td><td>-</td></tr>
+<tr><td><code>fcn.08053a1e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08053f9c</code></td><td>-</td></tr>
+<tr><td><code>fcn.080548f4</code></td><td>-</td></tr>
+<tr><td><code>fcn.08054938</code></td><td>-</td></tr>
+<tr><td><code>fcn.08054b18</code></td><td>-</td></tr>
+<tr><td><code>fcn.08054cb4</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055352</code></td><td>-</td></tr>
+<tr><td><code>fcn.080554a2</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805555e</code></td><td>-</td></tr>
+<tr><td><code>fcn.080555f6</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055658</code></td><td>-</td></tr>
+<tr><td><code>fcn.080557ba</code></td><td>-</td></tr>
+<tr><td><code>fcn.080559b0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055b16</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055b74</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055b84</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055bb4</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055bc4</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055bd8</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055c0a</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055c66</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055c8e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055ca1</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055cc4</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055cca</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055cde</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055cfc</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055d04</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055d18</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055d52</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055d66</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055dd2</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055e18</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055e42</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055e60</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055e80</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055ec0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055ee8</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055f34</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055f4a</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055f6c</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055f7f</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055f87</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055f90</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055fe3</code></td><td>-</td></tr>
+<tr><td><code>fcn.08055fec</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056046</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805608a</code></td><td>-</td></tr>
+<tr><td><code>fcn.080560a6</code></td><td>-</td></tr>
+<tr><td><code>fcn.080560d2</code></td><td>-</td></tr>
+<tr><td><code>fcn.080560ee</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805610a</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805611e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056132</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056176</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805617e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056198</code></td><td>-</td></tr>
+<tr><td><code>fcn.080561ac</code></td><td>-</td></tr>
+<tr><td><code>fcn.080561f0</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805624c</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805626e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056290</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056298</code></td><td>-</td></tr>
+<tr><td><code>fcn.080562cc</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056312</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805635a</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805636e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056378</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805638c</code></td><td>-</td></tr>
+<tr><td><code>fcn.080563e6</code></td><td>-</td></tr>
+<tr><td><code>fcn.080563fc</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056404</code></td><td>-</td></tr>
+<tr><td><code>fcn.0805646e</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056498</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056658</code></td><td>-</td></tr>
+<tr><td><code>fcn.08056680</code></td><td>-</td></tr>
+<tr><td><code>fcn.080566a7</code></td><td>-</td></tr>
+</table></div>
+        </div>
+    
+
+        <!-- Footer -->
+        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Generated by Ghidra + Radare2 Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malware Analysis Report - chargen</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
+        .font-mono { font-family: 'Roboto Mono', monospace; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
+        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
+        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
+        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
+        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
+        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
+        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
+        .markdown-content li { margin-bottom: 6px; }
+        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
+        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
+        .markdown-content pre code { color: #374151; background: none; padding: 0; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
+        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
+        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
+        .finding-desc { color: #4b5563; }
+        /* Utility classes used by markdown renderer */
+        .w-full { width: 100%; }
+        .text-left { text-align: left; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-800 { color: #1f2937; }
+        .italic { font-style: italic; }
+        .font-bold { font-weight: 700; }
+        .break-all { word-break: break-all; }
+        .list-disc { list-style-type: disc; }
+        .pl-4 { padding-left: 1rem; }
+        .pl-6 { padding-left: 1.5rem; }
+        .pt-half { padding-top: 0.125rem; }
+        .pb-4 { padding-bottom: 1rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .gap-4 { gap: 1rem; }
+        .items-start { align-items: flex-start; }
+        .flex { display: flex; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border-b { border-bottom: 1px solid #e5e7eb; }
+        .border-dashed { border-style: dashed; }
+        .border-gray-200 { border-color: #e5e7eb; }
+
+        .leading-relaxed { line-height: 1.625; }
+        .uppercase { text-transform: uppercase; }
+        .border-l-2 { border-left: 2px solid; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .pl-3 { padding-left: 0.75rem; }
+        .border-collapse { border-collapse: collapse; }
+        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Print / Save PDF
+        </button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
+            <div>
+                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
+                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
+                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
+            </div>
+        </div>
+
+        <!-- Metadata -->
+        <div class="meta-box">
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">chargen</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">1919dc18</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>2026-02-11 10:17 UTC</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
+            </div>
+        </div>
+
+        <!-- Risk Banner -->
+        <div class="risk-banner risk-critical">
+            THREAT ASSESSMENT: MALWARE
+        </div>
+
+        
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">1. Executive Summary</h2>
+            <div class="markdown-content"><p class="mb-3">The analyzed binary is a 32-bit Linux ELF executable (SHA256: <code>36f14431ea9f2482cd1af05c74d3b0e726dfed19a7db83b52ae41ad019320e61</code>) that functions as a malware component with backdoor capabilities. It exhibits sophisticated cryptographic features, implementing RSA, SHA-1, MD5, and HMAC algorithms, likely used for C2 communication encryption and authentication. The malware establishes network connections, potentially using the DNS server <code>8.8.8.8</code>, and interacts with the local file system to access sensitive files like <code>/etc/passwd</code> and <code>/etc/shadow</code>. It attempts to gain persistence by referencing the path <code>/etc/rc.d/init.d/networkd</code>. The entry point initializes a library loader or environment setup before entering an infinite loop, indicating it may act as a payload injector or a persistent background process.</p></div>
+        </div>
+
+        <!-- Malware Capabilities -->
+        <div>
+            <h2 class="section-header">2. Malware Capabilities</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Capability</strong>: Cryptographic Operations (RSA)</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_08075310</code> @ <code>0x08075310</code> — <code>if ((uVar11 &amp; 1) == 0) { return -4; }</code> (Validates that RSA modulus N is odd).</li>
+<li class="mb-2">  <strong>Capability</strong>: Cryptographic Operations (SHA-1)</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_08082500</code> @ <code>0x08082500</code> — <code>uVar19 = *(int *)(param_1 + 0x18) + 0x5a827999 + (uVar8 &gt;&gt; 0x1b | uVar8 &lt;&lt; 5)</code> (SHA-1 constant <code>0x5a827999</code> used in transforms).</li>
+<li class="mb-2">  <strong>Capability</strong>: Cryptographic Operations (MD5)</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_0807bb60</code> @ <code>0x0807bb60</code> — <code>uVar4 = *(int *)(param_1 + 8) + -0x28955b88 + ...</code> (MD5 constant <code>-0x28955b88</code> used in transforms).</li>
+<li class="mb-2">  <strong>Capability</strong>: Encrypted Key Parsing (PEM)</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_08087ee0</code> @ <code>0x08087ee0</code> — <code>iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16)</code> (Checks for encrypted PEM header).</li>
+<li class="mb-2">  <strong>Capability</strong>: Network Communication</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>FUN_080d73e9</code> @ <code>0x080d73e9</code> — <code>iVar6 = FUN_080d8087(&amp;local_19c,(int)puVar4 + iVar8,0x200 - iVar8)</code> (Socket send/recv operation).</li>
+<li class="mb-2">  <strong>Capability</strong>: Process Initialization/Infinite Loop</li>
+<li class="mb-2">  <strong>Evidence</strong>: <code>entry</code> @ <code>0x08048e84</code> — <code>do { /* WARNING: Do nothing block with infinite loop */ } while( true );</code></li>
+<li class="mb-2">  <strong>Capability</strong>: Persistence/Script Installation</li>
+<li class="mb-2">  <strong>Evidence</strong>: String @ <code>N/A</code> — <code>/etc/rc.d/init.d/networkd</code> (Referenced in strings, likely used for initialization script creation).</li>
+</ul></div>
+        </div>
+
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">3. Binary Information</h2>
+            <div class="markdown-content"><table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>36f14431ea9f2482cd1af05c74d3b0e726dfed19a7db83b52ae41ad019320e61</td></tr><tr><td>Architecture</td><td>x86</td></tr><tr><td>Type</td><td>ELF/PE (inferred)</td></tr><tr><td>Image Base</td><td>08048000</td></tr><tr><td>Entry Point</td><td>08048e84</td></tr><tr><td>Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@639cff0e</td></tr><tr><td>Ghidra Imports</td><td>N/A</td></tr><tr><td>Ghidra Exports</td><td>entry</td></tr><tr><td>Functions (Ghidra)</td><td>4574 total (40 decompiled)</td></tr><tr><td>Functions (R2)</td><td>3341 total (41 decompiled)</td></tr><tr><td>R2 Architecture</td><td>x86 (32-bit)</td></tr><tr><td>R2 OS</td><td>linux</td></tr><tr><td>R2 Imports</td><td>N/A</td></tr><tr><td>R2 Exports</td><td>N/A</td></tr><tr><td>Strings (Ghidra)</td><td>690 extracted</td></tr><tr><td>Strings (R2)</td><td>1011 extracted</td></tr></table></div>
+        </div>
+
+        <!-- Technical Analysis -->
+        <div>
+            <h2 class="section-header">4. Technical Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
+            <div class="markdown-content"><strong>[Component Name]</strong>: Cryptographic Engine
+<p class="mb-3">The malware contains a statically linked or custom cryptographic implementation supporting RSA, MD5, SHA-1, and DES-EDE3-CBC. It includes logic to parse PEM formatted keys (both encrypted and unencrypted). This suggests the malware uses Public Key Infrastructure (PKI) to secure communications with a Command and Control (C2) server or to verify digital signatures of payloads.</p>
+
+<strong>Code Evidence</strong> (<code>FUN_08075310</code> @ <code>0x08075310</code>):
+<pre><code>  if ((uVar11 &amp; 1) == 0) { // Check if modulus is odd
+    return -4;
+  }
+  iVar3 = (2 - iVar3 * uVar11) * iVar3; // Modular inverse logic
+</code></pre>
+
+<strong>[Component Name]</strong>: Network Communication
+<p class="mb-3">The binary establishes network connections using standard socket APIs. It attempts to resolve hostnames and exchange data. The presence of the IP <code>8.8.8.8</code> (Google DNS) suggests a connectivity check or fallback DNS mechanism.</p>
+
+<strong>Code Evidence</strong> (<code>FUN_080d73e9</code> @ <code>0x080d73e9</code>):
+<pre><code>  iVar8 = FUN_080d7f1d(&amp;local_14c,puVar4,0x200);
+  if (-1 &lt; iVar8) {
+    iVar6 = FUN_080d8087(&amp;local_19c,(int)puVar4 + iVar8,0x200 - iVar8,0x40);
+  }
+</code></pre>
+
+<strong>[Component Name]</strong>: Initialization &amp; Persistence
+<p class="mb-3">Upon execution, the binary calls an initialization function (<code>FUN_080d3937</code>) and then enters an infinite loop, typical of a background daemon or a process waiting for events. It references file paths commonly used for initialization scripts (<code>/etc/rc.d/init.d/networkd</code>), indicating a potential persistence mechanism.</p>
+
+<strong>Code Evidence</strong> (<code>entry</code> @ <code>0x08048e84</code>):
+<pre><code>  FUN_080d3937(FUN_08066d43,param_2,&amp;stack0x00000004,&amp;LAB_080480b4,&amp;LAB_080d83dc,param_1,auStack_4);
+  do {
+                    /* WARNING: Do nothing block with infinite loop */
+  } while( true );
+</code></pre></div>
+        </div>
+
+        <!-- Functions Analysis -->
+        <div>
+            <h2 class="section-header">5. Functions Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
+            <div class="markdown-content"><strong>[entry] @ [0x08048e84] ([0] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Entry point for the binary. Sets up the runtime environment and enters a persistent state.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — The infinite loop suggests a persistent background process or loader.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  FUN_080d3937(FUN_08066d43,param_2,&amp;stack0x00000004,&amp;LAB_080480b4,&amp;LAB_080d83dc,param_1,auStack_4);
+  do {
+                    /* WARNING: Do nothing block with infinite loop */
+  } while( true );
+</code></pre>
+
+<strong>[FUN_08082500] @ [0x08082500] ([16] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Implements SHA-1 cryptographic hash transformations.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No (Standard Crypto) — Used for integrity checks or C2 encryption.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  uVar19 = *(int *)(param_1 + 0x18) + 0x5a827999 + (uVar8 &gt;&gt; 0x1b | uVar8 &lt;&lt; 5) +
+           ((uVar11 ^ uVar10) &amp; uVar9 ^ uVar11) + uVar20;
+</code></pre>
+
+<strong>[FUN_08075310] @ [0x08075310] ([6] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Performs Modular Exponentiation (RSA core operation) and modular arithmetic.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No (Standard Crypto) — Essential for RSA encryption/decryption.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if ((uVar11 &amp; 1) == 0) {
+    return -4;
+  }
+  iVar3 = (2 - iVar3 * uVar11) * iVar3;
+</code></pre>
+
+<strong>[FUN_080c40a1] @ [0x080c40a1] ([462] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Frequent helper function, likely related to string handling or object management (get_pc_thunk).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library support code.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  bVar4 = 0;
+  local_14 = param_2;
+  FUN_080c3a9c();
+</code></pre>
+
+<strong>[FUN_080a4d6e] @ [0x080a4d6e] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Initializes a complex data structure, likely a socket object or session manager.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Sets up state for network operations.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  param_1[2] = 0x1c;
+  *param_1 = param_2;
+  param_1[1] = &amp;DAT_08124d70;
+  param_1[3] = &amp;DAT_08124d00;
+</code></pre>
+
+<strong>[FUN_080846c0] @ [0x080846c0] ([12] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Cryptographic function involving bitwise rotations and modular additions. Resembles AES or Salsa20 rounds.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No (Standard Crypto).</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  iVar5 = local_20 +
+          ((uVar10 &gt;&gt; 0xb | uVar10 &lt;&lt; 0x15) ^ (uVar10 &gt;&gt; 6 | uVar10 &lt;&lt; 0x1a) ^
+          (uVar10 &gt;&gt; 0x19 | uVar10 &lt;&lt; 7)) + local_13c[iVar4] + (&amp;DAT_080d9940)[iVar4] +
+          ((local_1a4 ^ auStack_fc[0x36]) &amp; uVar10 ^ auStack_fc[0x36]);
+</code></pre>
+
+<strong>[FUN_08073f30] @ [0x08073f30] ([7] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Arbitrary precision arithmetic (Big Number) division or reduction.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No (Standard Crypto).</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if (uVar1 == 0) {
+    return -4;
+  }
+  if (param_1 == (int *)0x0) {
+    return 0;
+  }
+</code></pre>
+
+<strong>[FUN_0808a617] @ [0x0808a617] ([360] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Memory management or reference counting helper (shared pointer decrement).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard C++ RTTI/Memory support.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if (iVar1 == 0) {
+    return;
+  }
+  if ((*(int *)(iVar1 + 0x34) + -0x474e5544 + (uint)(0x432b2aff &lt; *(uint *)(iVar1 + 0x30)) == 0) ...
+</code></pre>
+
+<strong>[FUN_0807bb60] @ [0x0807bb60] ([16] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Implements MD5 cryptographic hash transformations.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No (Standard Crypto).</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  uVar4 = *(int *)(param_1 + 8) + -0x28955b88 + ((uVar3 ^ uVar2) &amp; uVar1 ^ uVar3) + local_6c;
+  uVar5 = (uVar4 &gt;&gt; 0x19 | uVar4 * 0x80) + uVar1;
+</code></pre>
+
+<strong>[FUN_0807fd90] @ [0x0807fd90] ([6] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Orchestrates cryptographic operations, calling RSA, MD5, and other crypto primitives.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — High-level coordination of encryption/signing.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  iVar1 = FUN_08075310(local_70,local_a0,local_b8,iVar3,param_1 + 0x74);
+  if (iVar1 == 0) {
+    iVar1 = FUN_08075310(local_64,local_a0,local_b4,iVar5,param_1 + 0x80,iVar3,iVar2,iVar5);
+</code></pre>
+
+<strong>[FUN_08053f9c] @ [0x08053f9c] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Network protocol handler or packet processor. Contains a switch statement handling different message types.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Handles C2 commands or data streams.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  switch(local_20[2]) {
+    case 1:
+      cVar4 = FUN_08054938(param_1,&amp;DAT_080d891e);
+      if (cVar4 != &#x27;\0&#x27;) {
+        FUN_08055352(param_1,2);
+      }
+      break;
+</code></pre>
+
+<strong>[FUN_080cffbe] @ [0x080cffbe] ([35] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Memory allocation routine (similar to malloc).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  uVar8 = param_1 + 0xb &amp; 0xfffffff8;
+  if (param_1 + 0xb &lt; 0x10) {
+    uVar8 = 0x10;
+  }
+</code></pre>
+
+<strong>[FUN_08099bf6] @ [0x08099bf6] ([297] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Destructor or cleanup helper.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard C++ support.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  FUN_08099ba4(*param_1 + -0xc,local_d);
+  return;
+</code></pre>
+
+<strong>[FUN_0808a595] @ [0x0808a595] ([262] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Smart pointer or reference counting increment.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard C++ support.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  param_1[-7] = uVar3 + 1;
+  puVar2[1] = puVar2[1] + -1;
+</code></pre>
+
+<strong>[FUN_08076c50] @ [0x08076c50] ([3] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Big Number (BN) arithmetic operations, likely addition or subtraction.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No (Standard Crypto).</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  iVar4 = FUN_08075140(&amp;local_7c,param_2,param_3);
+  if (((((iVar4 == 0) &amp;&amp; (iVar4 = FUN_08071560(&amp;local_70,&amp;local_7c), iVar4 == 0)) ...
+</code></pre>
+
+<strong>[FUN_080d73e9] @ [0x080d73e9] ([2] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Network connection handler, specifically managing socket data transfer and resolution.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Facilitates C2 communication.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  iVar6 = FUN_080d8087(&amp;local_19c,(int)puVar4 + iVar8,0x200 - iVar8,0x40);
+  iVar8 = iVar8 + -1000;
+  iVar6 = FUN_080cfbe0(local_1e8,puVar4,0x200,0x40);
+</code></pre>
+
+<strong>[FUN_080d4a46] @ [0x080d4a46] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Floating point or string formatting routine (printf family).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if ((param_3[3] &amp; 2U) == 0) {
+    if ((param_3[3] &amp; 1U) != 0) {
+      local_b0[0] = &#x27; &#x27;;
+    }
+  }
+</code></pre>
+
+<strong>[FUN_080d529d] @ [0x080d529d] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: String parsing or formatting (scanf/printf family).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  bVar2 = *param_2;
+  if (bVar2 != 0) {
+    local_1cf = local_1cf &amp; 1;
+    local_120 = 1;
+</code></pre>
+
+<strong>[FUN_08073670] @ [0x08073670] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Converts strings to Big Integers (Hex string parsing).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No (Standard Crypto).</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if ((byte)(cVar1 - 0x30U) &lt; 10) {
+    uVar14 = (int)cVar1 - 0x30;
+  }
+  if ((byte)(cVar1 + 0xbfU) &lt; 6) {
+    uVar14 = (int)cVar1 - 0x37;
+  }
+</code></pre>
+
+<strong>[FUN_08087ee0] @ [0x08087ee0] ([4] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Parses encrypted PEM formatted private keys (PKCS#8 or similar).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Handles decryption of C2 keys.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);
+  if (iVar5 != 0) {
+    local_44 = 0;
+    bVar1 = false;
+  }
+</code></pre>
+
+<strong>[FUN_080c718a] @ [0x080c718a] ([2] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Locale or character set conversion (iconv/wchar).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if ((byte)PTR_DAT_0811a5ac
+              [((*(byte *)(param_1 + 1) &amp; 0x7f) * 0x80 + (*(byte *)(param_1 + 2) &amp; 0x7f)) * 9 +
+               0x624b] == 0) {
+    local_64[0]._0_2_ = 0;
+  }
+</code></pre>
+
+<strong>[FUN_0804d1cc] @ [0x0804d1cc] ([5] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Memory allocation or I/O vector manipulation (readv/writev).</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if ((*(uint *)(local_28 + 8) &amp; 8) == 0) {
+    puVar16 = (undefined *)(~DAT_08128290 &amp; (uint)puVar16);
+    uVar11 = ~(iVar4 - 1U);
+</code></pre>
+
+<strong>[FUN_080cb61a] @ [0x080cb61a] ([2] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Printf implementation.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if (*pcVar9 == &#x27;%&#x27;) {
+    break;
+  }
+  param_2 = pcVar9 + 1;
+</code></pre>
+
+<strong>[FUN_08054cb4] @ [0x08054cb4] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: File system check or stat operation.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: Yes — Checks file attributes (likely to see if malware is already installed).</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  iVar5 = FUN_080c609b(param_2,local_d8);
+  if (iVar5 &lt; 0) {
+    uVar6 = 0;
+  }
+</code></pre>
+
+<strong>[FUN_080d0e35] @ [0x080d0e35] ([173] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>Purpose</strong>: Free memory implementation.</li>
+<li class="mb-2">  <strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2">  <strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>  if (param_1 != (undefined4 *)0x0) {
+    FUN_0804b925(local_2c,FUN_0804ef27,&amp;DAT_0811a4a8);
+    FUN_0804e2c4(&amp;DAT_0811a4a8);
+</code></pre></div>
+        </div>
+
+        <!-- Evidence -->
+        <div>
+            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
+            <div><div class="finding-item"><div class="finding-title">Finding 1</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>RSA Cryptographic Implementation for C2 Communication - Function: `FUN_08075310` @ `0x08075310` - Code: `if ((uVar11 &amp; 1) == 0) { return -4; }`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 2</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>Encrypted Private Key Parsing Capability - Function: `FUN_08087ee0` @ `0x08087ee0` - Code: `iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 3</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>Infinite Loop Process Persistence - Function: `entry` @ `0x08048e84` - Code: `do { /* WARNING: Do nothing block with infinite loop */ } while( true );`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 4</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>Network Socket Operations - Function: `FUN_080d73e9` @ `0x080d73e9` - Code: `iVar6 = FUN_080d8087(&amp;local_19c,(int)puVar4 + iVar8,0x200 - iVar8,0x40);`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 5</div><div class="finding-desc text-sm leading-relaxed pl-4">Access to Sensitive System Files - Function: `N/A` - Code: Strings &quot;/etc/passwd&quot;, &quot;/etc/shadow&quot;, &quot;/bin/sh&quot;</div></div></div>
+        </div>
+
+        <!-- Code Evidence -->
+        <div>
+            <h2 class="section-header">6b. Code Evidence (Suspicious API Calls)</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Exact code locations where suspicious or malicious API calls were found in decompiled functions. Only factual findings from both Ghidra and Radare2.</div>
+            <div><div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_08087ee0 @ 08087ee0 — <span style="color:#fbbf24;">aes, crypt, encrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>     (iVar5 = FUN_080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16), iVar5 != 0)) {
+    if ((iVar5 &lt; 0xe) || (iVar7 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-&quot;,0xe), iVar7 != 0)) {
+      iVar5 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-128-CBC,&quot;,0x16);
+        iVar5 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-192-CBC,&quot;,0x16);
+          iVar5 = FUN_080cd655(pcVar11,&quot;DEK-Info: AES-256-CBC,&quot;,0x16);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.08087ee0 @ 0x8087ee0 — <span style="color:#fbbf24;">aes, crypt, encrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    if ((pcVar4 - pcVar11 &lt; 0x16) || (iVar5 = fcn.080cd655(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16), iVar5 != 0)) {
+        if ((iVar5 &lt; 0xe) || (iVar7 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-&quot;,0xe), iVar7 != 0)) {
+            iVar5 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-128-CBC,&quot;,0x16);
+                iVar5 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-192-CBC,&quot;,0x16);
+                    iVar5 = fcn.080cd655(pcVar11,&quot;DEK-Info: AES-256-CBC,&quot;,0x16);</code></pre></div></div>
+        </div>
+
+        <!-- Operational Flow -->
+        <div>
+            <h2 class="section-header">7. Operational Flow</h2>
+            <div class="markdown-content"><ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: The binary starts at <code>entry</code> (<code>0x08048e84</code>) which calls <code>FUN_080d3937</code> (likely a C++ runtime or constructor initializer) and enters an infinite loop to keep the process running.</li>
+<li class="mb-2"><strong>Setup</strong>: <code>FUN_080d3937</code> or a constructor triggers <code>FUN_080a4d6e</code> to initialize internal objects. The malware checks or references initialization paths like <code>/etc/rc.d/init.d/networkd</code>.</li>
+<li class="mb-2"><strong>Main Operation</strong>: The malware establishes a network connection via <code>FUN_080d73e9</code>. It likely uses <code>FUN_08053f9c</code> to handle incoming commands. Cryptographic functions (<code>FUN_08075310</code>, <code>FUN_0807fd90</code>) are used to decrypt commands or sign outgoing traffic using keys parsed by <code>FUN_08087ee0</code>.</li>
+<li class="mb-2"><strong>Persistence</strong>: By referencing <code>/etc/rc.d/init.d/networkd</code>, the malware likely installs a script to restart upon reboot.</li>
+</ol></div>
+        </div>
+
+        <!-- C2 & Networking -->
+        <div>
+            <h2 class="section-header">8. C2 & Networking</h2>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>C2 Servers</strong>:</li>
+<li class="mb-2">  <strong>8.8.8.8</strong> (IP Address) — Evidence: String @ <code>0xN/A</code> (Found in strings list)</li>
+<li class="mb-2">  <strong>data.rel.ro</strong> (Domain) — Evidence: String @ <code>0xN/A</code> (Found in strings list, likely a false positive segment name or encoded domain)</li>
+<li class="mb-2">  <strong>Protocols</strong>: Raw Sockets / TCP — Evidence: <code>FUN_080d73e9</code> calls socket send/recv wrappers.</li>
+<li class="mb-2">  <strong>Communication Pattern</strong>: The malware uses encrypted payloads (RSA/AES) validated by SHA-1/MD5 hashes. It checks for connectivity or uses specific DNS servers.</li>
+</ul></div>
+        </div>
+
+        <!-- Recommendations -->
+        <div>
+            <h2 class="section-header">9. Recommendations</h2>
+            <div class="space-y-4"><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">1</div><div class="text-sm pt-half text-gray-800">Block network traffic to/from IP <code>8.8.8.8</code> if not explicitly required by policy, though this is a public DNS, so focus on C2 detection signatures.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">2</div><div class="text-sm pt-half text-gray-800">Investigate the file system for the presence of <code>/etc/rc.d/init.d/networkd</code> and verify its legitimacy. Remove if unauthorized.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">3</div><div class="text-sm pt-half text-gray-800">Monitor processes for the SHA256 hash <code>36f14431ea9f2482cd1af05c74d3b0e726dfed19a7db83b52ae41ad019320e61</code>.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">4</div><div class="text-sm pt-half text-gray-800">Scan systems for the specific IOCs and check for modified <code>/etc/passwd</code> or <code>/etc/shadow</code> files.</div></div></div>
+        </div>
+
+        <!-- IOCs -->
+        <div>
+            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
+                    <tbody><tr><td class="font-bold text-xs text-gray-500 uppercase">IP/Domain</td><td class="font-mono text-sm break-all">8.8.8.8</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">data.rel.ro</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/urandom</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/random</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/sys/kernel/version</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/self/maps</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/bin/sh</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/mounts</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/fstab</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/shm/sem.</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/shm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/TZ</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/localtime</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/passwd</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/ptmx</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/pts/</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/null</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/bin</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/stat</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/cpuinfo</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/sys/devices/system/cpu</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/resolv.conf</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/hosts</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/rc.d/init.d/networkd</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">md5WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha224WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha256WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIwLb1EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIwLb0EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">NSt6locale5facetE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIcLb1EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">St10moneypunctIcLb0EE</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">npxXoudifFeEgGaACScs</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conclusion -->
+        <div>
+            <h2 class="section-header">11. Conclusion</h2>
+            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                <p class="mb-3">The analyzed binary is a Linux malware component featuring strong cryptographic capabilities (RSA, SHA-1, MD5) likely used to secure communications with a command and control server. It employs persistence mechanisms via init scripts and interacts with sensitive system files. The presence of hardcoded IPs and complex network handlers confirms its role as a backdoor or botnet agent. Immediate remediation involves blocking the associated IPs and removing the persistence script.</p>
+            </div>
+        </div>
+
+        <!-- Call Graph -->
+        <div>
+            <h2 class="section-header">12. Call Graph &amp; Attack Chains</h2>
+            <div class="markdown-content"><h3>Ghidra Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 4564 | <strong>Edges:</strong> 10664 | <strong>Entries:</strong> entry | <strong>Attack Chains:</strong> 0</p>
+<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>
+<h4>Adjacency — Top 10 of 300 Functions</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>FUN_080480d0</code></td><td>FUN_0804b47b, FUN_0804b668, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_080484ba</code></td><td>FUN_08049180</td></tr>
+<tr><td><code>FUN_080484cb</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_080484dc</code></td><td>FUN_0804b47b, FUN_0804b668, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_080488c7</code></td><td>FUN_08049180</td></tr>
+<tr><td><code>FUN_080488d8</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_080488e9</code></td><td>FUN_0804b47b</td></tr>
+<tr><td><code>FUN_08048c62</code></td><td>FUN_080490e0</td></tr>
+<tr><td><code>FUN_08048c73</code></td><td>FUN_080989f2, FUN_08098a1e, __i686.get_pc_thunk.bx</td></tr>
+<tr><td><code>FUN_08048ca7</code></td><td>__i686.get_pc_thunk.bx</td></tr>
+</table>
+<h4>Detected Cycles — Top 5 of 38</h4>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><code>FUN_080cffbe -&gt; FUN_080cffbe</code></li>
+<li class="mb-2"><code>FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_0804e2c4</code></li>
+<li class="mb-2"><code>FUN_080d07b3 -&gt; FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3</code></li>
+<li class="mb-2"><code>FUN_0804e2c4 -&gt; FUN_080484dc -&gt; FUN_0804b47b -&gt; FUN_080d07b3 -&gt; FUN_080cffbe -&gt; FUN_0804e2c4</code></li>
+</ul>
+<h3>Radare2 Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 3341 | <strong>Edges:</strong> 0 | <strong>Entries:</strong> entry0, main | <strong>Attack Chains:</strong> 0</p>
+<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>
+<h4>Adjacency — Top 10 of 300 Functions</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>entry0</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048ea6</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048eaa</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048f09</code></td><td>-</td></tr>
+<tr><td><code>fcn.08048f68</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049001</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049010</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049040</code></td><td>-</td></tr>
+<tr><td><code>fcn.08049070</code></td><td>-</td></tr>
+<tr><td><code>fcn.080490c0</code></td><td>-</td></tr>
+</table></div>
+        </div>
+    
+
+        <!-- Footer -->
+        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Generated by Ghidra + Radare2 Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>
