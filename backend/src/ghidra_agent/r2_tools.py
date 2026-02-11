@@ -1,6 +1,5 @@
 """Radare2 analysis tools — LangChain @tool wrappers around the R2 runner."""
 
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -70,33 +69,6 @@ def _to_hex(value: Any) -> str:
     if parsed is not None:
         return hex(parsed)
     return str(value).strip() if value is not None else ""
-
-
-def _is_call_ref(ref: Dict[str, Any]) -> bool:
-    ref_type = str(ref.get("type", "")).lower()
-    if "call" in ref_type or ref_type in {"c", "ucall", "icall"}:
-        return True
-    opcode = str(ref.get("opcode", "")).lower()
-    return "call" in opcode
-
-
-def _extract_target_name(ref: Dict[str, Any], to_addr_hex: str, addr_to_name: Dict[str, str]) -> str:
-    for key in ("to_name", "fcn_name", "name"):
-        val = ref.get(key)
-        if isinstance(val, str) and val.strip():
-            return val.strip()
-
-    opcode = str(ref.get("opcode", "")).strip()
-    if opcode:
-        match = re.search(r"\bcall(?:q)?\s+([^\s,;]+)", opcode, flags=re.IGNORECASE)
-        if match:
-            token = match.group(1).strip()
-            if token:
-                if token.lower().startswith("0x"):
-                    return addr_to_name.get(token.lower(), token.lower())
-                return token
-
-    return addr_to_name.get(to_addr_hex.lower(), to_addr_hex)
 
 
 # ---------------------------------------------------------------------------
@@ -204,36 +176,39 @@ async def r2_build_call_graph(
     program_hash: str,
     binary_path: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Build inter-procedural call graph from Radare2 xrefs (nodes + CALL edges)."""
+    """Build inter-procedural call graph from Radare2 using agCj (single pass)."""
     bp = _bin(binary_path)
     runner = get_runner()
 
-    funcs_result = await runner.run_json_command(bp, "aaa;aflj")
-    if not funcs_result.ok:
-        return {"ok": False, "error": funcs_result.error}
+    # agCj returns the full call graph in one command: each entry has
+    # {"name": ..., "size": ..., "imports": [callee_names...]}
+    cg_result = await runner.run_json_command(bp, "aaa;agCj")
+    if not cg_result.ok:
+        return {"ok": False, "error": cg_result.error}
 
-    funcs_raw = funcs_result.payload.get("json", [])
-    if not isinstance(funcs_raw, list):
-        return {"ok": False, "error": "Unexpected aflj output"}
+    cg_raw = cg_result.payload.get("json", [])
+    if not isinstance(cg_raw, list):
+        return {"ok": False, "error": "Unexpected agCj output"}
 
     nodes: List[Dict[str, Any]] = []
     edges: List[Dict[str, Any]] = []
     entry_points: List[str] = []
-    seen_edges = set()
-    node_names = set()
-    addr_to_name: Dict[str, str] = {}
+    seen_edges: set = set()
+    node_names: set = set()
+    name_to_addr: Dict[str, str] = {}
 
-    for f in funcs_raw:
-        name = str(f.get("name", "")).strip()
+    # First pass: collect all nodes
+    for item in cg_raw:
+        name = str(item.get("name", "")).strip()
         if not name:
             continue
-        raw_addr = f.get("addr", f.get("offset", 0))
+        raw_addr = item.get("offset", item.get("addr", 0))
         addr_hex = _to_hex(raw_addr)
-        size = int(f.get("size", 0) or 0)
+        size = int(item.get("size", 0) or 0)
         nodes.append({"name": name, "address": addr_hex, "size": size})
         node_names.add(name)
         if addr_hex:
-            addr_to_name[addr_hex.lower()] = name
+            name_to_addr[name] = addr_hex
         if name.lower() in {"main", "_start", "entry0", "entry"}:
             entry_points.append(addr_hex)
 
@@ -248,52 +223,41 @@ async def r2_build_call_graph(
         if parsed_eps:
             entry_points = parsed_eps + entry_points
 
-    for f in funcs_raw:
-        from_name = str(f.get("name", "")).strip()
-        from_addr_hex = _to_hex(f.get("addr", f.get("offset", 0)))
-        if not from_name or not from_addr_hex:
+    # Second pass: build edges from the imports arrays
+    for item in cg_raw:
+        from_name = str(item.get("name", "")).strip()
+        if not from_name:
+            continue
+        from_addr = name_to_addr.get(from_name, "")
+        imports = item.get("imports", [])
+        if not isinstance(imports, list):
             continue
 
-        refs_result = await runner.run_json_command(bp, f"s {from_addr_hex};axfj")
-        if not refs_result.ok:
-            continue
-        refs_raw = refs_result.payload.get("json", [])
-        if not isinstance(refs_raw, list):
-            continue
-
-        for ref in refs_raw:
-            if not isinstance(ref, dict):
+        for callee_name in imports:
+            if not isinstance(callee_name, str) or not callee_name.strip():
                 continue
-            if not _is_call_ref(ref):
-                continue
-
-            to_addr_hex = _to_hex(ref.get("to", ref.get("addr", ref.get("fcn_addr", ref.get("at", "")))))
-            if not to_addr_hex:
-                continue
-
-            to_name = _extract_target_name(ref, to_addr_hex, addr_to_name)
-            if not to_name:
-                continue
+            to_name = callee_name.strip()
 
             edge_key = (from_name, to_name)
             if edge_key in seen_edges:
                 continue
             seen_edges.add(edge_key)
 
+            to_addr = name_to_addr.get(to_name, "")
             edges.append(
                 {
-                    "from": from_addr_hex,
-                    "to": to_addr_hex,
+                    "from": from_addr,
+                    "to": to_addr,
                     "from_name": from_name,
                     "to_name": to_name,
                     "type": "CALL",
                 }
             )
 
+            # Add callee as node if not already known (e.g. external)
             if to_name not in node_names:
                 node_names.add(to_name)
-                nodes.append({"name": to_name, "address": to_addr_hex, "size": 0})
-                addr_to_name[to_addr_hex.lower()] = to_name
+                nodes.append({"name": to_name, "address": to_addr, "size": 0})
 
     return {
         "ok": True,
