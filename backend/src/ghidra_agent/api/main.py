@@ -45,6 +45,29 @@ app.add_middleware(
 configure_logging()
 
 
+def _to_num(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, str]:
+    score = _to_num(func.get("priority_score"))
+    if score <= 0.0:
+        score = _to_num(func.get("xrefs")) * 100.0 + _to_num(func.get("size"))
+    return (
+        score,
+        _to_num(func.get("xrefs")),
+        _to_num(func.get("size")),
+        str(func.get("name", "")),
+    )
+
+
 @app.get("/health")
 async def health() -> JSONResponse:
     """Health check endpoint."""
@@ -144,8 +167,11 @@ async def query(request: QueryRequest) -> JSONResponse:
 
     funcs = results.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
-        sorted_funcs = sorted(funcs["functions"], key=lambda f: f.get("xrefs", 0), reverse=True)
-        func_desc = [f"{f.get('name')}(xrefs:{f.get('xrefs', 0)})" for f in sorted_funcs[:50]]
+        sorted_funcs = sorted(funcs["functions"], key=_function_priority_key, reverse=True)
+        func_desc = [
+            f"{f.get('name')}(score:{f.get('priority_score', 0)},xrefs:{f.get('xrefs', 0)},size:{f.get('size', 0)})"
+            for f in sorted_funcs[:50]
+        ]
         context_parts.append(f"Functions ({len(funcs['functions'])} total): {', '.join(func_desc)}")
 
     gh_call_graph = results.get("call_graph", {})

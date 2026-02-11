@@ -46,6 +46,11 @@ class TestR2Discovery:
 
         assert result["r2_analysis_results"]["binary"]["ok"] is True
         assert result["r2_analysis_results"]["functions"]["ok"] is True
+        assert "priority_weights" in result["r2_analysis_results"]["functions"]
+        assert all(
+            "priority_score" in f
+            for f in result["r2_analysis_results"]["functions"]["functions"]
+        )
         assert result["r2_analysis_results"]["call_graph"]["ok"] is True
         assert result["r2_analysis_results"]["call_graph_analysis"]["ok"] is True
         assert result["r2_analysis_results"]["strings"]["ok"] is True

@@ -5,6 +5,29 @@ from ghidra_agent.state import AgentState
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 
 
+def _to_num(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, str]:
+    score = _to_num(func.get("priority_score"))
+    if score <= 0.0:
+        score = _to_num(func.get("xrefs")) * 100.0 + _to_num(func.get("size"))
+    return (
+        score,
+        _to_num(func.get("xrefs")),
+        _to_num(func.get("size")),
+        str(func.get("name", "")),
+    )
+
+
 def _analyzer_details(state: AgentState) -> Dict[str, Any]:
     findings = state.get("analysis_results", {})
     logs = state.get("reasoning_trace", [])
@@ -29,10 +52,14 @@ def _analyzer_details(state: AgentState) -> Dict[str, Any]:
     
     funcs = findings.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
-        sorted_funcs = sorted(funcs["functions"], key=lambda f: f.get("xrefs", 0), reverse=True)
+        sorted_funcs = sorted(funcs["functions"], key=_function_priority_key, reverse=True)
         static_parts.append(f"\nFunctions ({len(funcs['functions'])} total):")
         for f in sorted_funcs[:20]:
-            static_parts.append(f"  - {f.get('name')} @ {f.get('address')} (xrefs: {f.get('xrefs', 0)})")
+            static_parts.append(
+                "  - "
+                f"{f.get('name')} @ {f.get('address')} "
+                f"(score: {f.get('priority_score', 0)}, xrefs: {f.get('xrefs', 0)}, size: {f.get('size', 0)})"
+            )
 
     call_graph_analysis = findings.get("call_graph_analysis", {})
     if call_graph_analysis.get("ok"):
@@ -131,10 +158,14 @@ def _r2_analyzer_details(state: AgentState) -> Dict[str, Any]:
 
     funcs = findings.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
-        sorted_funcs = sorted(funcs["functions"], key=lambda f: f.get("size", 0), reverse=True)
+        sorted_funcs = sorted(funcs["functions"], key=_function_priority_key, reverse=True)
         static_parts.append(f"\nFunctions ({len(funcs['functions'])} total):")
         for f in sorted_funcs[:20]:
-            static_parts.append(f"  - {f.get('name')} @ {f.get('address')} (size: {f.get('size', 0)})")
+            static_parts.append(
+                "  - "
+                f"{f.get('name')} @ {f.get('address')} "
+                f"(score: {f.get('priority_score', 0)}, xrefs: {f.get('xrefs', 0)}, size: {f.get('size', 0)})"
+            )
 
     call_graph_analysis = findings.get("call_graph_analysis", {})
     if call_graph_analysis.get("ok"):
@@ -283,8 +314,9 @@ def _build_r2_report_markdown(state: AgentState) -> str:
     funcs = r2.get("functions", {})
     func_list = funcs if isinstance(funcs, list) else funcs.get("functions", [])
     if func_list:
+        ranked_funcs = sorted(func_list, key=_function_priority_key, reverse=True)
         parts.append(f"## Functions Discovered ({len(func_list)})")
-        for f in func_list[:30]:
+        for f in ranked_funcs[:30]:
             name = f.get("name", "unknown")
             raw_addr = f.get("address", f.get("addr", f.get("offset", "")))
             if isinstance(raw_addr, int):
@@ -292,7 +324,10 @@ def _build_r2_report_markdown(state: AgentState) -> str:
             else:
                 addr = str(raw_addr) if raw_addr else "N/A"
             size = f.get("size", "?")
-            parts.append(f"- `{name}` at `{addr}` (size: {size})")
+            parts.append(
+                f"- `{name}` at `{addr}` "
+                f"(score: {f.get('priority_score', 0)}, xrefs: {f.get('xrefs', 0)}, size: {size})"
+            )
         if len(func_list) > 30:
             parts.append(f"- ... and {len(func_list) - 30} more functions")
         parts.append("")

@@ -137,6 +137,11 @@ class TestE2EDualAgentFlow:
                 # Verify Ghidra results
                 assert state["analysis_results"]["binary"]["ok"] is True
                 assert state["analysis_results"]["functions"]["ok"] is True
+                assert "priority_weights" in state["analysis_results"]["functions"]
+                assert all(
+                    "priority_score" in f
+                    for f in state["analysis_results"]["functions"]["functions"]
+                )
                 assert state["analysis_results"]["strings"]["ok"] is True
                 assert state["analysis_results"]["call_graph"]["ok"] is True
                 assert state["analysis_results"]["call_graph_analysis"]["ok"] is True
@@ -145,6 +150,11 @@ class TestE2EDualAgentFlow:
                 # Verify R2 results
                 assert state["r2_analysis_results"]["binary"]["ok"] is True
                 assert state["r2_analysis_results"]["functions"]["ok"] is True
+                assert "priority_weights" in state["r2_analysis_results"]["functions"]
+                assert all(
+                    "priority_score" in f
+                    for f in state["r2_analysis_results"]["functions"]["functions"]
+                )
                 assert state["r2_analysis_results"]["strings"]["ok"] is True
                 assert state["r2_analysis_results"]["call_graph"]["ok"] is True
                 assert state["r2_analysis_results"]["call_graph_analysis"]["ok"] is True

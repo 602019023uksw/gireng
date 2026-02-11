@@ -4,6 +4,8 @@ import asyncio
 from typing import Any, Dict, List
 
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
+from ghidra_agent.config import settings
+from ghidra_agent.function_priority import apply_priority_to_result
 from ghidra_agent.logging import logger
 from ghidra_agent.r2_tools import (
     r2_analyze_binary,
@@ -20,6 +22,29 @@ from ghidra_agent.state import AgentState
 R2_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 R2_AUTO_DECOMPILE_MIN = 10         # Floor: always decompile at least this many
 R2_AUTO_DECOMPILE_MAX = 25         # Ceiling: cap decompilation to avoid runaway on large binaries
+
+
+def _to_num(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, str]:
+    score = _to_num(func.get("priority_score"))
+    if score <= 0.0:
+        score = _to_num(func.get("xrefs")) * 100.0 + _to_num(func.get("size"))
+    return (
+        score,
+        _to_num(func.get("xrefs")),
+        _to_num(func.get("size")),
+        str(func.get("name", "")),
+    )
 
 
 async def r2_discovery(state: AgentState) -> AgentState:
@@ -48,6 +73,12 @@ async def r2_discovery(state: AgentState) -> AgentState:
     except Exception as exc:
         logger.error("r2_discovery_functions_failed", error=str(exc))
         functions = {"ok": False, "error": str(exc)}
+    if functions.get("ok"):
+        functions = apply_priority_to_result(
+            functions,
+            alpha=settings.function_priority_alpha,
+            beta=settings.function_priority_beta,
+        )
 
     try:
         call_graph = await r2_build_call_graph.ainvoke(tool_args)
@@ -98,10 +129,10 @@ async def _r2_auto_decompile(
     # Filter out trivial PLT/import stubs (size <= 6 bytes).
     meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
 
-    # Sort by xrefs*100 + size so large functions rank high even with 0 xrefs.
+    # Prefer composite priority score (xrefs + size), with legacy fallback.
     sorted_funcs = sorted(
         meaningful_funcs,
-        key=lambda f: f.get("xrefs", 0) * 100 + f.get("size", 0),
+        key=_function_priority_key,
         reverse=True,
     )
 

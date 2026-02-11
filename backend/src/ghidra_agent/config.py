@@ -25,6 +25,8 @@ class Settings(BaseModel):
     r2_shared_root: str = Field(default="/data/shared", alias="R2_SHARED_ROOT")
     r2_timeout: int = Field(default=60, alias="R2_TIMEOUT")
     enable_r2: bool = Field(default=True, alias="ENABLE_R2")
+    function_priority_alpha: float = Field(default=0.7, alias="FUNCTION_PRIORITY_ALPHA")
+    function_priority_beta: float = Field(default=0.3, alias="FUNCTION_PRIORITY_BETA")
 
     class Config:
         populate_by_name = True

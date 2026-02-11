@@ -10,6 +10,7 @@ from ghidra_agent.logging import logger
 from ghidra_agent.prompts import SYSTEM_PROMPT
 from ghidra_agent.state import AgentState
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
+from ghidra_agent.function_priority import apply_priority_to_result
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 from ghidra_agent.tools import (
     ToolContext,
@@ -57,6 +58,32 @@ BYTE_SIGNATURE_PATTERNS = [
     {"id": "nop_sled_16", "pattern": "90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90"},
 ]
 
+
+
+def _to_num(value: Any) -> float:
+    """Best-effort numeric conversion for ranking metadata fields."""
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value.strip())
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, str]:
+    """Sort by composite score first, with deterministic tie-breakers."""
+    score = _to_num(func.get("priority_score"))
+    if score <= 0.0:
+        # Backward compatible fallback when score isn't present.
+        score = _to_num(func.get("xrefs")) * 100.0 + _to_num(func.get("size"))
+    return (
+        score,
+        _to_num(func.get("xrefs")),
+        _to_num(func.get("size")),
+        str(func.get("name", "")),
+    )
 
 
 async def parse_intent(state: AgentState) -> AgentState:
@@ -160,6 +187,12 @@ async def _ghidra_discovery(state: AgentState) -> None:
     except Exception as exc:
         logger.error("discovery_functions_failed", error=str(exc))
         functions = {"ok": False, "error": str(exc)}
+    if functions.get("ok"):
+        functions = apply_priority_to_result(
+            functions,
+            alpha=settings.function_priority_alpha,
+            beta=settings.function_priority_beta,
+        )
     try:
         strings = await find_strings.ainvoke(tool_args)
     except Exception as exc:
@@ -260,11 +293,10 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
     # a single indirect-jump and waste decompilation slots.
     meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
 
-    # Sort by xrefs + size so large important functions (main, etc.) rank high
-    # even when they have 0 cross-references.
+    # Prefer composite priority score (xrefs + size), with legacy fallback.
     sorted_funcs = sorted(
         meaningful_funcs,
-        key=lambda f: f.get("xrefs", 0) * 100 + f.get("size", 0),
+        key=_function_priority_key,
         reverse=True,
     )
 
@@ -478,12 +510,18 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
     if func_list or r2_func_list:
         parts.append("## Functions")
         if func_list:
-            top = sorted(func_list, key=lambda f: f.get("xrefs", 0), reverse=True)[:15]
-            names = [f"{f.get('name')} (xrefs:{f.get('xrefs', 0)})" for f in top]
+            top = sorted(func_list, key=_function_priority_key, reverse=True)[:15]
+            names = [
+                f"{f.get('name')} (score:{f.get('priority_score', 0)}, xrefs:{f.get('xrefs', 0)}, size:{f.get('size', 0)})"
+                for f in top
+            ]
             parts.append(f"- **Ghidra** ({len(func_list)} total): {', '.join(names)}")
         if r2_func_list:
-            top = sorted(r2_func_list, key=lambda f: f.get("size", 0), reverse=True)[:15]
-            names = [f"{f.get('name')} (size:{f.get('size', 0)})" for f in top]
+            top = sorted(r2_func_list, key=_function_priority_key, reverse=True)[:15]
+            names = [
+                f"{f.get('name')} (score:{f.get('priority_score', 0)}, xrefs:{f.get('xrefs', 0)}, size:{f.get('size', 0)})"
+                for f in top
+            ]
             parts.append(f"- **Radare2** ({len(r2_func_list)} total): {', '.join(names)}")
         parts.append("")
 
@@ -559,16 +597,18 @@ async def synthesize(state: AgentState) -> AgentState:
         if binary.get("exports"):
             context_parts.append(f"Ghidra Exports: {', '.join(binary.get('exports', [])[:40])}")
 
-    # B4 + I5 FIX: Sort functions by xref count, include top 50
+    # Rank functions by composite score (xrefs + size), include top 100.
     funcs = results.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
-        # Sort by xref count descending
-        sorted_funcs = sorted(funcs["functions"], key=lambda f: f.get("xrefs", 0), reverse=True)
-        
-        # Include top 100 most referenced functions with their xrefs
+        sorted_funcs = sorted(funcs["functions"], key=_function_priority_key, reverse=True)
         top_funcs = sorted_funcs[:100]
-        func_descriptions = [f"{f.get('name')}(xrefs:{f.get('xrefs', 0)})" for f in top_funcs]
-        context_parts.append(f"Top functions by references ({len(funcs['functions'])} total): {', '.join(func_descriptions)}")
+        func_descriptions = [
+            f"{f.get('name')}(score:{f.get('priority_score', 0)},xrefs:{f.get('xrefs', 0)},size:{f.get('size', 0)})"
+            for f in top_funcs
+        ]
+        context_parts.append(
+            f"Top functions by composite priority ({len(funcs['functions'])} total): {', '.join(func_descriptions)}"
+        )
 
     # I4 FIX: Sort strings by relevance (IOCs first), not alphabetically
     strings_data = results.get("strings", {})
@@ -660,9 +700,12 @@ async def synthesize(state: AgentState) -> AgentState:
                 context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'][:30])}")
         r2_funcs = r2_results.get("functions", {})
         if r2_funcs.get("ok") and r2_funcs.get("functions"):
-            r2_sorted = sorted(r2_funcs["functions"], key=lambda f: f.get("size", 0), reverse=True)
-            r2_desc = [f"{f.get('name')}(size:{f.get('size', 0)})" for f in r2_sorted[:30]]
-            context_parts.append(f"R2 Functions ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
+            r2_sorted = sorted(r2_funcs["functions"], key=_function_priority_key, reverse=True)
+            r2_desc = [
+                f"{f.get('name')}(score:{f.get('priority_score', 0)},xrefs:{f.get('xrefs', 0)},size:{f.get('size', 0)})"
+                for f in r2_sorted[:30]
+            ]
+            context_parts.append(f"R2 Functions by priority ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
         r2_call_graph = r2_results.get("call_graph", {})
         if r2_call_graph.get("ok"):
             context_parts.append(
