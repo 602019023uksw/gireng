@@ -135,7 +135,9 @@ async def status(session_id: str) -> StatusResponse:
         state = store.get_session(session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
-    return StatusResponse(session_id=session_id, status=state["status"], state=state)
+    response_state = dict(state)
+    response_state.pop("progress_callback", None)
+    return StatusResponse(session_id=session_id, status=state["status"], state=response_state)
 
 
 @app.post("/query")
@@ -340,7 +342,21 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
     try:
         await manager.broadcast(session_id, {"type": "analysis:progress", "session_id": session_id, "payload": {"status": "started"}})
         await manager.broadcast(session_id, {"type": "message:typing", "session_id": session_id, "payload": {"status": "running"}})
-        result = await run_graph(state)
+        async def on_progress(step: str, pct: int) -> None:
+            safe_pct = max(0, min(100, int(pct)))
+            state["current_step"] = step
+            state["progress"] = safe_pct
+            store.update_session(session_id, state)
+            await manager.broadcast(
+                session_id,
+                {
+                    "type": "analysis:progress",
+                    "session_id": session_id,
+                    "payload": {"status": "running", "step": step, "progress": safe_pct},
+                },
+            )
+
+        result = await run_graph(state, progress_callback=on_progress)
         store.update_session(session_id, result)
         await manager.broadcast(session_id, {"type": "analysis:completed", "session_id": session_id, "payload": {"status": result["status"]}})
     except Exception as exc:

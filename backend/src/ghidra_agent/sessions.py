@@ -2,7 +2,7 @@ import shutil
 import uuid
 from copy import deepcopy
 from pathlib import Path
-from typing import Dict
+from typing import Awaitable, Callable, Dict, Optional
 
 from ghidra_agent.config import settings
 from ghidra_agent.graph import graph
@@ -66,8 +66,15 @@ _restore_sessions()
 # --- End hot-deploy session restore ---
 
 
-async def run_graph(state: AgentState) -> AgentState:
+async def run_graph(
+    state: AgentState,
+    progress_callback: Optional[Callable[[str, int], Awaitable[None]]] = None,
+) -> AgentState:
     logger.info("graph_run_started", session_id=state.get("session_id"), program_hash=state.get("program_hash"))
-    result = await graph.ainvoke(state, config={"recursion_limit": 50})
+    run_state: AgentState = dict(state)
+    if progress_callback is not None:
+        run_state["progress_callback"] = progress_callback
+    result = await graph.ainvoke(run_state, config={"recursion_limit": 50})
+    result.pop("progress_callback", None)
     logger.info("graph_run_completed", session_id=state.get("session_id"), status=result.get("status"))
     return result

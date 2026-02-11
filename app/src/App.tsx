@@ -178,10 +178,12 @@ function App() {
       const { session_id } = await uploadBinary(file);
       const analyzingMsg: Message = {
         id: (Date.now() + 1).toString(),
-        content: `Binary uploaded. Analyzing **${file.name}** with Ghidra and Radare2... This typically takes 5-15 minutes.`,
+        content:
+          `Binary uploaded. Analyzing **${file.name}** with Ghidra and Radare2... This typically takes 5-15 minutes.\n\n` +
+          `**starting** - 0%`,
         isUser: false,
         timestamp: new Date(),
-        toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'running' }],
+        toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'running', progress: 0, maxProgress: 100 }],
       };
       setMessages(prev => [...prev, analyzingMsg]);
 
@@ -193,10 +195,18 @@ function App() {
         const secs = elapsed % 60;
         const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
         const step = statusUpdate.state?.current_step || statusUpdate.status || 'analyzing';
+        const rawProgress = Number(statusUpdate.state?.progress ?? 0);
+        const progress = Number.isFinite(rawProgress) ? Math.max(0, Math.min(100, rawProgress)) : 0;
         setMessages(prev =>
           prev.map(m =>
             m.id === analyzingMsg.id
-              ? { ...m, content: `Analyzing **${file.name}**... (${timeStr} elapsed, step: ${step})` }
+              ? {
+                  ...m,
+                  content:
+                    `Analyzing **${file.name}**... (${timeStr} elapsed)\n\n` +
+                    `**${step}** - ${progress}%`,
+                  toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'running', progress, maxProgress: 100 }],
+                }
               : m
           )
         );

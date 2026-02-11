@@ -17,6 +17,9 @@ class AgentState(TypedDict):
     session_id: str
     intent: Optional[str]
     status: str
+    current_step: str
+    progress: int
+    progress_callback: Any
     review_approved: bool
     summary: str
     # Radare2 results (parallel to Ghidra)
@@ -38,6 +41,9 @@ DEFAULT_STATE: AgentState = {
     "session_id": "",
     "intent": None,
     "status": "initialized",
+    "current_step": "",
+    "progress": 0,
+    "progress_callback": None,
     "review_approved": False,
     "summary": "",
     "r2_analysis_results": {},
@@ -59,6 +65,10 @@ class AgentStateModel(BaseModel):
     session_id: str
     intent: Optional[str] = None
     status: str = "initialized"
+    current_step: str = ""
+    progress: int = 0
+    # Runtime-only callback hook; excluded from model serialization.
+    progress_callback: Any = Field(default=None, exclude=True)
     review_approved: bool = False
     summary: str = ""
     r2_analysis_results: Dict[str, Any] = Field(default_factory=dict)

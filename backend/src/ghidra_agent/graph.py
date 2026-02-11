@@ -81,7 +81,35 @@ def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, s
     )
 
 
+async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
+    """Emit monotonic progress updates to state and optional callback."""
+    safe_pct = max(0, min(100, int(pct)))
+    try:
+        current_pct = int(state.get("progress", 0))
+    except (TypeError, ValueError):
+        current_pct = 0
+
+    # Prevent regressions when parallel tasks emit out-of-order updates.
+    if safe_pct < current_pct:
+        return
+
+    state["current_step"] = step
+    state["progress"] = safe_pct
+
+    callback = state.get("progress_callback")
+    if callback is None:
+        return
+
+    try:
+        maybe_coro = callback(step, safe_pct)
+        if asyncio.iscoroutine(maybe_coro):
+            await maybe_coro
+    except Exception as exc:
+        logger.warning("progress_callback_failed", step=step, progress=safe_pct, error=str(exc))
+
+
 async def parse_intent(state: AgentState) -> AgentState:
+    await _emit_progress(state, "parse_intent", 2)
     query = state.get("user_query", "")
     intent = "reconnaissance"
     if any(term in query.lower() for term in ["vuln", "overflow", "format", "strcpy", "sprintf"]):
@@ -121,8 +149,10 @@ async def initialize_ghidra(state: AgentState) -> AgentState:
     # Skip re-initialization on follow-up queries
     if "ghidra_initialized" in state.get("reasoning_trace", []):
         logger.info("skipping_reinit", reason="already_initialized")
+        await _emit_progress(state, "initialize_skipped", 5)
         return state
 
+    await _emit_progress(state, "initializing_ghidra", 4)
     state["status"] = "initialized"
     state["reasoning_trace"].append("ghidra_initialized")
 
@@ -139,6 +169,7 @@ async def initialize_ghidra(state: AgentState) -> AgentState:
             logger.warning("r2_init_check_failed", error=str(exc))
             state["reasoning_trace"].append("r2_unavailable")
 
+    await _emit_progress(state, "initialization_completed", 5)
     return state
 
 
@@ -146,20 +177,20 @@ async def discovery(state: AgentState) -> AgentState:
     # Skip re-discovery on follow-up queries if results already exist
     if state.get("analysis_results", {}).get("binary", {}).get("ok"):
         logger.info("skipping_rediscovery", reason="results_already_exist")
+        await _emit_progress(state, "discovery_skipped", 60)
         return state
 
-    # Run Ghidra discovery
-    await _ghidra_discovery(state)
+    await _emit_progress(state, "discovery_starting", 5)
 
-    # Run R2 in parallel if available
+    # Run Ghidra + R2 discovery concurrently when R2 is available.
     if settings.enable_r2 and "r2_initialized" in state.get("reasoning_trace", []):
-        try:
-            await _safe_r2_pipeline(state)
-        except Exception as exc:
-            logger.error("r2_parallel_failed", error=str(exc))
+        await asyncio.gather(_ghidra_discovery(state), _safe_r2_pipeline(state))
+    else:
+        await _ghidra_discovery(state)
 
     # Extract and persist IOC data during pipeline (before LLM synthesis).
     _refresh_ioc_context(state)
+    await _emit_progress(state, "discovery_completed", 60)
 
     state["reasoning_trace"].append("discovery_completed")
     return state
@@ -172,11 +203,14 @@ async def _ghidra_discovery(state: AgentState) -> None:
         "program_hash": state["program_hash"],
         "binary_path": state.get("binary_path"),
     }
+    await _emit_progress(state, "ghidra_binary_analysis", 8)
     try:
         binary_info = await analyze_binary_structure.ainvoke(tool_args)
     except Exception as exc:
         logger.error("discovery_binary_failed", error=str(exc))
         binary_info = {"ok": False, "error": str(exc)}
+
+    await _emit_progress(state, "ghidra_listing_functions", 12)
     try:
         functions = await list_functions.ainvoke(tool_args)
     except Exception as exc:
@@ -188,11 +222,15 @@ async def _ghidra_discovery(state: AgentState) -> None:
             alpha=settings.function_priority_alpha,
             beta=settings.function_priority_beta,
         )
+
+    await _emit_progress(state, "ghidra_finding_strings", 16)
     try:
         strings = await find_strings.ainvoke(tool_args)
     except Exception as exc:
         logger.error("discovery_strings_failed", error=str(exc))
         strings = {"ok": False, "error": str(exc)}
+
+    await _emit_progress(state, "ghidra_call_graph", 20)
     try:
         call_graph = await build_call_graph.ainvoke(tool_args)
     except Exception as exc:
@@ -206,10 +244,13 @@ async def _ghidra_discovery(state: AgentState) -> None:
     state["analysis_results"]["call_graph_analysis"] = analyze_call_graph(call_graph)
 
     # Scan for high-signal byte patterns (shellcode-like signatures).
+    await _emit_progress(state, "ghidra_byte_signatures", 24)
     await _run_byte_signature_scan(state, tool_args)
 
     # Auto-decompile entry point and top functions
+    await _emit_progress(state, "ghidra_decompiling", 28)
     await _auto_decompile_key_functions(state, binary_info, functions)
+    await _emit_progress(state, "ghidra_decompile_completed", 50)
 
     if not binary_info.get("ok"):
         state["analysis_results"].setdefault("errors", []).append("binary_structure_failed")
@@ -336,12 +377,16 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
     funcs_to_decompile.extend(top_funcs)
     
     # Decompile selected functions
+    total_decompile = len(funcs_to_decompile)
     decompiled_count = 0
-    for func in funcs_to_decompile:
+    for idx, func in enumerate(funcs_to_decompile):
         func_name = func.get("name")
         func_addr = func.get("address")
         if not func_name or func_name in state.get("decompilation_cache", {}):
             continue
+
+        pct = 28 + int(((idx + 1) / max(total_decompile, 1)) * 22)
+        await _emit_progress(state, f"ghidra_decompiling {idx + 1}/{total_decompile}", pct)
         
         try:
             decomp = await decompile_function.ainvoke(
@@ -364,6 +409,7 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
 
 
 async def focus_analysis(state: AgentState) -> AgentState:
+    await _emit_progress(state, "focus_analysis", 62)
     target_function = state.get("current_function")
     if target_function:
         try:
@@ -411,10 +457,12 @@ async def focus_analysis(state: AgentState) -> AgentState:
     else:
         state["analysis_results"]["focus"] = {"ok": False, "error": "No focus target set."}
     state["reasoning_trace"].append("focus_analysis_completed")
+    await _emit_progress(state, "focus_analysis_completed", 66)
     return state
 
 
 async def cross_reference(state: AgentState) -> AgentState:
+    await _emit_progress(state, "cross_reference", 68)
     address = state.get("current_address")
     if address:
         try:
@@ -445,6 +493,7 @@ async def cross_reference(state: AgentState) -> AgentState:
             graph_result = {"ok": False, "error": str(exc)}
         state["analysis_results"]["function_graph"] = graph_result
     state["reasoning_trace"].append("cross_reference_completed")
+    await _emit_progress(state, "cross_reference_completed", 70)
     return state
 
 
@@ -575,6 +624,7 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
 
 
 async def synthesize(state: AgentState) -> AgentState:
+    await _emit_progress(state, "synthesizing_report", 85)
     user_query = state.get("user_query", "")
     results = state.get("analysis_results", {})
 
@@ -766,6 +816,7 @@ Cite actual addresses (0xXXXXXXXX) and actual strings from the analysis data."""
     state["summary"] = summary
     state["status"] = "completed"
     state["reasoning_trace"].append("synthesized")
+    await _emit_progress(state, "analysis_completed", 100)
     return state
 
 

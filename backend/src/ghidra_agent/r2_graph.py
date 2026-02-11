@@ -47,6 +47,40 @@ def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, s
     )
 
 
+async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
+    """Emit monotonic progress updates for R2 stages."""
+    safe_pct = max(0, min(100, int(pct)))
+    try:
+        current_pct = int(state.get("progress", 0))
+    except (TypeError, ValueError):
+        current_pct = 0
+
+    if safe_pct < current_pct:
+        return
+
+    state["current_step"] = step
+    state["progress"] = safe_pct
+
+    callback = state.get("progress_callback")
+    if callback is None:
+        return
+
+    try:
+        maybe_coro = callback(step, safe_pct)
+        if asyncio.iscoroutine(maybe_coro):
+            await maybe_coro
+    except Exception as exc:
+        logger.warning("r2_progress_callback_failed", step=step, progress=safe_pct, error=str(exc))
+
+
+async def _safe_call(tool, tool_args: Dict[str, Any], error_key: str) -> Dict[str, Any]:
+    try:
+        return await tool.ainvoke(tool_args)
+    except Exception as exc:
+        logger.error(error_key, error=str(exc))
+        return {"ok": False, "error": str(exc)}
+
+
 async def r2_discovery(state: AgentState) -> AgentState:
     """Run Radare2 discovery: binary info, functions, and strings."""
     tool_args = {
@@ -62,17 +96,11 @@ async def r2_discovery(state: AgentState) -> AgentState:
     strings: Dict[str, Any] = {"ok": False, "error": "not run"}
     syscalls: Dict[str, Any] = {"ok": False, "error": "not run"}
 
-    try:
-        binary_info = await r2_analyze_binary.ainvoke(tool_args)
-    except Exception as exc:
-        logger.error("r2_discovery_binary_failed", error=str(exc))
-        binary_info = {"ok": False, "error": str(exc)}
+    await _emit_progress(state, "r2_binary_analysis", 8)
+    binary_info = await _safe_call(r2_analyze_binary, tool_args, "r2_discovery_binary_failed")
 
-    try:
-        functions = await r2_list_functions.ainvoke(tool_args)
-    except Exception as exc:
-        logger.error("r2_discovery_functions_failed", error=str(exc))
-        functions = {"ok": False, "error": str(exc)}
+    await _emit_progress(state, "r2_listing_functions", 12)
+    functions = await _safe_call(r2_list_functions, tool_args, "r2_discovery_functions_failed")
     if functions.get("ok"):
         functions = apply_priority_to_result(
             functions,
@@ -80,23 +108,13 @@ async def r2_discovery(state: AgentState) -> AgentState:
             beta=settings.function_priority_beta,
         )
 
-    try:
-        call_graph = await r2_build_call_graph.ainvoke(tool_args)
-    except Exception as exc:
-        logger.error("r2_discovery_call_graph_failed", error=str(exc))
-        call_graph = {"ok": False, "error": str(exc)}
-
-    try:
-        strings = await r2_find_strings.ainvoke(tool_args)
-    except Exception as exc:
-        logger.error("r2_discovery_strings_failed", error=str(exc))
-        strings = {"ok": False, "error": str(exc)}
-
-    try:
-        syscalls = await r2_syscall_analysis.ainvoke(tool_args)
-    except Exception as exc:
-        logger.error("r2_discovery_syscalls_failed", error=str(exc))
-        syscalls = {"ok": False, "error": str(exc)}
+    # These steps are independent once function listing has run.
+    await _emit_progress(state, "r2_parallel_discovery", 16)
+    call_graph, strings, syscalls = await asyncio.gather(
+        _safe_call(r2_build_call_graph, tool_args, "r2_discovery_call_graph_failed"),
+        _safe_call(r2_find_strings, tool_args, "r2_discovery_strings_failed"),
+        _safe_call(r2_syscall_analysis, tool_args, "r2_discovery_syscalls_failed"),
+    )
 
     state["r2_analysis_results"]["binary"] = binary_info
     state["r2_analysis_results"]["functions"] = functions
@@ -106,7 +124,9 @@ async def r2_discovery(state: AgentState) -> AgentState:
     state["r2_analysis_results"]["syscalls"] = syscalls
 
     # Auto-decompile top functions (mirroring Ghidra pipeline)
+    await _emit_progress(state, "r2_decompiling", 28)
     await _r2_auto_decompile(state, binary_info, functions)
+    await _emit_progress(state, "r2_decompile_completed", 50)
 
     if not binary_info.get("ok"):
         state["r2_analysis_results"].setdefault("errors", []).append("r2_binary_structure_failed")
@@ -147,26 +167,36 @@ async def _r2_auto_decompile(
 
     funcs_to_decompile = sorted_funcs[:decompile_target]
 
-    decompiled = 0
-    for func in funcs_to_decompile:
+    sem = asyncio.Semaphore(3)
+    total_funcs = len(funcs_to_decompile)
+
+    async def _decompile_one(func: Dict[str, Any], idx: int) -> int:
         name = func.get("name", "")
         addr = func.get("address", "")
         if not name or name in state.get("r2_decompilation_cache", {}):
-            continue
+            return 0
 
-        try:
-            decomp = await r2_decompile_function.ainvoke({
-                "session_id": state["session_id"],
-                "program_hash": state["program_hash"],
-                "binary_path": state.get("binary_path"),
-                "function_name": name,
-                "address": addr,
-            })
+        async with sem:
+            pct = 28 + int(((idx + 1) / max(total_funcs, 1)) * 22)
+            await _emit_progress(state, f"r2_decompiling {idx + 1}/{total_funcs}", pct)
+            try:
+                decomp = await r2_decompile_function.ainvoke({
+                    "session_id": state["session_id"],
+                    "program_hash": state["program_hash"],
+                    "binary_path": state.get("binary_path"),
+                    "function_name": name,
+                    "address": addr,
+                })
+            except Exception as exc:
+                logger.error("r2_auto_decompile_failed", function=name, error=str(exc))
+                return 0
+
             if decomp.get("ok") and decomp.get("c"):
                 state["r2_decompilation_cache"][name] = decomp["c"]
-                decompiled += 1
-        except Exception as exc:
-            logger.error("r2_auto_decompile_failed", function=name, error=str(exc))
+                return 1
+        return 0
+
+    decompiled = sum(await asyncio.gather(*[_decompile_one(func, idx) for idx, func in enumerate(funcs_to_decompile)]))
 
     if decompiled:
         state["reasoning_trace"].append(f"r2_auto_decompiled:{decompiled}_functions")

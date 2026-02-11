@@ -126,6 +126,16 @@ class TestStatusEndpoint:
         data = resp.json()
         assert data["status"] == "completed"
 
+    @pytest.mark.asyncio
+    async def test_status_omits_runtime_progress_callback(self, client: AsyncClient, mock_store):
+        state = mock_store.sessions["test-session"]
+        state["progress_callback"] = "runtime-only"
+
+        resp = await client.get("/status/test-session")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "progress_callback" not in data["state"]
+
 
 class TestExportEndpoints:
     @pytest.mark.asyncio

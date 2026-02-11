@@ -169,7 +169,7 @@ export function connectStream(sessionId: string, onEvent: (event: any) => void):
 export async function pollStatus(
   sessionId: string,
   onUpdate: (status: StatusResponse) => void,
-  intervalMs = 5000,
+  intervalMs = 2000,
   maxPolls = 540,
 ): Promise<StatusResponse> {
   for (let i = 0; i < maxPolls; i++) {
