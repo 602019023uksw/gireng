@@ -75,6 +75,46 @@ services:
       timeout: 3s
       retries: 10
 
+  postgres:
+    image: postgres:16-alpine
+    container_name: ireng_postgres
+    environment:
+      POSTGRES_USER: ireng
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-ireng_secret}
+      POSTGRES_DB: ireng
+      POSTGRES_MULTIPLE_DATABASES: langfuse
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init-multi-db.sh:/docker-entrypoint-initdb.d/init-multi-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ireng"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  langfuse:
+    image: langfuse/langfuse:2
+    container_name: ireng_langfuse
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://ireng:${POSTGRES_PASSWORD:-ireng_secret}@postgres:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3100
+      NEXTAUTH_SECRET: ${LANGFUSE_NEXTAUTH_SECRET:-changeme-langfuse-secret}
+      SALT: ${LANGFUSE_SALT:-changeme-langfuse-salt}
+      TELEMETRY_ENABLED: "true"
+      LANGFUSE_ENABLE_EXPERIMENTAL_FEATURES: "false"
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "3100:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://0.0.0.0:3000/api/public/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+
   agent:
     build:
       context: .
@@ -83,6 +123,10 @@ services:
       ghidra:
         condition: service_healthy
       radare2:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      langfuse:
         condition: service_healthy
     environment:
       GHIDRA_DOCKER_IMAGE: ${RUNNER_IMAGE:-ireng-runner}
@@ -106,6 +150,12 @@ services:
       R2_SHARED_ROOT: /data/shared
       R2_TIMEOUT: "60"
       ENABLE_R2: "true"
+      DATABASE_URL: postgresql://ireng:${POSTGRES_PASSWORD:-ireng_secret}@postgres:5432/ireng
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
+      LANGFUSE_HOST: http://langfuse:3000
+      LANGFUSE_ENABLED: "true"
+      LANGFUSE_ENVIRONMENT: ${LANGFUSE_ENVIRONMENT:-development}
     volumes:
       - ghidra_projects:/data/projects
       - ghidra_shared:/data/shared
@@ -129,3 +179,4 @@ services:
 volumes:
   ghidra_projects:
   ghidra_shared:
+  pgdata:

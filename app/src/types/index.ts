@@ -6,6 +6,9 @@ export interface Message {
   toolCalls?: ToolCall[];
   codeBlocks?: CodeBlock[];
   showAnalysisCompleted?: boolean;
+  analysisHash?: string;  // Hash of the analyzed binary
+  analyzerCount?: number; // Number of completed analyzers
+  analyzerTotal?: number; // Total number of analyzers
   agentId?: string;  // ID of the agent mentioned (@ghidra-analyzer)
   agentName?: string; // Display name of the agent
 }

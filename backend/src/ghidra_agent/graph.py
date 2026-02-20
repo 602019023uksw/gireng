@@ -1,12 +1,31 @@
 import asyncio
 import json
 import re
+from functools import wraps
 from typing import Dict, List, Any
 from langgraph.graph import StateGraph, END
 
 from ghidra_agent.config import settings
+from ghidra_agent.langfuse_tracing import get_trace_metadata, is_langfuse_ready, update_current_span
 from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import logger
+
+
+def _lf_observe(name: str):
+    """Conditionally apply ``@observe()`` only when Langfuse is ready."""
+    def decorator(fn):
+        @wraps(fn)
+        async def wrapper(*args, **kwargs):
+            if is_langfuse_ready():
+                try:
+                    from langfuse.decorators import observe as _observe
+                    traced_fn = _observe(name=name)(fn)
+                    return await traced_fn(*args, **kwargs)
+                except Exception:
+                    pass
+            return await fn(*args, **kwargs)
+        return wrapper
+    return decorator
 from ghidra_agent.prompts import SYSTEM_PROMPT
 from ghidra_agent.state import AgentState
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
@@ -108,9 +127,11 @@ async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
         logger.warning("progress_callback_failed", step=step, progress=safe_pct, error=str(exc))
 
 
+@_lf_observe(name="parse_intent")
 async def parse_intent(state: AgentState) -> AgentState:
     await _emit_progress(state, "parse_intent", 2)
     query = state.get("user_query", "")
+    update_current_span(input={"user_query": query[:500]})
     intent = "reconnaissance"
     if any(term in query.lower() for term in ["vuln", "overflow", "format", "strcpy", "sprintf"]):
         intent = "vulnerability"
@@ -142,14 +163,22 @@ async def parse_intent(state: AgentState) -> AgentState:
         state["reasoning_trace"].append(f"target_address:{addr_match.group(1)}")
 
     state["reasoning_trace"].append(f"intent:{intent}")
+    update_current_span(output={
+        "intent": intent,
+        "current_function": state.get("current_function", ""),
+        "current_address": state.get("current_address", ""),
+    })
     return state
 
 
+@_lf_observe(name="initialize_ghidra")
 async def initialize_ghidra(state: AgentState) -> AgentState:
+    update_current_span(input={"binary_path": state.get("binary_path", ""), "r2_enabled": settings.enable_r2})
     # Skip re-initialization on follow-up queries
     if "ghidra_initialized" in state.get("reasoning_trace", []):
         logger.info("skipping_reinit", reason="already_initialized")
         await _emit_progress(state, "initialize_skipped", 5)
+        update_current_span(output={"status": "skipped", "reason": "already_initialized"})
         return state
 
     await _emit_progress(state, "initializing_ghidra", 4)
@@ -169,15 +198,23 @@ async def initialize_ghidra(state: AgentState) -> AgentState:
             logger.warning("r2_init_check_failed", error=str(exc))
             state["reasoning_trace"].append("r2_unavailable")
 
+    r2_ok = "r2_initialized" in state.get("reasoning_trace", [])
+    update_current_span(output={"status": "initialized", "r2_available": r2_ok})
     await _emit_progress(state, "initialization_completed", 5)
     return state
 
 
+@_lf_observe(name="discovery")
 async def discovery(state: AgentState) -> AgentState:
+    update_current_span(input={
+        "binary_path": state.get("binary_path", ""),
+        "r2_enabled": settings.enable_r2 and "r2_initialized" in state.get("reasoning_trace", []),
+    })
     # Skip re-discovery on follow-up queries if results already exist
     if state.get("analysis_results", {}).get("binary", {}).get("ok"):
         logger.info("skipping_rediscovery", reason="results_already_exist")
         await _emit_progress(state, "discovery_skipped", 60)
+        update_current_span(output={"status": "skipped", "reason": "results_already_exist"})
         return state
 
     await _emit_progress(state, "discovery_starting", 5)
@@ -193,11 +230,24 @@ async def discovery(state: AgentState) -> AgentState:
     await _emit_progress(state, "discovery_completed", 60)
 
     state["reasoning_trace"].append("discovery_completed")
+    # Annotate span with discovery summary
+    results = state.get("analysis_results", {})
+    funcs = results.get("functions", {})
+    strs = results.get("strings", {})
+    update_current_span(output={
+        "binary_ok": results.get("binary", {}).get("ok", False),
+        "functions_count": len(funcs.get("functions", [])) if funcs.get("ok") else 0,
+        "strings_count": len(strs.get("strings", [])) if strs.get("ok") else 0,
+        "decompiled_count": len(state.get("decompilation_cache", {})),
+        "r2_results": bool(state.get("r2_analysis_results")),
+    })
     return state
 
 
+@_lf_observe(name="ghidra_discovery")
 async def _ghidra_discovery(state: AgentState) -> None:
     """Core Ghidra discovery: binary info, functions, strings, auto-decompile."""
+    update_current_span(input={"binary_path": state.get("binary_path", ""), "session_id": state.get("session_id", "")})
     tool_args = {
         "session_id": state["session_id"],
         "program_hash": state["program_hash"],
@@ -255,15 +305,33 @@ async def _ghidra_discovery(state: AgentState) -> None:
     if not binary_info.get("ok"):
         state["analysis_results"].setdefault("errors", []).append("binary_structure_failed")
 
+    update_current_span(output={
+        "binary_ok": binary_info.get("ok", False),
+        "architecture": binary_info.get("architecture", ""),
+        "functions_count": len(functions.get("functions", [])) if functions.get("ok") else 0,
+        "strings_count": len(strings.get("strings", [])) if strings.get("ok") else 0,
+        "call_graph_nodes": len(call_graph.get("nodes", [])) if call_graph.get("ok") else 0,
+        "decompiled_count": len(state.get("decompilation_cache", {})),
+    })
 
+
+@_lf_observe(name="r2_pipeline")
 async def _safe_r2_pipeline(state: AgentState) -> None:
     """Run R2 pipeline safely — failures don't block Ghidra results."""
+    update_current_span(input={"binary_path": state.get("binary_path", "")})
     try:
         from ghidra_agent.r2_graph import run_r2_pipeline
         await run_r2_pipeline(state)
+        r2_res = state.get("r2_analysis_results", {})
+        update_current_span(output={
+            "ok": True,
+            "functions_count": len(r2_res.get("functions", {}).get("functions", [])),
+            "decompiled_count": len(state.get("r2_decompilation_cache", {})),
+        })
     except Exception as exc:
         logger.error("r2_pipeline_failed", error=str(exc))
         state["reasoning_trace"].append(f"r2_error:{exc}")
+        update_current_span(output={"ok": False, "error": str(exc)[:200]})
 
 
 async def _run_byte_signature_scan(state: AgentState, tool_args: Dict[str, Any]) -> None:
@@ -408,9 +476,14 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
         state["reasoning_trace"].append(f"auto_decompiled:{decompiled_count}_functions")
 
 
+@_lf_observe(name="focus_analysis")
 async def focus_analysis(state: AgentState) -> AgentState:
     await _emit_progress(state, "focus_analysis", 62)
     target_function = state.get("current_function")
+    update_current_span(input={
+        "target_function": target_function or "",
+        "target_address": state.get("current_address", ""),
+    })
     if target_function:
         try:
             decomp = await decompile_function.ainvoke(
@@ -457,13 +530,24 @@ async def focus_analysis(state: AgentState) -> AgentState:
     else:
         state["analysis_results"]["focus"] = {"ok": False, "error": "No focus target set."}
     state["reasoning_trace"].append("focus_analysis_completed")
+    focus = state.get("analysis_results", {}).get("focus", {})
+    update_current_span(output={
+        "ok": focus.get("ok", False),
+        "has_decompilation": bool(focus.get("c")),
+        "has_disassembly": bool(focus.get("instructions")),
+    })
     await _emit_progress(state, "focus_analysis_completed", 66)
     return state
 
 
+@_lf_observe(name="cross_reference")
 async def cross_reference(state: AgentState) -> AgentState:
     await _emit_progress(state, "cross_reference", 68)
     address = state.get("current_address")
+    update_current_span(input={
+        "target_address": address or "",
+        "target_function": state.get("current_function", ""),
+    })
     if address:
         try:
             xrefs = await find_xrefs.ainvoke(
@@ -493,6 +577,15 @@ async def cross_reference(state: AgentState) -> AgentState:
             graph_result = {"ok": False, "error": str(exc)}
         state["analysis_results"]["function_graph"] = graph_result
     state["reasoning_trace"].append("cross_reference_completed")
+    # Annotate span output
+    xrefs_result = state.get("analysis_results", {}).get("xrefs", {})
+    fg_result = state.get("analysis_results", {}).get("function_graph", {})
+    update_current_span(output={
+        "xrefs_ok": xrefs_result.get("ok", False),
+        "xrefs_to_count": len(xrefs_result.get("to", [])),
+        "xrefs_from_count": len(xrefs_result.get("from", [])),
+        "function_graph_ok": fg_result.get("ok", False),
+    })
     await _emit_progress(state, "cross_reference_completed", 70)
     return state
 
@@ -623,10 +716,16 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
     return "\n".join(parts)
 
 
+@_lf_observe(name="synthesize")
 async def synthesize(state: AgentState) -> AgentState:
     await _emit_progress(state, "synthesizing_report", 85)
     user_query = state.get("user_query", "")
     results = state.get("analysis_results", {})
+    update_current_span(input={
+        "user_query": user_query[:500],
+        "analysis_keys": [k for k in results.keys() if results.get(k)],
+        "decompiled_functions": len(state.get("decompilation_cache", {})),
+    })
 
     # B4 + I5 FIX: Build enhanced context for the LLM
     context_parts = []
@@ -802,7 +901,8 @@ If the malware family is unknown, state "Unknown".
 Cite actual addresses (0xXXXXXXXX) and actual strings from the analysis data."""
 
     try:
-        summary = await call_llm(prompt)
+        lf_meta = get_trace_metadata(generation_name="synthesize")
+        summary = await call_llm(prompt, metadata=lf_meta or None)
     except Exception as exc:
         logger.error("synthesize_llm_failed", error=str(exc))
         summary = f"[LLM error: {exc}]"
@@ -816,19 +916,36 @@ Cite actual addresses (0xXXXXXXXX) and actual strings from the analysis data."""
     state["summary"] = summary
     state["status"] = "completed"
     state["reasoning_trace"].append("synthesized")
+    update_current_span(output={
+        "status": "completed",
+        "summary_length": len(summary),
+        "summary_preview": summary[:500] if summary else "",
+        "prompt_length": len(prompt),
+        "used_fallback": summary.startswith("[LLM error:") or "AUTOMATED ANALYSIS SUMMARY" in summary[:100],
+    })
     await _emit_progress(state, "analysis_completed", 100)
     return state
 
 
+@_lf_observe(name="human_review")
 async def human_review(state: AgentState) -> AgentState:
+    update_current_span(input={"current_status": state.get("status", "")}, output={"status": "awaiting_review"})
     state["status"] = "awaiting_review"
     return state
 
 
+@_lf_observe(name="action_execution")
 async def action_execution(state: AgentState) -> AgentState:
+    pending = state.get("pending_actions", [])
+    update_current_span(input={
+        "write_mode_enabled": state.get("write_mode_enabled", False),
+        "pending_actions_count": len(pending),
+        "action_types": list({a.get("type", "") for a in pending}),
+    })
     if not state.get("write_mode_enabled"):
         state["status"] = "write_actions_skipped"
         state["reasoning_trace"].append("write_actions_skipped")
+        update_current_span(output={"status": "skipped", "reason": "write_mode_disabled"})
         return state
     for action in state.get("pending_actions", []):
         try:
@@ -857,6 +974,7 @@ async def action_execution(state: AgentState) -> AgentState:
     state["pending_actions"] = []
     state["status"] = "write_actions_completed"
     state["reasoning_trace"].append("write_actions_done")
+    update_current_span(output={"status": "completed", "actions_executed": len(pending)})
     return state
 
 

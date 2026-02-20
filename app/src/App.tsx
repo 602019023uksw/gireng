@@ -92,7 +92,8 @@ function App() {
   }, []);
 
   // Fetch all side-panel data for a completed analysis
-  const fetchAnalysisData = useCallback(async (hash: string) => {
+  // Returns the number of analyzers fetched
+  const fetchAnalysisData = useCallback(async (hash: string): Promise<number> => {
     try {
       const [analysisInfo, analyzersData, filesData, reportsData, ghidraResults, radare2Results] = await Promise.all([
         getAnalysis(hash),
@@ -164,8 +165,10 @@ function App() {
         verdict: overallVerdict,
         status: 'completed',
       }]);
+      return (analyzersData || []).length;
     } catch (err) {
       console.error('Failed to fetch analysis data:', err);
+      return 0;
     }
   }, []);
 
@@ -226,6 +229,9 @@ function App() {
       const funcCount = result.state.analysis_results?.functions?.functions?.length || 0;
       const strCount = result.state.analysis_results?.strings?.strings?.length || 0;
 
+      // Count analyzers: Ghidra always present, R2 if results exist
+      const hasR2 = !!result.state.analysis_results?.r2 || !!result.state.r2_analysis_results;
+      const analyzerTotal = hasR2 ? 2 : 1;
       const resultMsg: Message = {
         id: (Date.now() + 2).toString(),
         content: summary + `\n\n---\n**${funcCount}** functions, **${strCount}** strings found.`,
@@ -233,6 +239,9 @@ function App() {
         timestamp: new Date(),
         toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'completed' }],
         showAnalysisCompleted: true,
+        analysisHash: hash,
+        analyzerCount: analyzerTotal,
+        analyzerTotal: analyzerTotal,
       };
       setMessages(prev => {
         // Replace the "analyzing" message with the result
@@ -258,7 +267,16 @@ function App() {
         started: startedStr,
         completed: completedStr,
       });
-      await fetchAnalysisData(hash);
+      const realAnalyzerCount = await fetchAnalysisData(hash);
+      if (realAnalyzerCount > 0) {
+        setMessages(prev =>
+          prev.map(m =>
+            m.id === resultMsg.id
+              ? { ...m, analyzerCount: realAnalyzerCount, analyzerTotal: realAnalyzerCount }
+              : m
+          )
+        );
+      }
     } catch (err: any) {
       const errMsg: Message = {
         id: (Date.now() + 3).toString(),
@@ -369,6 +387,44 @@ function App() {
     setViewState('welcome');
   };
 
+  // Restore a past session from history sidebar
+  const handleRestoreSession = useCallback(async (sessionId: string, programHash: string) => {
+    sessionRef.current = { id: sessionId, hash: programHash };
+
+    const restoredMsg: Message = {
+      id: Date.now().toString(),
+      content: `Restored past analysis for binary \`${programHash.slice(0, 16)}...\``,
+      isUser: false,
+      timestamp: new Date(),
+    };
+    setMessages([restoredMsg]);
+    setViewState('chat');
+
+    // Load analysis data from the restored session
+    try {
+      const analyzerCount = await fetchAnalysisData(programHash);
+      const completedMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        content: `Analysis data loaded. ${analyzerCount} analyzer(s) available. You can ask follow-up questions or view the analysis.`,
+        isUser: false,
+        timestamp: new Date(),
+        showAnalysisCompleted: true,
+        analysisHash: programHash,
+        analyzerCount,
+        analyzerTotal: analyzerCount,
+      };
+      setMessages(prev => [...prev, completedMsg]);
+    } catch (err) {
+      const errMsg: Message = {
+        id: (Date.now() + 2).toString(),
+        content: 'Failed to load analysis data from this session.',
+        isUser: false,
+        timestamp: new Date(),
+      };
+      setMessages(prev => [...prev, errMsg]);
+    }
+  }, [fetchAnalysisData]);
+
   const handleViewAnalysis = () => {
     setViewState('analysis');
   };
@@ -455,6 +511,7 @@ function App() {
           <Sidebar
             chats={mockChats}
             onNewChat={handleNewChat}
+            onRestoreSession={handleRestoreSession}
           />
         }
         rightPanel={renderRightPanel()}

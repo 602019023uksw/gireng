@@ -97,6 +97,16 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
           <span className="text-xs text-text-muted">{formatTime(message.timestamp)}</span>
         </div>
 
+        {/* Analysis Completed Card */}
+        {message.showAnalysisCompleted && (
+          <AnalysisCompletedCard
+            fileHash={message.analysisHash || ''}
+            progress={message.analyzerCount || 0}
+            maxProgress={message.analyzerTotal || 0}
+            onViewMore={onViewAnalysis}
+          />
+        )}
+
         {/* Render markdown content */}
         <div className="mb-3">
           <MarkdownContent content={message.content} compact />
@@ -106,16 +116,6 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
         {message.toolCalls?.map((tool) => (
           <ToolCallCard key={tool.id} tool={tool} />
         ))}
-
-        {/* Analysis Completed Card */}
-        {message.showAnalysisCompleted && (
-          <AnalysisCompletedCard
-            fileHash="9910d401d6354b7681b3c1b121960ac847e3642f734fa51bc9eefcd4900f89ec"
-            progress={7}
-            maxProgress={7}
-            onViewMore={onViewAnalysis}
-          />
-        )}
 
         {/* Code Blocks */}
         {message.codeBlocks?.map((block) => (

@@ -27,6 +27,16 @@ class Settings(BaseModel):
     enable_r2: bool = Field(default=True, alias="ENABLE_R2")
     function_priority_alpha: float = Field(default=0.7, alias="FUNCTION_PRIORITY_ALPHA")
     function_priority_beta: float = Field(default=0.3, alias="FUNCTION_PRIORITY_BETA")
+    # PostgreSQL
+    database_url: str = Field(
+        default="postgresql://ireng:ireng_secret@localhost:5432/ireng",
+        alias="DATABASE_URL",
+    )
+    # Langfuse APM / tracing
+    langfuse_public_key: str = Field(default="", alias="LANGFUSE_PUBLIC_KEY")
+    langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
+    langfuse_host: str = Field(default="http://langfuse:3000", alias="LANGFUSE_HOST")
+    langfuse_enabled: bool = Field(default=True, alias="LANGFUSE_ENABLED")
 
     class Config:
         populate_by_name = True

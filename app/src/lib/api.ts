@@ -192,3 +192,62 @@ export async function pollStatus(
   }
   throw new Error('Polling timed out');
 }
+
+// ---------------------------------------------------------------------------
+// History / Past Analysis API
+// ---------------------------------------------------------------------------
+
+export interface HistoryItem {
+  id: string;
+  program_hash: string;
+  binary_path: string;
+  status: string;
+  verdict: string | null;
+  threat_score: number | null;
+  summary: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  duration_seconds: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HistoryListResponse {
+  items: HistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function getHistory(
+  limit = 50,
+  offset = 0,
+  status = '',
+  search = '',
+): Promise<HistoryListResponse> {
+  const params = new URLSearchParams();
+  params.set('limit', String(limit));
+  params.set('offset', String(offset));
+  if (status) params.set('status', status);
+  if (search) params.set('search', search);
+  const res = await fetch(`${API_BASE}/api/history?${params}`);
+  if (!res.ok) return { items: [], total: 0, limit, offset };
+  return res.json();
+}
+
+export async function getHistoryItem(sessionId: string): Promise<HistoryItem | null> {
+  const res = await fetch(`${API_BASE}/api/history/${sessionId}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function restoreSession(sessionId: string): Promise<{ ok: boolean; session_id: string; program_hash: string; status: string } | null> {
+  const res = await fetch(`${API_BASE}/api/history/${sessionId}/restore`, { method: 'POST' });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function deleteHistoryItem(sessionId: string): Promise<boolean> {
+  const res = await fetch(`${API_BASE}/api/history/${sessionId}`, { method: 'DELETE' });
+  return res.ok;
+}

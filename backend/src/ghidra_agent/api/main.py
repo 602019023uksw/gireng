@@ -18,6 +18,7 @@ from ghidra_agent.models import (
     SessionCreateRequest,
     WriteModeRequest,
 )
+from ghidra_agent.langfuse_tracing import create_standalone_trace_metadata
 from ghidra_agent.sessions import store, run_graph
 from ghidra_agent.ui_adapter import (
     build_analyzer_response,
@@ -32,9 +33,15 @@ from ghidra_agent.reporting import build_report_html, build_report_text, build_a
 from ghidra_agent.llm import call_llm
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 from ghidra_agent.utils import ensure_directory, safe_basename
+from ghidra_agent import database as db
 
 
 app = FastAPI(title="Ghidra Reverse Engineering Agent")
+
+
+@app.on_event("shutdown")
+async def _shutdown_db() -> None:
+    await db.close_db()
 
 app.add_middleware(
     CORSMiddleware,
@@ -271,7 +278,13 @@ INSTRUCTIONS:
 
     try:
         logger.info("query_start", session_id=request.session_id, query=request.query[:200])
-        answer = await call_llm(prompt)
+        lf_meta = create_standalone_trace_metadata(
+            session_id=request.session_id,
+            trace_name="follow-up-query",
+            generation_name="query",
+            program_hash=state.get("program_hash", ""),
+        )
+        answer = await call_llm(prompt, metadata=lf_meta or None)
         logger.info("query_complete", session_id=request.session_id, answer_len=len(answer))
 
         # Store the Q&A in reasoning trace for history
@@ -280,6 +293,11 @@ INSTRUCTIONS:
             "answer": answer,
         })
         store.update_session(request.session_id, state)
+        # Persist Q&A to DB
+        try:
+            await db.save_qa(request.session_id, request.query, answer)
+        except Exception:
+            pass
 
         return JSONResponse({
             "ok": True,
@@ -366,6 +384,18 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
         result["completed_at_iso"] = datetime.now(timezone.utc).isoformat()
         result["duration_seconds"] = round(result["completed_at"] - result.get("started_at", result["completed_at"]), 1)
         store.update_session(session_id, result)
+        # Persist verdict to DB
+        try:
+            iocs = extract_iocs_from_state(result)
+            verdict, _, _, score = calculate_verdict(iocs, result)
+            await db.save_verdict(session_id, verdict, score)
+        except Exception:
+            pass
+        # Persist normalized data (functions, strings, decompilations, etc.)
+        try:
+            await db.save_normalized(result)
+        except Exception as norm_exc:
+            logger.warning("save_normalized_failed", session_id=session_id, error=str(norm_exc))
         await manager.broadcast(session_id, {"type": "analysis:completed", "session_id": session_id, "payload": {"status": result["status"]}})
     except Exception as exc:
         logger.error("run_with_events_failed", session_id=session_id, error=str(exc), exc_info=exc)
@@ -567,3 +597,149 @@ async def export_session_text(session_id: str) -> PlainTextResponse:
         })
     except KeyError:
         return PlainTextResponse("Session not found", status_code=404)
+
+
+# ---------------------------------------------------------------------------
+# History / Past Analysis Endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/history")
+async def list_history(
+    limit: int = 50,
+    offset: int = 0,
+    status: str = "",
+    search: str = "",
+) -> JSONResponse:
+    """List past analyses with pagination and optional filters."""
+    analyses = await db.list_analyses(
+        limit=min(limit, 200),
+        offset=offset,
+        status=status or None,
+        search=search or None,
+    )
+    total = await db.get_analysis_count(
+        status=status or None,
+        search=search or None,
+    )
+    return JSONResponse({
+        "items": analyses,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })
+
+
+@app.get("/api/history/{session_id}")
+async def get_history_item(session_id: str) -> JSONResponse:
+    """Get a single past analysis summary (without full state)."""
+    item = await db.get_analysis_by_id(session_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    # Don't send the full state blob in the summary endpoint
+    item.pop("state_json", None)
+    return JSONResponse(item)
+
+
+@app.get("/api/history/{session_id}/qa")
+async def get_history_qa(session_id: str) -> JSONResponse:
+    """Get Q&A history for a past analysis session."""
+    qa = await db.get_qa_history(session_id)
+    return JSONResponse(qa)
+
+
+@app.post("/api/history/{session_id}/restore")
+async def restore_session(session_id: str) -> JSONResponse:
+    """Restore a past session into memory so it can be queried again."""
+    # Check if already in memory
+    if session_id in store.sessions:
+        state = store.sessions[session_id]
+        return JSONResponse({
+            "ok": True,
+            "session_id": session_id,
+            "program_hash": state.get("program_hash", ""),
+            "status": state.get("status", ""),
+        })
+    try:
+        state = await store.load_session_from_db(session_id)
+        return JSONResponse({
+            "ok": True,
+            "session_id": session_id,
+            "program_hash": state.get("program_hash", ""),
+            "status": state.get("status", ""),
+        })
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Session not found in database")
+
+
+@app.delete("/api/history/{session_id}")
+async def delete_history_item(session_id: str) -> JSONResponse:
+    """Delete a past analysis from the database."""
+    deleted = await db.delete_analysis(session_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+    # Also remove from in-memory store if present
+    store.sessions.pop(session_id, None)
+    return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Cross-analysis query endpoints (normalized tables)
+# ---------------------------------------------------------------------------
+
+@app.get("/api/query/functions")
+async def query_functions(name: str = "", analyzer: str = "", limit: int = 100) -> JSONResponse:
+    """Search functions across all analyzed binaries."""
+    results = await db.search_functions(
+        name_pattern=name or None,
+        analyzer=analyzer or None,
+        limit=limit,
+    )
+    return JSONResponse({"items": results, "total": len(results)})
+
+
+@app.get("/api/query/strings")
+async def query_strings(pattern: str = "", limit: int = 100) -> JSONResponse:
+    """Full-text search strings across all binaries."""
+    if not pattern:
+        return JSONResponse({"items": [], "total": 0})
+    results = await db.search_strings_across(pattern, limit=limit)
+    return JSONResponse({"items": results, "total": len(results)})
+
+
+@app.get("/api/query/iocs")
+async def query_iocs(ioc_type: str = "", value: str = "", limit: int = 100) -> JSONResponse:
+    """Search IOCs across all binaries."""
+    results = await db.search_iocs(
+        ioc_type=ioc_type or None,
+        value_pattern=value or None,
+        limit=limit,
+    )
+    return JSONResponse({"items": results, "total": len(results)})
+
+
+@app.get("/api/binary/{program_hash}/functions")
+async def binary_functions(program_hash: str, analyzer: str = "") -> JSONResponse:
+    """Get all functions for a specific binary."""
+    results = await db.get_binary_functions(program_hash, analyzer=analyzer or None)
+    return JSONResponse({"items": results, "total": len(results)})
+
+
+@app.get("/api/binary/{program_hash}/decompilations")
+async def binary_decompilations(program_hash: str, analyzer: str = "") -> JSONResponse:
+    """Get all decompiled functions for a specific binary."""
+    results = await db.get_binary_decompilations(program_hash, analyzer=analyzer or None)
+    return JSONResponse({"items": results, "total": len(results)})
+
+
+@app.get("/api/binary/{program_hash}/iocs")
+async def binary_iocs(program_hash: str) -> JSONResponse:
+    """Get IOCs for a specific binary."""
+    results = await db.get_binary_iocs(program_hash)
+    return JSONResponse({"items": results, "total": len(results)})
+
+
+@app.get("/api/binary/{program_hash}/attack-chains")
+async def binary_attack_chains(program_hash: str) -> JSONResponse:
+    """Get attack chains for a specific binary."""
+    results = await db.get_binary_attack_chains(program_hash)
+    return JSONResponse({"items": results, "total": len(results)})

@@ -1,6 +1,7 @@
 import asyncio
 import os
 from typing import Any, Dict
+import litellm
 from litellm import acompletion
 
 from ghidra_agent.config import settings
@@ -10,8 +11,50 @@ from ghidra_agent.logging import logger
 LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT", "630"))
 LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
 
+# ---------------------------------------------------------------------------
+# Langfuse tracing – uses LiteLLM's built-in callback integration
+# ---------------------------------------------------------------------------
 
-async def _single_llm_call(prompt: str, timeout: int) -> str:
+def _init_langfuse() -> None:
+    """Configure LiteLLM to send traces to Langfuse if credentials are set."""
+    if not settings.langfuse_enabled:
+        logger.info("langfuse_disabled")
+        return
+
+    pk = settings.langfuse_public_key or os.environ.get("LANGFUSE_PUBLIC_KEY", "")
+    sk = settings.langfuse_secret_key or os.environ.get("LANGFUSE_SECRET_KEY", "")
+    host = settings.langfuse_host or os.environ.get("LANGFUSE_HOST", "")
+
+    if not pk or not sk:
+        logger.warning("langfuse_no_credentials", hint="Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY to enable tracing")
+        return
+
+    # Initialise the Langfuse decorator API (env vars + @observe context)
+    from ghidra_agent.langfuse_tracing import configure_langfuse
+    configure_langfuse()
+
+    # LiteLLM reads these env vars automatically for the langfuse callback
+    os.environ.setdefault("LANGFUSE_PUBLIC_KEY", pk)
+    os.environ.setdefault("LANGFUSE_SECRET_KEY", sk)
+    if host:
+        os.environ.setdefault("LANGFUSE_HOST", host)
+
+    # Register the callback; LiteLLM handles the rest.
+    # When running inside an @observe() span the LiteLLM langfuse callback
+    # auto-nests the LLM generation under the active trace.
+    if "langfuse" not in litellm.success_callback:
+        litellm.success_callback.append("langfuse")
+    if "langfuse" not in litellm.failure_callback:
+        litellm.failure_callback.append("langfuse")
+
+    logger.info("langfuse_initialized", host=host)
+
+
+# Run at module-load time so every LLM call is traced automatically
+_init_langfuse()
+
+
+async def _single_llm_call(prompt: str, timeout: int, metadata: Dict[str, Any] | None = None) -> str:
     """Attempt a single LLM call with the given timeout."""
     api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
     api_base = os.environ.get("LLM_BASE_URL", "")
@@ -25,6 +68,7 @@ async def _single_llm_call(prompt: str, timeout: int) -> str:
             api_base=api_base or None,
             api_key=api_key or None,
             timeout=timeout,
+            metadata=metadata or {},
         ),
         timeout=timeout,
     )
@@ -35,7 +79,7 @@ async def _single_llm_call(prompt: str, timeout: int) -> str:
     return choices[0]["message"]["content"]
 
 
-async def call_llm(prompt: str) -> str:
+async def call_llm(prompt: str, metadata: Dict[str, Any] | None = None) -> str:
     api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
     api_base = os.environ.get("LLM_BASE_URL", "")
     model_name = settings.llm_model_name
@@ -46,7 +90,7 @@ async def call_llm(prompt: str) -> str:
     last_error = ""
     for attempt in range(1, LLM_MAX_RETRIES + 1):
         try:
-            result = await _single_llm_call(prompt, LLM_TIMEOUT_SECONDS)
+            result = await _single_llm_call(prompt, LLM_TIMEOUT_SECONDS, metadata=metadata)
             logger.info("llm_call_complete", attempt=attempt)
             return result
         except asyncio.TimeoutError:
