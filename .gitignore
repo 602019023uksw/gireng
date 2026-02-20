@@ -1,34 +1,67 @@
-# Environment and secrets
+# ── Environment and secrets ──
 .env
+.env.local
+.env.*.local
 
-# Python
+# ── Python ──
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 *.egg-info/
+*.egg
 dist/
 build/
+.venv/
+venv/
+*.whl
 
-# Node
+# ── Node ──
 node_modules/
 app/dist/
 
-# IDE
+# ── IDE / Editor ──
 .vscode/
 .idea/
+.cursor/
 *.swp
 *.swo
+*~
 
-# OS
+# ── OS ──
 .DS_Store
 Thumbs.db
+Desktop.ini
+ehthumbs.db
 
-# Sample binaries (large files)
-sample-binary/
-
-# Docker volumes
+# ── Docker volumes (created at runtime) ──
 ghidra_projects/
 ghidra_shared/
+pgdata/
 
-# Reports (generated)
+# ── Generated reports ──
+report*.html
+report*.txt
 sample_report_*.html
+report/
+
+# ── Temporary / debug files ──
+tmp_*.txt
+tmp_*.json
+*.tmp
+session_backup.json
+status_check.json
+query_body.json
+query_response.json
+
+# ── Sample binaries (large files — see sample-binary/README) ──
+sample-binary/
+
+# ── Test / coverage artifacts ──
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+
+# ── Logs ──
+*.log

@@ -1,1 +1,0 @@
-ERROR: Cannot open '/shared/chargen'
