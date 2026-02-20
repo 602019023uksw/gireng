@@ -8,10 +8,9 @@ from typing import Awaitable, Callable, Dict, Optional
 from ghidra_agent.config import settings
 from ghidra_agent.graph import graph
 from ghidra_agent.langfuse_tracing import (
-    begin_trace,
-    end_trace,
-    flush_trace,
-    is_langfuse_ready,
+    create_langfuse_handler,
+    set_trace_context,
+    reset_trace_context,
 )
 from ghidra_agent.logging import logger
 from ghidra_agent.state import AgentState, DEFAULT_STATE
@@ -118,67 +117,25 @@ async def run_graph(
     if progress_callback is not None:
         run_state["progress_callback"] = progress_callback
 
-    # --- Langfuse: use @observe() decorator for node-level tracing ---
-    if is_langfuse_ready():
-        result = await _run_graph_observed(run_state, session_id, program_hash)
-    else:
-        result = await _run_graph_plain(run_state)
+    # --- Langfuse: create a LangChain callback handler for node-level tracing ---
+    handler, trace_id = create_langfuse_handler(
+        session_id=session_id,
+        program_hash=program_hash,
+        trace_name="binary-analysis",
+    )
+    callbacks = [handler] if handler else []
+    config = {"recursion_limit": 50}
+    if callbacks:
+        config["callbacks"] = callbacks  # type: ignore[assignment]
+
+    # Set context vars so that call_llm() inside nodes links to the same trace
+    tokens = set_trace_context(trace_id, session_id) if trace_id else None
+    try:
+        result = await graph.ainvoke(run_state, config=config)
+    finally:
+        if tokens:
+            reset_trace_context(tokens)
 
     result.pop("progress_callback", None)
-    logger.info("graph_run_completed", session_id=session_id, status=result.get("status"))
+    logger.info("graph_run_completed", session_id=session_id, status=result.get("status"), langfuse_trace_id=trace_id or "disabled")
     return result
-
-
-async def _run_graph_plain(run_state: AgentState) -> AgentState:
-    """Run the graph without Langfuse tracing."""
-    config = {"recursion_limit": 50}
-    return await graph.ainvoke(run_state, config=config)
-
-
-async def _run_graph_observed(
-    run_state: AgentState, session_id: str, program_hash: str
-) -> AgentState:
-    """Run the graph inside an @observe() root span for Langfuse tracing."""
-    try:
-        from langfuse.decorators import observe as _observe
-
-        @_observe(name="binary-analysis")
-        async def _traced_run(state: AgentState) -> AgentState:
-            # Trace-level input: the user request context
-            trace_input = {
-                "user_query": state.get("user_query", ""),
-                "binary_path": state.get("binary_path", ""),
-                "program_hash": state.get("program_hash", ""),
-                "intent": state.get("intent", ""),
-            }
-            trace_id = begin_trace(
-                session_id=session_id,
-                program_hash=program_hash,
-                trace_name="binary-analysis",
-                input=trace_input,
-            )
-            logger.info("langfuse_trace_active", trace_id=trace_id)
-            config = {"recursion_limit": 50}
-            result = await graph.ainvoke(state, config=config)
-
-            # Trace-level output: the analysis result summary
-            summary = result.get("summary", "")
-            trace_output = {
-                "status": result.get("status", ""),
-                "intent": result.get("intent", ""),
-                "summary_length": len(summary),
-                "summary_preview": summary[:500] if summary else "",
-                "functions_analysed": len(
-                    (result.get("analysis_results") or {}).get("functions", {}).get("functions", [])
-                ),
-            }
-            end_trace(output=trace_output)
-            return result
-
-        result = await _traced_run(run_state)
-        flush_trace()
-        return result
-    except Exception as exc:
-        logger.warning("langfuse_observe_fallback", error=str(exc))
-        flush_trace()
-        return await _run_graph_plain(run_state)

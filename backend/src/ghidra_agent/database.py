@@ -9,7 +9,6 @@ attack chains, and IOCs in dedicated tables for cross-analysis querying.
 
 import json
 import os
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import asyncpg
@@ -209,18 +208,6 @@ def _row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:
     return d
 
 
-def _parse_iso_dt(value) -> "datetime | None":
-    """Parse an ISO-8601 string to a datetime, or pass through if already datetime/None."""
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value
-    try:
-        return datetime.fromisoformat(str(value))
-    except (ValueError, TypeError):
-        return None
-
-
 # ---------------------------------------------------------------------------
 # Analysis CRUD (blob-level — unchanged)
 # ---------------------------------------------------------------------------
@@ -259,8 +246,8 @@ async def save_analysis(state: Dict[str, Any]) -> None:
             state.get("intent"),
             state.get("user_query"),
             state.get("summary"),
-            _parse_iso_dt(state.get("started_at_iso")),
-            _parse_iso_dt(state.get("completed_at_iso")),
+            state.get("started_at_iso"),
+            state.get("completed_at_iso"),
             state.get("duration_seconds"),
             state_json,
         )

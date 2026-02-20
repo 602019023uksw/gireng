@@ -29,19 +29,13 @@ def _init_langfuse() -> None:
         logger.warning("langfuse_no_credentials", hint="Set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY to enable tracing")
         return
 
-    # Initialise the Langfuse decorator API (env vars + @observe context)
-    from ghidra_agent.langfuse_tracing import configure_langfuse
-    configure_langfuse()
-
     # LiteLLM reads these env vars automatically for the langfuse callback
     os.environ.setdefault("LANGFUSE_PUBLIC_KEY", pk)
     os.environ.setdefault("LANGFUSE_SECRET_KEY", sk)
     if host:
         os.environ.setdefault("LANGFUSE_HOST", host)
 
-    # Register the callback; LiteLLM handles the rest.
-    # When running inside an @observe() span the LiteLLM langfuse callback
-    # auto-nests the LLM generation under the active trace.
+    # Register the callback; LiteLLM handles the rest
     if "langfuse" not in litellm.success_callback:
         litellm.success_callback.append("langfuse")
     if "langfuse" not in litellm.failure_callback:
