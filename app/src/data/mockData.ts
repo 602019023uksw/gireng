@@ -1,5 +1,5 @@
 // Template Data - Replace with API calls
-// This file contains placeholder data structures for the IrengSec template
+// This file contains placeholder data structures for the gireng template
 // All values should be replaced with actual data from your backend API
 
 import type { 
@@ -146,8 +146,8 @@ export const mockAnalyzers: Analyzer[] = [
   {
     id: 'ghidra',
     name: 'Ghidra Reverse Engineer Agent',
-    source: 'Ireng',
-    sourceUrl: 'https://irengsec.ai',
+    source: 'gireng',
+    sourceUrl: 'https://github.com/danilchristianto/gireng',
     verdict: 'Clean',
     details: {
       executiveSummary: '',
@@ -161,8 +161,8 @@ export const mockAnalyzers: Analyzer[] = [
   {
     id: 'radare',
     name: 'Radare Reverse Engineer Agent',
-    source: 'Ireng',
-    sourceUrl: 'https://irengsec.ai',
+    source: 'gireng',
+    sourceUrl: 'https://github.com/danilchristianto/gireng',
     verdict: 'Clean',
     details: {
       executiveSummary: '',

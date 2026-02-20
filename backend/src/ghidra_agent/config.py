@@ -3,7 +3,7 @@ from pydantic import BaseModel, Field
 
 
 class Settings(BaseModel):
-    ghidra_docker_image: str = Field(default="ireng-runner", alias="GHIDRA_DOCKER_IMAGE")
+    ghidra_docker_image: str = Field(default="gireng-runner", alias="GHIDRA_DOCKER_IMAGE")
     ghidra_project_root: str = Field(default="/data/projects", alias="GHIDRA_PROJECT_ROOT")
     ghidra_shared_root: str = Field(default="/data/shared", alias="GHIDRA_SHARED_ROOT")
     ghidra_headless_script_path: str = Field(default="/usr/share/ghidra/support/pyghidraRun", alias="GHIDRA_HEADLESS_SCRIPT_PATH")
@@ -29,7 +29,7 @@ class Settings(BaseModel):
     function_priority_beta: float = Field(default=0.3, alias="FUNCTION_PRIORITY_BETA")
     # PostgreSQL
     database_url: str = Field(
-        default="postgresql://ireng:ireng_secret@localhost:5432/ireng",
+        default="postgresql://gireng:gireng_secret@localhost:5432/gireng",
         alias="DATABASE_URL",
     )
     # Langfuse APM / tracing

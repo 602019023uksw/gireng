@@ -1,4 +1,4 @@
-# OmniaSec - Technical Specification
+# gireng - Technical Specification
 
 ## 1. Tech Stack Overview
 

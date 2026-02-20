@@ -92,7 +92,7 @@ export function WelcomeScreen({
           {userName ? (
             <>Welcome, <span className="text-accent-purple">{userName}</span></>
           ) : (
-            'Welcome to IrengSec'
+            'Welcome to gireng'
           )}
         </h1>
         <p className="mt-2 text-text-secondary">

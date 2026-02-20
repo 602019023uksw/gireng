@@ -5,7 +5,7 @@ WORKDIR /app
 # Build-time API URL (override for production: --build-arg VITE_API_BASE_URL=...)
 ARG VITE_API_BASE_URL=http://localhost:8080
 ARG VITE_WS_URL=ws://localhost:8080/stream
-ARG VITE_APP_NAME=IrengSec
+ARG VITE_APP_NAME=gireng
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL VITE_WS_URL=$VITE_WS_URL VITE_APP_NAME=$VITE_APP_NAME
 
 COPY app/package.json app/package-lock.json ./

@@ -31,7 +31,7 @@ export function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
           size={120}
           strokeWidth={10}
           color="#F85149"
-          label="Ireng Final Verdict"
+          label="gireng Final Verdict"
         />
 
         {/* File Info */}

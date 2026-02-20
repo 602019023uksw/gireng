@@ -10,7 +10,7 @@ interface ShareModalProps {
 
 export function ShareModal({ isOpen, onClose, chatTitle = 'VirusTotal File Analysis' }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
-  const shareUrl = 'https://irengsec.ai/share/...';
+  const shareUrl = 'https://github.com/danilchristianto/gireng';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl);

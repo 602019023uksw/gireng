@@ -1,8 +1,8 @@
-# IrengSec - Cybersecurity Analysis Platform Template
+# gireng - Ghidra and Radare Intelligent Reverse Engineering
 
-A modern, glass-morphism styled React template for building AI-powered malware analysis and reverse engineering platforms.
+A modern, glass-morphism styled React frontend for the gireng AI-powered binary analysis platform.
 
-![Glass Terminal Theme](https://irengsec.ai)
+![gireng](https://github.com/danilchristianto/gireng)
 
 ## Features
 

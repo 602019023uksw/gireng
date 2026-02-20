@@ -2,7 +2,7 @@
 
 ## Overview
 
-IrengSec is an AI-powered reverse engineering platform that analyses binaries using **two parallel reverse-engineering backends** — **Ghidra** and **Radare2** — then synthesises their findings via an LLM to produce a comprehensive malware report.
+gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reverse engineering platform that analyses binaries using **two parallel reverse-engineering backends** — **Ghidra** and **Radare2** — then synthesises their findings via an LLM to produce a comprehensive malware report.
 
 ```
 ┌──────────────┐    HTTP / WS     ┌──────────────────────────────┐
@@ -47,7 +47,7 @@ IrengSec is an AI-powered reverse engineering platform that analyses binaries us
 
 | Service | Image | Purpose | Port |
 |---------|-------|---------|------|
-| `ghidra` | `${RUNNER_IMAGE}` (danilid/ireng-runner) | Headless Ghidra with PyGhidra. Runs analysis scripts via `docker exec`. | internal |
+| `ghidra` | `${RUNNER_IMAGE}` (gireng-runner) | Headless Ghidra with PyGhidra. Runs analysis scripts via `docker exec`. | internal |
 | `radare2` | `radare/radare2:latest` | Headless Radare2. Runs r2 commands via `docker exec`. | internal |
 | `agent` | Built from `backend/Dockerfile` | FastAPI backend. Orchestrates both tools, calls LLM, serves API. | **8080** |
 | `ui` | Built from `app/Dockerfile.ui` | Vite/React frontend. | **4173** |
@@ -247,7 +247,7 @@ R2 decompilation uses a fallback chain: `pdg` (r2ghidra) → `pdd` (r2dec) → `
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RUNNER_IMAGE` | `ireng-runner` | Ghidra Docker image |
+| `RUNNER_IMAGE` | `gireng-runner` | Ghidra Docker image |
 | `GHIDRA_PROJECT_ROOT` | `/data/projects` | Ghidra project storage |
 | `GHIDRA_SHARED_ROOT` | `/data/shared` | Shared binary volume |
 | `GHIDRA_VOLUME_CONTAINER` | `ghidra_headless` | Ghidra container name |

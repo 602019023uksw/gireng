@@ -1,10 +1,10 @@
-# IrengSec — AI-Powered Binary Analysis Platform
+# gireng — Ghidra and Radare Intelligent Reverse Engineering
 
 > Dual-agent reverse engineering powered by **Ghidra + Radare2**, orchestrated by LLM via LangGraph.
 
 ```
  ┌─────────────────────────────────────────────────────────────────────────────────┐
- │                         IrengSec Platform Overview                              │
+ │              gireng — Ghidra and Radare Intelligent Reverse Engineering          │
  └─────────────────────────────────────────────────────────────────────────────────┘
 
     ┌──────────────┐         upload binary          ┌──────────────────────────┐
@@ -167,7 +167,7 @@ python analyze.py sample-binary/chargen
  ├────────────┼──────────────────────┼────────┼───────────────┤
  │  ui        │  app/Dockerfile.ui   │  4173  │  React SPA    │
  │  agent     │  backend/Dockerfile  │  8080  │  FastAPI + LG │
- │  ghidra    │  ireng-runner        │  ----  │  Ghidra RE    │
+ │  ghidra    │  gireng-runner       │  ----  │  Ghidra RE    │
  │  radare2   │  radare/radare2      │  ----  │  Radare2 RE   │
  │  postgres  │  postgres:16-alpine  │  ----  │  Database     │
  │  langfuse  │  langfuse/langfuse:2 │  3100  │  LLM Tracing  │

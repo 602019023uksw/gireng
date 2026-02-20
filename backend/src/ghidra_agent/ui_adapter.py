@@ -119,8 +119,8 @@ def build_analyzer_response(state: AgentState, analyzer_id: str = "ghidra") -> D
         return {
             "id": "radare2",
             "name": "Radare2 Reverse Engineer Agent",
-            "source": "Ireng",
-            "sourceUrl": "https://irengsec.ai",
+            "source": "gireng",
+            "sourceUrl": "https://github.com/danilchristianto/gireng",
             "verdict": verdict,
             "details": _r2_analyzer_details(state),
         }
@@ -128,8 +128,8 @@ def build_analyzer_response(state: AgentState, analyzer_id: str = "ghidra") -> D
     return {
         "id": "ghidra",
         "name": "Ghidra Reverse Engineer Agent",
-        "source": "Ireng",
-        "sourceUrl": "https://irengsec.ai",
+        "source": "gireng",
+        "sourceUrl": "https://github.com/danilchristianto/gireng",
         "verdict": verdict,
         "details": _analyzer_details(state),
     }

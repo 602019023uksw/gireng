@@ -1,4 +1,4 @@
-# IrengSec - Backend Integration Guide
+# gireng - Backend Integration Guide
 
 ## Overview
 
@@ -194,8 +194,8 @@ interface Analyzer {
 {
   "id": "ghidra",
   "name": "Ghidra Reverse Engineer Agent",
-  "source": "Ireng",
-  "sourceUrl": "https://irengsec.ai",
+  "source": "gireng",
+  "sourceUrl": "https://github.com/danilchristianto/gireng",
   "verdict": "Malware",
   "details": {
     "executiveSummary": "Analysis found malicious PAM module...",
@@ -678,9 +678,9 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
 ```bash
 # .env
-VITE_API_BASE_URL=https://api.irengsec.ai
-VITE_WS_URL=wss://api.irengsec.ai/ws
-VITE_APP_NAME=IrengSec
+VITE_API_BASE_URL=https://api.yourdomain.com
+VITE_WS_URL=wss://api.yourdomain.com/ws
+VITE_APP_NAME=gireng
 ```
 
 ---

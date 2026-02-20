@@ -15,7 +15,7 @@ Edit `.env`:
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
-| `RUNNER_IMAGE` | yes | Ghidra runner Docker image | `danilid/ireng-runner:2.0.1` |
+| `RUNNER_IMAGE` | yes | Ghidra runner Docker image | `gireng-runner` |
 | `ANTHROPIC_API_KEY` | yes | LLM API key | `08d226c7...` |
 | `ANTHROPIC_BASE_URL` | yes | LLM endpoint | `https://api.z.ai/api/anthropic` |
 | `ANTHROPIC_MODEL` | no | Model name (default `glm-4.7`) | `GLM-4.7` |

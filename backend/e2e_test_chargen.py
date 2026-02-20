@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-End-to-End Test Script for IrengSec Platform
+End-to-End Test Script for gireng Platform
 Tests all components with the chargen binary
 """
 
@@ -312,7 +312,7 @@ async def test_api_endpoints():
 async def run_all_tests():
     """Run all E2E tests"""
     print("=" * 70)
-    print("IRENGSEC PLATFORM - END-TO-END TEST SUITE")
+    print("GIRENG PLATFORM - END-TO-END TEST SUITE")
     print("Testing with: sample-binary/chargen (ELF, 858KB)")
     print("=" * 70)
     
