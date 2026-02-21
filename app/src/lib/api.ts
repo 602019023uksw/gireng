@@ -8,7 +8,7 @@ export interface UploadResponse {
 export interface StatusResponse {
   session_id: string;
   status: string;
-  state: Record<string, any>;
+  state: Record<string, unknown>;
 }
 
 export interface AttackChain {
@@ -47,9 +47,9 @@ export interface CallGraphAnalysis {
 
 export interface AnalyzerRawResults {
   analyzer: 'ghidra' | 'radare2' | string;
-  binary?: Record<string, any>;
-  functions?: Record<string, any>;
-  strings?: Record<string, any>;
+  binary?: Record<string, unknown>;
+  functions?: Record<string, unknown>;
+  strings?: Record<string, unknown>;
   call_graph?: CallGraphRaw;
   call_graph_analysis?: CallGraphAnalysis;
   decompiled?: Record<string, string>;
@@ -165,12 +165,14 @@ export async function getModels() {
 }
 
 // WebSocket connection for real-time events
-export function connectStream(sessionId: string, onEvent: (event: any) => void): WebSocket {
+export function connectStream(sessionId: string, onEvent: (event: unknown) => void): WebSocket {
   const ws = new WebSocket(`${WS_BASE}/${sessionId}`);
   ws.onmessage = (e) => {
     try {
       onEvent(JSON.parse(e.data));
-    } catch {}
+    } catch (err) {
+      console.debug('Failed to parse stream event', err);
+    }
   };
   return ws;
 }

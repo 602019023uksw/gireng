@@ -3,12 +3,11 @@
 import asyncio
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from ghidra_agent.radare.runner import R2TaskResult, Radare2Runner
-
 
 # ---------------------------------------------------------------------------
 # Helpers

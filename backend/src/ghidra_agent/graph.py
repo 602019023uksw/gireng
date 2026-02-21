@@ -1,31 +1,30 @@
 import asyncio
-import json
 import re
-from typing import Dict, List, Any
-from langgraph.graph import StateGraph, END
+from typing import Any, Dict, List
 
+from langgraph.graph import END, StateGraph
+
+from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.config import settings
+from ghidra_agent.function_priority import apply_priority_to_result
+from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state, format_iocs_for_report
 from ghidra_agent.langfuse_tracing import get_trace_metadata
 from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import logger
 from ghidra_agent.prompts import SYSTEM_PROMPT
 from ghidra_agent.state import AgentState
-from ghidra_agent.call_graph_analyzer import analyze_call_graph
-from ghidra_agent.function_priority import apply_priority_to_result
-from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 from ghidra_agent.tools import (
-    ToolContext,
+    add_comment,
     analyze_binary_structure,
-    list_functions,
     build_call_graph,
     decompile_function,
+    disassemble_at,
     find_strings,
-    search_bytes,
     find_xrefs,
     get_function_graph,
-    disassemble_at,
+    list_functions,
     rename_symbol,
-    add_comment,
+    search_bytes,
 )
 
 GHIDRA_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
@@ -127,7 +126,7 @@ async def parse_intent(state: AgentState) -> AgentState:
         func_name = func_match.group(1)
         state["current_function"] = func_name
         state["reasoning_trace"].append(f"target_function:{func_name}")
-        
+
         # B2 FIX: Also extract address from FUN_xxx name for fallback
         if func_name.startswith("FUN_"):
             addr_match = re.search(r'[0-9a-fA-F]+', func_name[4:])
@@ -321,11 +320,11 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
     """B3 + I1: Auto-decompile entry point and top xref'd functions during discovery."""
     if not functions.get("ok") or not functions.get("functions"):
         return
-    
+
     func_list = functions["functions"]
     if not func_list:
         return
-    
+
     # Filter out trivial PLT/GOT stubs (size <= 6 bytes) — they decompile to
     # a single indirect-jump and waste decompilation slots.
     meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
@@ -356,13 +355,13 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
     # Select functions to decompile: entry point first, then top ranked
     funcs_to_decompile = []
     entry_point = None
-    
+
     # Try to find entry point from binary info
     if binary_info.get("ok") and binary_info.get("entry_points"):
         entry_points = binary_info.get("entry_points", [])
         if entry_points:
             entry_point = entry_points[0]
-    
+
     # Add entry point function first (B3 fix)
     if entry_point:
         for f in func_list:
@@ -371,12 +370,12 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
                 state["current_function"] = f.get("name")
                 state["current_address"] = entry_point
                 break
-    
+
     # Add top ranked functions to reach the percentage-based target.
     remaining_slots = max(0, decompile_target - len(funcs_to_decompile))
     top_funcs = [f for f in sorted_funcs if f not in funcs_to_decompile][:remaining_slots]
     funcs_to_decompile.extend(top_funcs)
-    
+
     # Decompile selected functions
     total_decompile = len(funcs_to_decompile)
     decompiled_count = 0
@@ -388,7 +387,7 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
 
         pct = 28 + int(((idx + 1) / max(total_decompile, 1)) * 22)
         await _emit_progress(state, f"ghidra_decompiling {idx + 1}/{total_decompile}", pct)
-        
+
         try:
             decomp = await decompile_function.ainvoke(
                 {
@@ -404,7 +403,7 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
                 decompiled_count += 1
         except Exception as exc:
             logger.error("auto_decompile_failed", function=func_name, error=str(exc))
-    
+
     if decompiled_count > 0:
         state["reasoning_trace"].append(f"auto_decompiled:{decompiled_count}_functions")
 
@@ -525,7 +524,7 @@ def _prioritize_strings(strings_list: List[Dict[str, Any]]) -> List[Dict[str, An
         if val.startswith('.') and len(val) < 10:
             score -= 50
         return score
-    
+
     return sorted(strings_list, key=relevance_score, reverse=True)
 
 
@@ -582,7 +581,7 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
         parts.append("")
 
     # IOCs & Verdict
-    from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict, format_iocs_for_report
+    from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state, format_iocs_for_report
     iocs = extract_iocs_from_state(state)
     verdict, _, indicators, score = calculate_verdict(iocs, state)
     parts.append("## Verdict")
@@ -690,7 +689,7 @@ async def synthesize(state: AgentState) -> AgentState:
         for i, (func_name, c_code) in enumerate(list(decomp_cache.items())[:LLM_GHIDRA_DECOMP_LIMIT], 1):
             context_parts.append(f"\n--- Function {i}: {func_name} ---")
             context_parts.append(_smart_truncate(c_code))
-        
+
         if len(decomp_cache) > LLM_GHIDRA_DECOMP_LIMIT:
             context_parts.append(
                 f"\n... and {len(decomp_cache) - LLM_GHIDRA_DECOMP_LIMIT} more decompiled functions in cache"

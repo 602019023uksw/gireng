@@ -1,26 +1,24 @@
 """Tests for API endpoints — focuses on dual-analyzer (Ghidra + R2) responses."""
 
 from copy import deepcopy
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 from ghidra_agent.state import DEFAULT_STATE
-import ghidra_agent.api.main  # ensure module is loaded for mock.patch
-
 from tests.sample_data import (
-    SAMPLE_HASH,
     SAMPLE_BINARY_INFO_GHIDRA,
     SAMPLE_BINARY_INFO_R2,
     SAMPLE_CALL_GRAPH,
     SAMPLE_CALL_GRAPH_ANALYSIS,
+    SAMPLE_DECOMPILE_R2,
     SAMPLE_FUNCTIONS_GHIDRA,
     SAMPLE_FUNCTIONS_R2,
+    SAMPLE_HASH,
     SAMPLE_STRINGS_GHIDRA,
     SAMPLE_STRINGS_R2,
-    SAMPLE_DECOMPILE_R2,
 )
 
 

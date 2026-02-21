@@ -1,7 +1,6 @@
 """Tests for Radare2 @tool functions (r2_tools.py)."""
 
 import json
-from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

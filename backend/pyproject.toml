@@ -31,3 +31,26 @@ where = ["src"]
 
 [project.optional-dependencies]
 cli = ["typer==0.12.3"]
+
+# ---------------------------------------------------------------------------
+# Ruff linter / formatter config
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+  "E501",   # line too long — handled by formatter
+  "E741",   # ambiguous variable name
+]
+
+[tool.ruff.lint.per-file-ignores]
+# PyGhidra scripts use injected globals (currentProgram, toAddr, etc.)
+"ghidra_scripts/*.py" = ["F821", "F841", "E402", "F401"]
+# __init__.py re-exports are expected
+"src/**/__init__.py" = ["F401"]
+# Test files: conftest patches sys.modules before imports; e2e tests have deferred imports
+"tests/*.py" = ["E402", "F841"]
+"e2e_test_*.py" = ["E402", "F841"]

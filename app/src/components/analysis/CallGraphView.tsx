@@ -410,7 +410,11 @@ function AdjacencyTable({ rows }: { rows: AdjacencyRow[] }) {
   const toggle = (fn: string) =>
     setExpanded((prev) => {
       const next = new Set(prev);
-      next.has(fn) ? next.delete(fn) : next.add(fn);
+      if (next.has(fn)) {
+        next.delete(fn);
+      } else {
+        next.add(fn);
+      }
       return next;
     });
 

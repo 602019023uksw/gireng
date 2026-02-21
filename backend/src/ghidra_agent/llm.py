@@ -1,6 +1,7 @@
 import asyncio
 import os
 from typing import Any, Dict
+
 import litellm
 from litellm import acompletion
 
@@ -74,7 +75,6 @@ async def _single_llm_call(prompt: str, timeout: int, metadata: Dict[str, Any] |
 
 
 async def call_llm(prompt: str, metadata: Dict[str, Any] | None = None) -> str:
-    api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
     api_base = os.environ.get("LLM_BASE_URL", "")
     model_name = settings.llm_model_name
     litellm_model = model_name if "/" in model_name else f"openai/{model_name}"

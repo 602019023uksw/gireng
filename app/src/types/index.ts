@@ -24,7 +24,7 @@ export interface ToolCall {
   id: string;
   name: string;
   status: 'pending' | 'running' | 'completed' | 'failed';
-  result?: any;
+  result?: unknown;
   progress?: number;
   maxProgress?: number;
 }

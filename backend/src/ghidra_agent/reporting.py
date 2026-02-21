@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from html import escape
 from typing import Any, Dict, List
 
-from ghidra_agent.ioc_extractor import extract_iocs_from_state, IOCs, calculate_verdict
+from ghidra_agent.ioc_extractor import IOCs, calculate_verdict, extract_iocs_from_state
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +64,7 @@ def _markdown_to_html(text: str) -> str:
     """Convert markdown to HTML for template rendering."""
     if not text:
         return "<p>No information available.</p>"
-    
+
     # Escape HTML first
     text = escape(text)
 
@@ -81,17 +81,17 @@ def _markdown_to_html(text: str) -> str:
         inline_codes.append(m.group(1))
         return f'\x00INLINE{len(inline_codes) - 1}\x00'
     text = re.sub(r'`(.+?)`', _save_inline_code, text)
-    
+
     # Headers
     text = re.sub(r'####\s+(.+)$', r'<h4>\1</h4>', text, flags=re.MULTILINE)
     text = re.sub(r'###\s+(.+)$', r'<h3>\1</h3>', text, flags=re.MULTILINE)
     text = re.sub(r'##\s+(.+)$', r'<h2>\1</h2>', text, flags=re.MULTILINE)
-    
+
     # Bold and italic
     text = re.sub(r'\*\*\*(.+?)\*\*\*', r'<strong><em>\1</em></strong>', text)
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
-    
+
     # Tables — skip lines inside <pre><code> blocks
     lines = text.split('\n')
     result = []
@@ -99,7 +99,7 @@ def _markdown_to_html(text: str) -> str:
     in_table = False
     in_pre_block = False
     table_html = []
-    
+
     while i < len(lines):
         line = lines[i]
         stripped = line.strip()
@@ -114,7 +114,7 @@ def _markdown_to_html(text: str) -> str:
                 table_html = ['<table class="w-full text-left border-collapse">']
                 if i + 1 < len(lines) and re.match(r'^[\|\-\s]+$', lines[i + 1]):
                     i += 1
-            
+
             cells = [c.strip() for c in line.split('|') if c.strip()]
             if cells:
                 row_tag = 'th' if len(table_html) == 1 else 'td'
@@ -130,13 +130,13 @@ def _markdown_to_html(text: str) -> str:
                 table_html = []
             result.append(line)
         i += 1
-    
+
     if in_table:
         table_html.append('</table>')
         result.append(''.join(table_html))
-    
+
     text = '\n'.join(result)
-    
+
     # Bullet lists
     lines = text.split('\n')
     result = []
@@ -184,7 +184,7 @@ def _markdown_to_html(text: str) -> str:
         result.append('</ol>')
 
     text = '\n'.join(result)
-    
+
     # Paragraphs — skip lines inside <pre><code> blocks and placeholder lines
     lines = text.split('\n')
     result = []
@@ -219,7 +219,7 @@ def _markdown_to_html(text: str) -> str:
 def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
     """Parse IOCs into template format — include ALL IOCs without truncation."""
     results = []
-    
+
     for ip in iocs.ips:
         results.append({"type": "IP/Domain", "value": ip})
     for domain in iocs.domains:
@@ -234,7 +234,7 @@ def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
         results.append({"type": "Registry", "value": reg})
     for mutex in iocs.mutexes:
         results.append({"type": "Mutex", "value": mutex})
-    
+
     return results
 
 
@@ -270,7 +270,7 @@ def _extract_recommendations(summary: str) -> List[str]:
                 line = re.sub(r'^[\d.\-*]+\s*', '', line).strip()
                 if line and len(line) > 10:
                     recs.append(line)
-    
+
     return recs if recs else ["Conduct dynamic analysis in sandbox environment", "Monitor network traffic for C2 communications"]
 
 
@@ -288,7 +288,7 @@ def _extract_evidence(summary: str) -> List[str]:
             match = re.search(r'Key Evidence:\s*\n((?:(?:.+\n)+))', summary, re.IGNORECASE)
         if match:
             ev_section = match.group(1)
-    
+
     if ev_section:
         # Pattern: N. **Finding**: Description - Evidence: details
         findings = re.findall(r'\*\*Finding\*\*[:\s]*(.+?)(?=\d+\.\s*\*\*Finding|$)', ev_section, re.DOTALL)
@@ -521,10 +521,10 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
 
 def build_report_html(state: Dict[str, Any]) -> str:
     """Build HTML report matching professional template format."""
-    
+
     iocs = extract_iocs_from_state(state)
     verdict, verdict_class, indicators, score = calculate_verdict(iocs, state)
-    
+
     analysis_results = state.get("analysis_results", {})
     r2_results = state.get("r2_analysis_results", {})
     binary = analysis_results.get("binary", {})
@@ -535,7 +535,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
     r2_strings = r2_results.get("strings", {})
     gh_call_graph_analysis = analysis_results.get("call_graph_analysis", {})
     r2_call_graph_analysis = r2_results.get("call_graph_analysis", {})
-    
+
     program_hash = state.get("program_hash", "unknown")
     summary_text = state.get("summary", "")
 
@@ -585,17 +585,17 @@ def build_report_html(state: Dict[str, Any]) -> str:
         ),
         "code_evidence": _render_code_evidence(state),
     }
-    
+
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     task_id = state.get("session_id", "unknown")[:8]
-    
+
     risk_class = {
         "malicious": "risk-critical",
         "suspicious": "risk-high",
         "clean": "risk-low",
         "unknown": "risk-clean"
     }.get(verdict_class, "risk-clean")
-    
+
     # Build HTML sections
     sections_html = f'''
         <!-- Executive Summary -->
@@ -687,7 +687,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             <div class="markdown-content">{report_data['call_graph']}</div>
         </div>
     '''
-    
+
     # CSS styles
     css_styles = '''
         :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
@@ -754,7 +754,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         .border-collapse { border-collapse: collapse; }
         @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
     '''
-    
+
     # Complete HTML document
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -820,7 +820,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
     </div>
 </body>
 </html>'''
-    
+
     return html
 
 

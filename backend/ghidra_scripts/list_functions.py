@@ -20,10 +20,10 @@ def main():
     listing = program.getListing()
     reference_manager = program.getReferenceManager()
     functions = []
-    
+
     for function in listing.getFunctions(True):
         entry = function.getEntryPoint()
-        
+
         # Count actual code references (calls) to this function, not symbol references
         call_count = 0
         for ref in reference_manager.getReferencesTo(entry):
@@ -31,14 +31,14 @@ def main():
             # Count call and jump references (code flow to this function)
             if ref_type.isCall() or ref_type.isJump():
                 call_count += 1
-        
+
         functions.append({
             "name": function.getName(),
             "address": str(entry),
             "size": function.getBody().getNumAddresses(),
             "xrefs": call_count,
         })
-    
+
     result = {"ok": True, "functions": functions}
     _write_output(output_path, result)
     _write_log(log_path, "list_functions completed")

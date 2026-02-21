@@ -60,9 +60,15 @@ Git for Windows               https://git-scm.com/download/win
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER   # log out & back in
 
-# Python 3.11+
+# Python 3.11+ & venv/pip
+# Ubuntu 24.04+ ships with Python 3.12/3.13 — just install venv & pip:
 sudo apt update
-sudo apt install -y python3.11 python3.11-venv python3-pip
+sudo apt install -y python3 python3-venv python3-pip
+python3 --version   # verify >= 3.11
+
+# For Ubuntu 22.04 or older (where default Python is 3.10):
+#   sudo add-apt-repository ppa:deadsnakes/ppa
+#   sudo apt install -y python3.11 python3.11-venv python3-pip
 
 # Node.js 20 (via NodeSource)
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -134,12 +140,25 @@ Edit `.env` and fill in the required variables:
 
 | Variable | Required | Description | Example |
 |----------|----------|-------------|---------|
+| `HOST` | no | Public host placeholder used by UI/API/Langfuse URLs | `localhost` |
+| `API_PORT` | no | Host port for backend API | `8080` |
+| `UI_PORT` | no | Host port for frontend UI | `4173` |
+| `LANGFUSE_PORT` | no | Host port for Langfuse dashboard | `3100` |
 | `RUNNER_IMAGE` | yes | Ghidra runner Docker image name | `ireng-runner` |
 | `ANTHROPIC_API_KEY` | yes | LLM API key | `sk-abc123...` |
 | `ANTHROPIC_BASE_URL` | yes | LLM API endpoint | `https://api.z.ai/api/anthropic` |
 | `POSTGRES_PASSWORD` | no | Database password (default: `ireng_secret`) | `strong_password` |
 | `LANGFUSE_PUBLIC_KEY` | no | Langfuse public key (for tracing) | `pk-lf-...` |
 | `LANGFUSE_SECRET_KEY` | no | Langfuse secret key (for tracing) | `sk-lf-...` |
+
+Optional explicit overrides if you need custom URLs:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `VITE_API_BASE_URL` | UI -> backend base URL | `https://api.example.com` |
+| `VITE_WS_URL` | UI -> backend WebSocket URL | `wss://api.example.com/stream` |
+| `LANGFUSE_URL` | Browser-facing Langfuse URL | `https://trace.example.com` |
+| `LANGFUSE_HOST` | Agent -> Langfuse URL (defaults to internal Docker DNS) | `http://langfuse:3000` |
 
 ---
 
@@ -168,9 +187,9 @@ python run.py rebuild
 | `ghidra` | `ireng-runner` | (internal) | Headless Ghidra runner with PyGhidra. First boot takes ~2-3 min. |
 | `radare2` | `radare/radare2` | (internal) | Radare2 with r2ghidra/r2dec decompiler plugins. |
 | `postgres` | `postgres:16-alpine` | (internal) | PostgreSQL database for sessions & Langfuse. |
-| `langfuse` | `langfuse/langfuse:2` | **3100** | LLM observability dashboard. |
-| `agent` | Built from `backend/Dockerfile` | **8080** | FastAPI backend (the main API). |
-| `ui` | Built from `app/Dockerfile.ui` | **4173** | React frontend (Vite preview server). |
+| `langfuse` | `langfuse/langfuse:2` | **`${LANGFUSE_PORT}`** (default `3100`) | LLM observability dashboard. |
+| `agent` | Built from `backend/Dockerfile` | **`${API_PORT}`** (default `8080`) | FastAPI backend (the main API). |
+| `ui` | Built from `app/Dockerfile.ui` | **`${UI_PORT}`** (default `4173`) | React frontend (Vite preview server). |
 
 ### 3.3 Verify Deployment
 
@@ -179,13 +198,13 @@ python run.py rebuild
 docker compose ps
 
 # Check backend is alive
-curl http://localhost:8080/docs
+curl http://{HOST}:{API_PORT}/docs
 
 # Check frontend is alive
-curl http://localhost:4173
+curl http://{HOST}:{UI_PORT}
 
 # Check Langfuse dashboard
-curl http://localhost:3100
+curl http://{HOST}:{LANGFUSE_PORT}
 ```
 
 ### 3.4 Watch Logs
@@ -217,7 +236,7 @@ python run.py logs agent      Tail live logs for a specific service
 python run.py up              Start with live logs (foreground)
 python run.py status          Show container status
 python run.py db              Open psql shell to the database
-python run.py test            Run backend + frontend tests locally
+python run.py test            Run backend tests + frontend lint locally
 python run.py lint            Run backend + frontend lint checks locally
 ```
 
@@ -274,7 +293,7 @@ cd app && npm run lint
 ### 6.1 Upload
 
 ```bash
-curl -X POST http://localhost:8080/analyze/upload \
+curl -X POST http://{HOST}:{API_PORT}/analyze/upload \
   -F "file=@./sample-binary/chargen"
 ```
 
@@ -287,7 +306,7 @@ Response:
 ### 6.2 Check Status
 
 ```bash
-curl http://localhost:8080/status/{session_id}
+curl http://{HOST}:{API_PORT}/status/{session_id}
 ```
 
 Status values: `initialized` → `completed` (or `error`).
@@ -295,7 +314,7 @@ Status values: `initialized` → `completed` (or `error`).
 ### 6.3 Query the Agent
 
 ```bash
-curl -X POST http://localhost:8080/query \
+curl -X POST http://{HOST}:{API_PORT}/query \
   -H "Content-Type: application/json" \
   -d '{"session_id": "SESSION_ID", "query": "Find buffer overflow vulnerabilities"}'
 ```
@@ -303,7 +322,7 @@ curl -X POST http://localhost:8080/query \
 ### 6.4 WebSocket (Real-Time Events)
 
 ```
-ws://localhost:8080/stream/{session_id}
+ws://{HOST}:{API_PORT}/stream/{session_id}
 ```
 
 | Event | When |
@@ -316,9 +335,9 @@ ws://localhost:8080/stream/{session_id}
 ### 6.5 Results by Hash
 
 ```bash
-curl http://localhost:8080/api/analysis/{program_hash}
-curl http://localhost:8080/api/analysis/{program_hash}/files
-curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
+curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}
+curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}/files
+curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}/reports/summary
 ```
 
 ---
@@ -352,8 +371,8 @@ curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 | 404 "Session not found" | Sessions are in-memory; lost on agent restart. Re-upload the binary. |
 | LLM errors in logs | Verify `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` in `.env`. |
 | `docker compose` not found | Install Docker Compose v2 (`docker compose`, not `docker-compose`). |
-| Port 8080/4173 already in use | Stop the conflicting process or change ports in `docker-compose.yml`. |
-| Frontend can't reach backend | Ensure `VITE_API_BASE_URL` points to the correct backend URL. |
+| API/UI/Langfuse port already in use | Set `API_PORT`, `UI_PORT`, or `LANGFUSE_PORT` in `.env` and restart. |
+| Frontend can't reach backend | Ensure `HOST` and `API_PORT` are correct, or override with `VITE_API_BASE_URL`. |
 | Database connection errors | Check that `postgres` container is healthy: `docker compose ps`. |
 
 ---

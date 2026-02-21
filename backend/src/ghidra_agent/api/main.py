@@ -1,47 +1,50 @@
 import asyncio
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, PlainTextResponse, HTMLResponse
-from fastapi.responses import Response as FastAPIResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
 
+from ghidra_agent import database as db
 from ghidra_agent.config import settings
+from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state, format_iocs_for_report
+from ghidra_agent.langfuse_tracing import create_standalone_trace_metadata
+from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import configure_logging, logger
 from ghidra_agent.models import (
-    SessionCreateResponse,
-    StatusResponse,
     QueryRequest,
     SessionCreateRequest,
+    SessionCreateResponse,
+    StatusResponse,
     WriteModeRequest,
 )
-from ghidra_agent.langfuse_tracing import create_standalone_trace_metadata
-from ghidra_agent.sessions import store, run_graph
+from ghidra_agent.reporting import build_agent_report_html, build_report_html, build_report_text
+from ghidra_agent.sessions import run_graph, store
 from ghidra_agent.ui_adapter import (
     build_analyzer_response,
     build_code_file,
     build_file_tree,
     build_model_list,
-    build_reports,
     build_report_content,
+    build_reports,
     build_similar_files,
 )
-from ghidra_agent.reporting import build_report_html, build_report_text, build_agent_report_html
-from ghidra_agent.llm import call_llm
-from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 from ghidra_agent.utils import ensure_directory, safe_basename
-from ghidra_agent import database as db
 
 
-app = FastAPI(title="Ghidra Reverse Engineering Agent")
-
-
-@app.on_event("shutdown")
-async def _shutdown_db() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: nothing needed (pool is lazy)
+    yield
+    # Shutdown: close DB pool
     await db.close_db()
+
+
+app = FastAPI(title="Ghidra Reverse Engineering Agent", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -404,126 +407,185 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
         await manager.broadcast(session_id, {"type": "analysis:error", "session_id": session_id, "payload": {"status": "error", "error": str(exc)}})
 
 
+# ---------------------------------------------------------------------------
+# Helper: resolve the best session for a given program_hash
+# Prefers the latest completed session; falls back to latest of any status.
+# ---------------------------------------------------------------------------
+
+_STATUS_PRIORITY = {"completed": 0, "error": 1, "initialized": 2}
+
+
+def _pick_best_in_memory(candidates: List[Dict[str, Any]]) -> Dict[str, Any] | None:
+    if not candidates:
+        return None
+    candidates.sort(
+        key=lambda s: (
+            _STATUS_PRIORITY.get(s.get("status", ""), 9),
+            -(s.get("completed_at") or s.get("started_at") or 0),
+        )
+    )
+    return candidates[0]
+
+
+async def _resolve_by_hash(program_hash: str) -> Dict[str, Any] | None:
+    """Find the best session for a hash, preferring completed DB sessions."""
+    candidates = [
+        s for s in store.sessions.values()
+        if s.get("program_hash") == program_hash
+    ]
+    best_in_memory = _pick_best_in_memory(candidates)
+    if best_in_memory is not None and best_in_memory.get("status") == "completed":
+        return best_in_memory
+
+    try:
+        best_db = await db.get_best_analysis_by_hash(program_hash)
+    except Exception as exc:
+        logger.warning(
+            "analysis_hash_lookup_db_failed",
+            program_hash=program_hash[:16],
+            error=str(exc),
+        )
+        return best_in_memory
+
+    if best_db is None:
+        return best_in_memory
+
+    session_id = str(best_db.get("id", ""))
+    if not session_id:
+        return best_in_memory
+    if session_id in store.sessions:
+        return store.sessions[session_id]
+
+    try:
+        return await store.load_session_from_db(session_id)
+    except Exception as exc:
+        logger.warning(
+            "analysis_hash_restore_failed",
+            session_id=session_id,
+            error=str(exc),
+        )
+        return best_in_memory
+
+
 @app.get("/api/analysis/{program_hash}")
 async def analysis_status(program_hash: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            duration_secs = state.get("duration_seconds", 0)
-            if duration_secs:
-                mins = int(duration_secs // 60)
-                secs = int(duration_secs % 60)
-                duration_str = f"{mins}m {secs}s" if mins else f"{secs}s"
-            else:
-                duration_str = ""
-            started_iso = state.get("started_at_iso", "")
-            completed_iso = state.get("completed_at_iso", "")
-            return JSONResponse({
-                "hash": program_hash,
-                "status": state["status"],
-                "analyzer": "ghidra",
-                "duration": duration_str,
-                "started": started_iso,
-                "completed": completed_iso,
-            })
-    return JSONResponse({"hash": program_hash, "status": "not_found"}, status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse({"hash": program_hash, "status": "not_found"}, status_code=404)
+    duration_secs = state.get("duration_seconds", 0)
+    if duration_secs:
+        mins = int(duration_secs // 60)
+        secs = int(duration_secs % 60)
+        duration_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+    else:
+        duration_str = ""
+    started_iso = state.get("started_at_iso", "")
+    completed_iso = state.get("completed_at_iso", "")
+    return JSONResponse({
+        "hash": program_hash,
+        "status": state["status"],
+        "analyzer": "ghidra",
+        "duration": duration_str,
+        "started": started_iso,
+        "completed": completed_iso,
+    })
 
 
 @app.get("/api/analysis/{program_hash}/analyzers")
 async def analysis_analyzers(program_hash: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            analyzers = [build_analyzer_response(state, "ghidra")]
-            # Include radare2 if R2 results exist
-            if state.get("r2_analysis_results"):
-                analyzers.append(build_analyzer_response(state, "radare2"))
-            return JSONResponse(analyzers)
-    return JSONResponse([], status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse([], status_code=404)
+    analyzers = [build_analyzer_response(state, "ghidra")]
+    if state.get("r2_analysis_results"):
+        analyzers.append(build_analyzer_response(state, "radare2"))
+    return JSONResponse(analyzers)
 
 
 @app.get("/api/analysis/{program_hash}/analyzers/{analyzer_id}")
 async def analysis_analyzer_detail(program_hash: str, analyzer_id: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash and analyzer_id in ("ghidra", "radare2"):
-            return JSONResponse(build_analyzer_response(state, analyzer_id))
-    return JSONResponse({"error": "not_found"}, status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None or analyzer_id not in ("ghidra", "radare2"):
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(build_analyzer_response(state, analyzer_id))
 
 
 @app.get("/api/analysis/{program_hash}/files")
 async def analysis_files(program_hash: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            return JSONResponse(build_file_tree(state))
-    return JSONResponse({"error": "not_found"}, status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(build_file_tree(state))
 
 
 @app.get("/api/analysis/{program_hash}/files/{file_id}")
 async def analysis_file_content(program_hash: str, file_id: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            return JSONResponse(build_code_file(state, file_id))
-    return JSONResponse({"error": "not_found"}, status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(build_code_file(state, file_id))
 
 
 @app.get("/api/analysis/{program_hash}/reports")
 async def analysis_reports(program_hash: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            return JSONResponse(build_reports(state))
-    return JSONResponse([], status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse([], status_code=404)
+    return JSONResponse(build_reports(state))
 
 
 @app.get("/api/analysis/{program_hash}/reports/{report_id}")
 async def analysis_report_content(program_hash: str, report_id: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            return JSONResponse(build_report_content(state, report_id))
-    return JSONResponse({"error": "not_found"}, status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return JSONResponse(build_report_content(state, report_id))
 
 
 @app.get("/api/analysis/{program_hash}/similar")
 async def analysis_similar(program_hash: str) -> JSONResponse:
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            return JSONResponse(build_similar_files(state))
-    return JSONResponse([], status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse([], status_code=404)
+    return JSONResponse(build_similar_files(state))
 
 
 @app.get("/api/analysis/{program_hash}/results/ghidra")
 async def ghidra_results(program_hash: str) -> JSONResponse:
     """Return raw Ghidra analysis results (functions, strings, binary info, decompiled code)."""
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            gh = state.get("analysis_results", {})
-            return JSONResponse({
-                "analyzer": "ghidra",
-                "binary": gh.get("binary", {}),
-                "functions": gh.get("functions", {}),
-                "strings": gh.get("strings", {}),
-                "call_graph": gh.get("call_graph", {}),
-                "call_graph_analysis": gh.get("call_graph_analysis", {}),
-                "decompiled": state.get("decompilation_cache", {}),
-            })
-    return JSONResponse({"error": "not_found"}, status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    gh = state.get("analysis_results", {})
+    return JSONResponse({
+        "analyzer": "ghidra",
+        "binary": gh.get("binary", {}),
+        "functions": gh.get("functions", {}),
+        "strings": gh.get("strings", {}),
+        "call_graph": gh.get("call_graph", {}),
+        "call_graph_analysis": gh.get("call_graph_analysis", {}),
+        "decompiled": state.get("decompilation_cache", {}),
+    })
 
 
 @app.get("/api/analysis/{program_hash}/results/radare2")
 async def radare2_results(program_hash: str) -> JSONResponse:
     """Return raw Radare2 analysis results (functions, strings, binary info, decompiled code)."""
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            r2 = state.get("r2_analysis_results", {})
-            if not r2:
-                return JSONResponse({"error": "radare2 analysis not available"}, status_code=404)
-            return JSONResponse({
-                "analyzer": "radare2",
-                "binary": r2.get("binary", {}),
-                "functions": r2.get("functions", {}),
-                "strings": r2.get("strings", {}),
-                "call_graph": r2.get("call_graph", {}),
-                "call_graph_analysis": r2.get("call_graph_analysis", {}),
-                "decompiled": state.get("r2_decompilation_cache", {}),
-            })
-    return JSONResponse({"error": "not_found"}, status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    r2 = state.get("r2_analysis_results", {})
+    if not r2:
+        return JSONResponse({"error": "radare2 analysis not available"}, status_code=404)
+    return JSONResponse({
+        "analyzer": "radare2",
+        "binary": r2.get("binary", {}),
+        "functions": r2.get("functions", {}),
+        "strings": r2.get("strings", {}),
+        "call_graph": r2.get("call_graph", {}),
+        "call_graph_analysis": r2.get("call_graph_analysis", {}),
+        "decompiled": state.get("r2_decompilation_cache", {}),
+    })
 
 
 @app.get("/api/models")
@@ -534,25 +596,25 @@ async def models() -> JSONResponse:
 @app.get("/api/analysis/{program_hash}/export/html")
 async def export_html(program_hash: str) -> HTMLResponse:
     """Export analysis report as HTML."""
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            html = build_report_html(state)
-            return HTMLResponse(content=html, headers={
-                "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.html"'
-            })
-    return HTMLResponse("<h1>Report not found</h1>", status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return HTMLResponse("<h1>Report not found</h1>", status_code=404)
+    html = build_report_html(state)
+    return HTMLResponse(content=html, headers={
+        "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.html"'
+    })
 
 
 @app.get("/api/analysis/{program_hash}/export/text")
 async def export_text(program_hash: str) -> PlainTextResponse:
     """Export analysis report as plain text."""
-    for state in store.sessions.values():
-        if state["program_hash"] == program_hash:
-            text = build_report_text(state)
-            return PlainTextResponse(content=text, headers={
-                "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.txt"'
-            })
-    return PlainTextResponse("Report not found", status_code=404)
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return PlainTextResponse("Report not found", status_code=404)
+    text = build_report_text(state)
+    return PlainTextResponse(content=text, headers={
+        "Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.txt"'
+    })
 
 
 @app.get("/export/session/{session_id}/html")

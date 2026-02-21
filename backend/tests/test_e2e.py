@@ -5,26 +5,23 @@ Mocks Docker/subprocess calls but exercises the real pipeline logic:
 """
 
 from copy import deepcopy
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from ghidra_agent.state import AgentState, DEFAULT_STATE
-import ghidra_agent.graph  # ensure module is loaded for mock.patch
-import ghidra_agent.r2_graph  # ensure module is loaded for mock.patch
-
+from ghidra_agent.state import DEFAULT_STATE, AgentState
 from tests.sample_data import (
-    SAMPLE_HASH,
     SAMPLE_BINARY_INFO_GHIDRA,
     SAMPLE_BINARY_INFO_R2,
     SAMPLE_CALL_GRAPH,
+    SAMPLE_DECOMPILE_R2,
+    SAMPLE_DISASM_R2,
     SAMPLE_FUNCTIONS_GHIDRA,
     SAMPLE_FUNCTIONS_R2,
+    SAMPLE_HASH,
     SAMPLE_STRINGS_GHIDRA,
     SAMPLE_STRINGS_R2,
-    SAMPLE_DECOMPILE_R2,
     SAMPLE_XREFS_R2,
-    SAMPLE_DISASM_R2,
 )
 
 
@@ -121,9 +118,7 @@ class TestE2EDualAgentFlow:
                  patch("ghidra_agent.radare.runner.Radare2Runner", return_value=_mock_r2_runner()):
                 mock_llm.return_value = "## 1. Executive Summary\nThis is a test malware.\n## 2. Malware Capabilities\n- Network"
 
-                from ghidra_agent.graph import (
-                    parse_intent, initialize_ghidra, discovery, synthesize
-                )
+                from ghidra_agent.graph import discovery, initialize_ghidra, parse_intent, synthesize
 
                 state = await parse_intent(state)
                 assert state["intent"] == "reconnaissance"
@@ -191,7 +186,7 @@ class TestE2EDualAgentFlow:
                  patch("ghidra_agent.radare.runner.Radare2Runner", return_value=_mock_r2_runner()):
                 mock_llm.return_value = "This is malware analysis."
 
-                from ghidra_agent.graph import parse_intent, initialize_ghidra, discovery, synthesize
+                from ghidra_agent.graph import discovery, initialize_ghidra, parse_intent, synthesize
 
                 state = await parse_intent(state)
                 assert state["intent"] == "malware"
@@ -232,7 +227,7 @@ class TestE2EDualAgentFlow:
                  patch("ghidra_agent.radare.runner.Radare2Runner", return_value=_mock_r2_runner(container_alive=False)):
                 mock_llm.return_value = "Analysis with Ghidra only."
 
-                from ghidra_agent.graph import parse_intent, initialize_ghidra, discovery, synthesize
+                from ghidra_agent.graph import discovery, initialize_ghidra, parse_intent, synthesize
 
                 state = await parse_intent(state)
                 state = await initialize_ghidra(state)
@@ -269,8 +264,12 @@ class TestE2EDualAgentFlow:
                 mock_llm.return_value = "Function FUN_00401200 analysis."
 
                 from ghidra_agent.graph import (
-                    parse_intent, initialize_ghidra, discovery,
-                    focus_analysis, cross_reference, synthesize
+                    cross_reference,
+                    discovery,
+                    focus_analysis,
+                    initialize_ghidra,
+                    parse_intent,
+                    synthesize,
                 )
 
                 state = await parse_intent(state)
@@ -433,6 +432,7 @@ class TestTruncatePromptHeadTail:
 # ---------------------------------------------------------------------------
 
 from contextlib import contextmanager
+
 
 @contextmanager
 def _multi_patch(patches: dict):

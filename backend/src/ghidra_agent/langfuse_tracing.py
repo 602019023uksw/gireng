@@ -11,9 +11,10 @@ Provides two layers of tracing:
 from __future__ import annotations
 
 import contextvars
+import inspect
 import os
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 from ghidra_agent.config import settings
 from ghidra_agent.logging import logger
@@ -62,20 +63,28 @@ def create_langfuse_handler(
     trace_id = str(uuid.uuid4())
 
     try:
-        handler = CallbackHandler(
-            public_key=pk,
-            secret_key=sk,
-            host=host or "https://cloud.langfuse.com",
-            trace_name=trace_name,
-            session_id=session_id,
-            user_id=user_id,
-            trace_id=trace_id,
-            metadata={
+        kwargs: Dict[str, Any] = {
+            "public_key": pk,
+            "secret_key": sk,
+            "host": host or "https://cloud.langfuse.com",
+            "trace_name": trace_name,
+            "session_id": session_id,
+            "user_id": user_id,
+            "metadata": {
                 "program_hash": program_hash,
                 "session_id": session_id,
             },
-            tags=["langgraph", "binary-analysis"],
-        )
+            "tags": ["langgraph", "binary-analysis"],
+        }
+        try:
+            signature = inspect.signature(CallbackHandler)
+            if "trace_id" in signature.parameters:
+                kwargs["trace_id"] = trace_id
+        except (TypeError, ValueError):
+            # Signature inspection may fail for some wrapped callables.
+            pass
+
+        handler = CallbackHandler(**kwargs)
         logger.info(
             "langfuse_handler_created",
             trace_id=trace_id,

@@ -2,7 +2,7 @@
 
 Tests the full pipeline from binary upload through analysis to report generation,
 validating all components work together correctly:
-  - Sessions (create, lookup, state management)  
+  - Sessions (create, lookup, state management)
   - Graph pipeline (parse_intent → initialize → discovery → synthesize)
   - API endpoints (upload, status, analyzers, export)
   - IOC extraction
@@ -11,8 +11,6 @@ validating all components work together correctly:
   - UI adapter (analyzer responses, file tree, code files)
 """
 
-import asyncio
-import os
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -20,13 +18,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 
 # Ensure the backend package is importable
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from ghidra_agent.state import AgentState, DEFAULT_STATE
-from ghidra_agent.config import settings
+from ghidra_agent.state import DEFAULT_STATE
 from ghidra_agent.utils import compute_sha256
 
 # ---- Path to the real chargen binary ----
@@ -237,8 +234,9 @@ def _r2_tool_mocks():
     }
 
 
-from contextlib import contextmanager
 import unittest.mock
+from contextlib import contextmanager
+
 
 @contextmanager
 def _multi_patch(patches: dict):
@@ -301,9 +299,7 @@ class TestChargenPipelineFlow:
                     "## 11. Conclusion\nThis is a legitimate chargen service implementation."
                 )
 
-                from ghidra_agent.graph import (
-                    parse_intent, initialize_ghidra, discovery, synthesize
-                )
+                from ghidra_agent.graph import discovery, initialize_ghidra, parse_intent, synthesize
 
                 # Step 1: Parse intent (no query = reconnaissance)
                 state = await parse_intent(state)
@@ -375,7 +371,7 @@ class TestChargenPipelineFlow:
                  patch("ghidra_agent.radare.runner.Radare2Runner", return_value=_mock_r2_runner()):
                 mock_llm.return_value = "Network analysis of chargen service."
 
-                from ghidra_agent.graph import parse_intent, initialize_ghidra, discovery, synthesize
+                from ghidra_agent.graph import discovery, initialize_ghidra, parse_intent, synthesize
 
                 state = await parse_intent(state)
                 assert state["intent"] == "protocol"  # "protocol" keyword in query
@@ -401,7 +397,7 @@ class TestChargenPipelineFlow:
                  patch("ghidra_agent.radare.runner.Radare2Runner", return_value=_mock_r2_runner(container_alive=False)):
                 mock_llm.return_value = "Chargen analysis (Ghidra only)."
 
-                from ghidra_agent.graph import parse_intent, initialize_ghidra, discovery, synthesize
+                from ghidra_agent.graph import discovery, initialize_ghidra, parse_intent, synthesize
 
                 state = await parse_intent(state)
                 state = await initialize_ghidra(state)
@@ -445,7 +441,7 @@ class TestChargenIOCExtraction:
         assert not iocs.is_empty()
 
     def test_verdict_calculation(self):
-        from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
+        from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state
         state = deepcopy(DEFAULT_STATE)
         state["analysis_results"] = {"strings": CHARGEN_STRINGS_GHIDRA}
         state["r2_analysis_results"] = {"strings": CHARGEN_STRINGS_R2}
@@ -734,7 +730,7 @@ class TestChargenSessionStore:
             store = SessionStore()
             state = store.create_session(str(CHARGEN_PATH))
             session_id = state["session_id"]
-            
+
             retrieved = store.get_session(session_id)
             assert retrieved is state  # same object
 

@@ -25,27 +25,6 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
     }
   }, [message]);
 
-  // Detect @ mention trigger
-  useEffect(() => {
-    const lastAtIndex = message.lastIndexOf('@');
-    if (lastAtIndex !== -1) {
-      const afterAt = message.slice(lastAtIndex + 1);
-      // Check if we're in the middle of typing an agent mention
-      // (no space after @ and not at end of another word)
-      const hasSpaceAfter = afterAt.includes(' ');
-      const isNewMention = lastAtIndex === 0 || message[lastAtIndex - 1] === ' ';
-      
-      if (!hasSpaceAfter && isNewMention) {
-        setShowAgentPicker(true);
-        setAgentSearchQuery(afterAt);
-      } else {
-        setShowAgentPicker(false);
-      }
-    } else {
-      setShowAgentPicker(false);
-    }
-  }, [message]);
-
   // Close agent picker when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -57,11 +36,37 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const updateMentionState = (nextMessage: string) => {
+    const lastAtIndex = nextMessage.lastIndexOf('@');
+    if (lastAtIndex === -1) {
+      setShowAgentPicker(false);
+      setAgentSearchQuery('');
+      return;
+    }
+    const afterAt = nextMessage.slice(lastAtIndex + 1);
+    const hasSpaceAfter = afterAt.includes(' ');
+    const isNewMention = lastAtIndex === 0 || nextMessage[lastAtIndex - 1] === ' ';
+    if (!hasSpaceAfter && isNewMention) {
+      setShowAgentPicker(true);
+      setAgentSearchQuery(afterAt);
+      return;
+    }
+    setShowAgentPicker(false);
+    setAgentSearchQuery('');
+  };
+
+  const handleMessageChange = (nextMessage: string) => {
+    setMessage(nextMessage);
+    updateMentionState(nextMessage);
+  };
+
   const handleSubmit = () => {
     if (message.trim()) {
       onSend(message.trim(), selectedAgentId || undefined);
       setMessage('');
       setSelectedAgentId(null);
+      setShowAgentPicker(false);
+      setAgentSearchQuery('');
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
       }
@@ -89,6 +94,7 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
       const beforeAt = message.slice(0, lastAtIndex);
       const newMessage = beforeAt + `@${agentId} `;
       setMessage(newMessage);
+      updateMentionState(newMessage);
     }
     
     setShowAgentPicker(false);
@@ -102,7 +108,9 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
     if (lastAtIndex !== -1) {
       const afterAt = message.slice(lastAtIndex + 1);
       if (!afterAt.includes(' ')) {
-        setMessage(message.slice(0, lastAtIndex));
+        const nextMessage = message.slice(0, lastAtIndex);
+        setMessage(nextMessage);
+        updateMentionState(nextMessage);
       }
     }
   };
@@ -153,7 +161,7 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
         <textarea
           ref={textareaRef}
           value={message}
-          onChange={(e) => setMessage(e.target.value)}
+          onChange={(e) => handleMessageChange(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
           onKeyDown={handleKeyDown}

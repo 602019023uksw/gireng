@@ -54,6 +54,11 @@ type CallGraphPanel = {
 
 const currentUser = { name: '' };
 
+function getErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  return String(err);
+}
+
 function App() {
   const [viewState, setViewState] = useState<ViewState>('welcome');
   const [selectedModelId, setSelectedModelId] = useState('glm-4.7');
@@ -277,10 +282,10 @@ function App() {
           )
         );
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       const errMsg: Message = {
         id: (Date.now() + 3).toString(),
-        content: `Error: ${err.message}`,
+        content: `Error: ${getErrorMessage(err)}`,
         isUser: false,
         timestamp: new Date(),
       };
@@ -288,12 +293,13 @@ function App() {
     }
   }, [fetchAnalysisData]);
 
-  const handleSendMessage = useCallback(async (content: string, _agentId?: string) => {
+  const handleSendMessage = useCallback(async (content: string, agentId?: string) => {
     const userMessage: Message = {
       id: Date.now().toString(),
       content,
       isUser: true,
       timestamp: new Date(),
+      ...(agentId ? { agentId } : {}),
     };
     setMessages(prev => [...prev, userMessage]);
     setViewState('chat');
@@ -356,12 +362,13 @@ function App() {
 
       // Refresh side panel data
       await fetchAnalysisData(sessionRef.current.hash);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // If analysis is still running, give a more helpful message
-      const isNotCompleted = err.message?.includes('400');
+      const msg = getErrorMessage(err);
+      const isNotCompleted = msg.includes('400');
       const errContent = isNotCompleted
         ? 'The analysis is still in progress. Please wait for it to complete before asking questions. You can ask follow-up questions once the analysis finishes.'
-        : `Error: ${err.message}`;
+        : `Error: ${msg}`;
       const errMsg: Message = {
         id: (Date.now() + 3).toString(),
         content: errContent,
@@ -414,7 +421,7 @@ function App() {
         analyzerTotal: analyzerCount,
       };
       setMessages(prev => [...prev, completedMsg]);
-    } catch (err) {
+    } catch {
       const errMsg: Message = {
         id: (Date.now() + 2).toString(),
         content: 'Failed to load analysis data from this session.',

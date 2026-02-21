@@ -415,7 +415,6 @@ interface QuickAction {
 **API Endpoints:**
 ```
 GET /api/models              # Fetch available AI models
-GET /api/quick-actions       # Fetch quick action buttons
 ```
 
 ---
@@ -431,9 +430,9 @@ GET /api/quick-actions       # Fetch quick action buttons
 
 **API Endpoints:**
 ```
-GET /api/chats/:id/messages           # Fetch chat messages
-POST /api/chats/:id/messages          # Send message
-POST /api/chats/:id/messages/stream   # Stream AI response (SSE)
+POST /query                   # Send message to the agent for a session
+GET  /status/:session_id      # Poll session state
+WS   /stream/:session_id      # Live analysis progress events
 ```
 
 **WebSocket Events:**
@@ -513,27 +512,17 @@ GET /api/analysis/:hash/reports/:id    # Get report content
 
 ## API Endpoints Required
 
-### Authentication
+### Session & Query
 ```
-POST /api/auth/login
-POST /api/auth/logout
-GET  /api/auth/me
-```
-
-### Chats
-```
-GET    /api/chats              # List all chats
-POST   /api/chats              # Create new chat
-GET    /api/chats/:id          # Get chat details
-DELETE /api/chats/:id          # Delete chat
-GET    /api/chats/:id/messages # Get chat messages
-POST   /api/chats/:id/messages # Send message
+POST /analyze                  # Start analysis using server-side binary path
+POST /analyze/upload           # Upload binary and start analysis
+GET  /status/:session_id       # Poll session state/progress
+POST /query                    # Ask a question about an existing session
 ```
 
-### Analysis
+### Analysis (By Program Hash)
 ```
-POST   /api/analysis           # Submit file for analysis
-GET    /api/analysis/:hash     # Get analysis status
+GET    /api/analysis/:hash                # Get analysis status
 GET    /api/analysis/:hash/analyzers      # Get analyzer results
 GET    /api/analysis/:hash/analyzers/:id  # Get specific analyzer
 GET    /api/analysis/:hash/files          # Get analyzed files
@@ -541,17 +530,24 @@ GET    /api/analysis/:hash/files/:fileId  # Get file content
 GET    /api/analysis/:hash/reports        # Get reports
 GET    /api/analysis/:hash/reports/:id    # Get report content
 GET    /api/analysis/:hash/similar        # Get similar files
+GET    /api/analysis/:hash/results/ghidra # Raw Ghidra results
+GET    /api/analysis/:hash/results/radare2# Raw Radare2 results
+GET    /api/analysis/:hash/export/html    # Export HTML report
+GET    /api/analysis/:hash/export/text    # Export text report
+```
+
+### History
+```
+GET    /api/history                        # List persisted analyses
+GET    /api/history/:session_id            # Get analysis summary
+GET    /api/history/:session_id/qa         # Get Q&A history
+POST   /api/history/:session_id/restore    # Restore session to memory
+DELETE /api/history/:session_id            # Delete analysis
 ```
 
 ### Models
 ```
 GET /api/models                # Get available AI models
-```
-
-### Share
-```
-POST /api/share                # Generate share link
-GET  /api/share/:token         # Get shared chat
 ```
 
 ---
@@ -650,12 +646,16 @@ export const useChatStore = create<ChatState>((set, get) => ({
   
   sendMessage: async (content: string) => {
     set({ isLoading: true });
-    // API call to send message
-    const response = await fetch('/api/chats/' + get().currentChatId + '/messages', {
+    const response = await fetch('/query', {
       method: 'POST',
-      body: JSON.stringify({ content, model: get().selectedModel.id })
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: get().currentChatId,
+        query: content,
+      })
     });
-    const message = await response.json();
+    const payload = await response.json();
+    const message = payload.answer;
     set(state => ({ 
       messages: [...state.messages, message],
       isLoading: false 
@@ -663,7 +663,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
   
   loadMessages: async (chatId: string) => {
-    const response = await fetch('/api/chats/' + chatId + '/messages');
+    const response = await fetch('/api/history/' + chatId + '/qa');
     const messages = await response.json();
     set({ messages, currentChatId: chatId });
   },

@@ -1,7 +1,7 @@
 """Radare2 LangGraph pipeline — runs R2 analysis nodes in parallel with Ghidra."""
 
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.config import settings
@@ -9,13 +9,13 @@ from ghidra_agent.function_priority import apply_priority_to_result
 from ghidra_agent.logging import logger
 from ghidra_agent.r2_tools import (
     r2_analyze_binary,
-    r2_list_functions,
     r2_build_call_graph,
     r2_decompile_function,
-    r2_find_strings,
-    r2_syscall_analysis,
-    r2_find_xrefs,
     r2_disassemble_at,
+    r2_find_strings,
+    r2_find_xrefs,
+    r2_list_functions,
+    r2_syscall_analysis,
 )
 from ghidra_agent.state import AgentState
 

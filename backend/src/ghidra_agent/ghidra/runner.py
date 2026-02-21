@@ -94,11 +94,11 @@ class GhidraHeadlessRunner:
             # Only use -readOnly when processing an existing project.
             # The first import must NOT be readOnly so the project is persisted.
             base_args.append("-readOnly")
-        
+
         # I10 FIX: Use -noanalysis for subsequent runs on existing project to save time
         if already_imported:
             base_args.append("-noanalysis")
-        
+
         base_args += [
             "-scriptPath",
             settings.ghidra_scripts_root,

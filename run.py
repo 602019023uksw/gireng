@@ -26,7 +26,7 @@ Usage:
     python run.py up              Start with live logs (foreground)
     python run.py status          Show container status
     python run.py db              Open psql shell to the database
-    python run.py test            Run backend + frontend tests locally
+    python run.py test            Run backend tests + frontend lint locally
     python run.py lint            Run backend + frontend lint checks locally
 
 Commands:
@@ -38,7 +38,7 @@ Commands:
   up           Start in foreground with live logs (Ctrl+C to stop).
   status       Show container status.
   db           Open psql shell.
-  test         Run backend and frontend test suites locally.
+  test         Run backend tests + frontend lint checks locally.
   lint         Run backend and frontend lint checks locally.
 """
 
@@ -91,26 +91,64 @@ def cmd_status() -> None:
 
 
 def cmd_db() -> None:
-    run(
-        [
-            "docker", "exec", "-it", "ireng_postgres",
-            "psql", "-U", "ireng", "-d", "ireng",
-        ]
-    )
+    interactive = sys.stdin.isatty() and sys.stdout.isatty() and sys.stderr.isatty()
+    if interactive:
+        run(
+            [
+                "docker", "exec", "-it", "ireng_postgres",
+                "psql", "-U", "ireng", "-d", "ireng",
+            ]
+        )
+    else:
+        # Non-interactive: run a single command or just test connectivity
+        run(
+            [
+                "docker", "exec", "ireng_postgres",
+                "psql", "-U", "ireng", "-d", "ireng", "-c", "SELECT 1;",
+            ]
+        )
 
 
-def cmd_test() -> None:
+def cmd_test() -> int:
+    """Run tests. Returns non-zero if any step fails."""
+    failures = 0
+
     print("=== Backend tests ===")
-    run([sys.executable, "-m", "pytest", "backend/tests", "-v"], check=False)
-    print("\n=== Frontend tests ===")
-    run(["npm", "test", "--prefix", "app"], check=False)
+    result = run([sys.executable, "-m", "pytest", "backend/tests", "-v"], check=False)
+    if result.returncode != 0:
+        failures += 1
+
+    print("\n=== Frontend lint (no test suite configured) ===")
+    result = run(["npm", "run", "lint", "--prefix", "app"], check=False)
+    if result.returncode != 0:
+        failures += 1
+
+    if failures:
+        print(f"\n[FAIL] {failures} step(s) failed")
+    else:
+        print("\n[OK] All checks passed")
+    return failures
 
 
-def cmd_lint() -> None:
+def cmd_lint() -> int:
+    """Run linters. Returns non-zero if any step fails."""
+    failures = 0
+
     print("=== Backend lint ===")
-    run([sys.executable, "-m", "ruff", "check", "backend/"], check=False)
+    result = run([sys.executable, "-m", "ruff", "check", "backend/"], check=False)
+    if result.returncode != 0:
+        failures += 1
+
     print("\n=== Frontend lint ===")
-    run(["npm", "run", "lint", "--prefix", "app"], check=False)
+    result = run(["npm", "run", "lint", "--prefix", "app"], check=False)
+    if result.returncode != 0:
+        failures += 1
+
+    if failures:
+        print(f"\n[FAIL] {failures} step(s) failed")
+    else:
+        print("\n[OK] All checks passed")
+    return failures
 
 
 # ── Dispatch ────────────────────────────────────────────────────────────────
@@ -146,9 +184,12 @@ def main() -> None:
 
     try:
         if accepts_args:
-            handler(extra)
+            rc = handler(extra)
         else:
-            handler()
+            rc = handler()
+        # test/lint return an int (failure count); exit non-zero if any failed
+        if isinstance(rc, int) and rc > 0:
+            sys.exit(1)
     except subprocess.CalledProcessError as exc:
         sys.exit(exc.returncode)
     except KeyboardInterrupt:

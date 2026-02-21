@@ -31,10 +31,10 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
     agent.capabilities.some(cap => cap.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  // Reset selection when filtered list changes
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [searchQuery]);
+  const effectiveSelectedIndex = Math.min(
+    selectedIndex,
+    Math.max(filteredAgents.length - 1, 0),
+  );
 
   // Handle keyboard navigation
   useEffect(() => {
@@ -54,8 +54,8 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
           break;
         case 'Enter':
           e.preventDefault();
-          if (filteredAgents[selectedIndex]) {
-            onSelect(filteredAgents[selectedIndex].id);
+          if (filteredAgents[effectiveSelectedIndex]) {
+            onSelect(filteredAgents[effectiveSelectedIndex].id);
           }
           break;
         case 'Escape':
@@ -67,13 +67,13 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, filteredAgents, selectedIndex, onSelect, onClose]);
+  }, [isOpen, filteredAgents, effectiveSelectedIndex, onSelect, onClose]);
 
   // Scroll selected item into view
   useEffect(() => {
-    const selectedElement = containerRef.current?.querySelector(`[data-index="${selectedIndex}"]`);
+    const selectedElement = containerRef.current?.querySelector(`[data-index="${effectiveSelectedIndex}"]`);
     selectedElement?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-  }, [selectedIndex]);
+  }, [effectiveSelectedIndex]);
 
   if (!isOpen || filteredAgents.length === 0) return null;
 
@@ -111,7 +111,7 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
           <div ref={containerRef} className="overflow-y-auto max-h-64 scrollbar-dark">
             {filteredAgents.map((agent, index) => {
               const Icon = iconMap[agent.icon] || Terminal;
-              const isSelected = index === selectedIndex;
+              const isSelected = index === effectiveSelectedIndex;
 
               return (
                 <motion.button

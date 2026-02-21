@@ -41,14 +41,14 @@ def main():
     function = None
     target_name = payload.get("function_name")
     target_address = payload.get("address")
-    
+
     # B1/B2 FIX: Use address-based lookup first (fast), fallback to name search
     if target_address:
         # Fast O(1) address lookup
         addr = program.getAddressFactory().getAddress(target_address)
         if addr:
             function = program.getFunctionManager().getFunctionContaining(addr)
-    
+
     if not function and target_name:
         # Try to extract address from FUN_xxx name pattern for fast lookup
         addr_from_name = _parse_address_from_func_name(target_name)
@@ -56,7 +56,7 @@ def main():
             addr = program.getAddressFactory().getAddress(addr_from_name)
             if addr:
                 function = program.getFunctionManager().getFunctionContaining(addr)
-        
+
         # Fallback to name search if address lookup failed
         if not function:
             for f in program.getFunctionManager().getFunctions(True):

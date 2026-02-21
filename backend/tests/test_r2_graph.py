@@ -1,20 +1,18 @@
 """Tests for the Radare2 LangGraph pipeline (r2_graph.py)."""
 
-from copy import deepcopy
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from ghidra_agent.state import AgentState
-
 from tests.sample_data import (
     SAMPLE_BINARY_INFO_R2,
     SAMPLE_CALL_GRAPH,
     SAMPLE_DECOMPILE_R2,
+    SAMPLE_DISASM_R2,
     SAMPLE_FUNCTIONS_R2,
     SAMPLE_STRINGS_R2,
     SAMPLE_XREFS_R2,
-    SAMPLE_DISASM_R2,
 )
 
 

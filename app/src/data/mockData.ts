@@ -20,8 +20,8 @@ import type {
 // ============================================================================
 // CHAT HISTORY
 // ============================================================================
-// API: GET /api/chats
-// Description: List of user's chat sessions
+// API: GET /api/history
+// Description: List of persisted analysis sessions
 
 export const mockChats: Chat[] = [
   // Template: Add chat sessions here
@@ -94,7 +94,7 @@ export const mockModels: Model[] = [
 // ============================================================================
 // QUICK ACTIONS
 // ============================================================================
-// API: GET /api/quick-actions (optional - can be static)
+// API: Static configuration in frontend
 // Description: Quick action buttons on welcome screen
 
 export const mockQuickActions: QuickAction[] = [
@@ -108,8 +108,8 @@ export const mockQuickActions: QuickAction[] = [
 // ============================================================================
 // CHAT MESSAGES
 // ============================================================================
-// API: GET /api/chats/:id/messages
-// Description: Messages in current chat session
+// API: POST /query and GET /api/history/:id/qa
+// Description: Messages and Q&A in current analysis session
 
 export const mockMessages: Message[] = [
   // Template: Messages will be populated from API

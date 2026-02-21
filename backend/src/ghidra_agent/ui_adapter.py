@@ -1,8 +1,8 @@
 import json
 from typing import Any, Dict
-from ghidra_agent.reporting import build_report_html
+
+from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state, format_iocs_for_report
 from ghidra_agent.state import AgentState
-from ghidra_agent.ioc_extractor import extract_iocs_from_state, format_iocs_for_report, calculate_verdict
 
 
 def _to_num(value: Any) -> float:
@@ -31,11 +31,11 @@ def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, s
 def _analyzer_details(state: AgentState) -> Dict[str, Any]:
     findings = state.get("analysis_results", {})
     logs = state.get("reasoning_trace", [])
-    
+
     # I6: Extract IOCs for the API response
     iocs = extract_iocs_from_state(state)
     iocs_text = format_iocs_for_report(iocs) if not iocs.is_empty() else "No IOCs extracted."
-    
+
     # Build better static analysis
     static_parts = []
     binary = findings.get("binary", {})
@@ -49,7 +49,7 @@ def _analyzer_details(state: AgentState) -> Dict[str, Any]:
             static_parts.append(f"Imports ({len(binary['imports'])}): {', '.join(binary['imports'][:30])}")
         if binary.get("exports"):
             static_parts.append(f"Exports ({len(binary['exports'])}): {', '.join(binary['exports'][:30])}")
-    
+
     funcs = findings.get("functions", {})
     if funcs.get("ok") and funcs.get("functions"):
         sorted_funcs = sorted(funcs["functions"], key=_function_priority_key, reverse=True)
@@ -75,13 +75,13 @@ def _analyzer_details(state: AgentState) -> Dict[str, Any]:
         for chain in chains[:10]:
             path = " -> ".join(chain.get("path", []))
             static_parts.append(f"  - [{chain.get('category', 'Unknown')}] {path}")
-    
+
     # Build behavioral analysis
     strings_data = findings.get("strings", {})
     behavioral = []
     if strings_data.get("ok"):
         strings_vals = " ".join([s.get("value", "").lower() for s in strings_data.get("strings", [])])
-        
+
         capabilities = []
         if any(x in strings_vals for x in ["socket", "connect", "recv", "send"]):
             capabilities.append("Network Communication")
@@ -93,13 +93,13 @@ def _analyzer_details(state: AgentState) -> Dict[str, Any]:
             capabilities.append("Persistence")
         if any(x in strings_vals for x in ["debugger", "vmware", "sandbox"]):
             capabilities.append("Anti-Analysis")
-        
+
         if capabilities:
             behavioral.append(f"Detected Capabilities: {', '.join(capabilities)}")
-    
+
     # Determine verdict using shared function
     verdict, _, _, _ = calculate_verdict(iocs, state)
-    
+
     return {
         "executiveSummary": state.get("summary", "Ghidra analysis completed."),
         "staticAnalysis": "\n".join(static_parts) if static_parts else json.dumps(findings, indent=2),

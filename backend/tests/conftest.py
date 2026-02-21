@@ -2,7 +2,6 @@
 
 import sys
 from copy import deepcopy
-from typing import Any, Dict
 from unittest.mock import MagicMock
 
 import pytest
@@ -14,19 +13,17 @@ import pytest
 for _mod in ("litellm",):
     sys.modules.setdefault(_mod, MagicMock())
 
-from ghidra_agent.state import AgentState, DEFAULT_STATE
-
+from ghidra_agent.state import DEFAULT_STATE, AgentState
 from tests.sample_data import (
-    SAMPLE_HASH,
     SAMPLE_BINARY_INFO_GHIDRA,
     SAMPLE_BINARY_INFO_R2,
     SAMPLE_DECOMPILE_R2,
     SAMPLE_FUNCTIONS_GHIDRA,
     SAMPLE_FUNCTIONS_R2,
+    SAMPLE_HASH,
     SAMPLE_STRINGS_GHIDRA,
     SAMPLE_STRINGS_R2,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

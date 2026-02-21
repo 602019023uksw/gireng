@@ -9,11 +9,11 @@ from ghidra_agent.config import settings
 from ghidra_agent.graph import graph
 from ghidra_agent.langfuse_tracing import (
     create_langfuse_handler,
-    set_trace_context,
     reset_trace_context,
+    set_trace_context,
 )
 from ghidra_agent.logging import logger
-from ghidra_agent.state import AgentState, DEFAULT_STATE
+from ghidra_agent.state import DEFAULT_STATE, AgentState
 from ghidra_agent.utils import compute_sha256, ensure_directory, safe_basename
 
 

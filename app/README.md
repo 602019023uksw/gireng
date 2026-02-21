@@ -17,7 +17,7 @@ A modern, glass-morphism styled React frontend for the gireng AI-powered binary 
 
 ## Tech Stack
 
-- **React 18** - UI framework
+- **React 19** - UI framework
 - **TypeScript** - Type safety
 - **Vite** - Build tool
 - **Tailwind CSS** - Styling
@@ -65,11 +65,13 @@ See [BACKEND_INTEGRATION_GUIDE.md](./BACKEND_INTEGRATION_GUIDE.md) for detailed 
 ### Key API Endpoints
 
 ```
-GET    /api/models              # Available AI models
-GET    /api/chats               # Chat history
-POST   /api/chats/:id/messages  # Send message
-GET    /api/analysis/:hash      # Analysis results
-GET    /api/analysis/:hash/analyzers  # Analyzer results (Ghidra, Radare)
+GET    /api/models                    # Available AI models
+GET    /api/history                    # Analysis session history
+POST   /query                         # Send query to the agent
+GET    /api/analysis/:hash             # Analysis results
+GET    /api/analysis/:hash/analyzers   # Analyzer results (Ghidra, Radare)
+GET    /api/analysis/:hash/files       # Decompiled file tree
+GET    /api/analysis/:hash/reports     # Analysis reports
 ```
 
 ### WebSocket Events

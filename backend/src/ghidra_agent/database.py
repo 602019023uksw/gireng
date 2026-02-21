@@ -8,7 +8,7 @@ attack chains, and IOCs in dedicated tables for cross-analysis querying.
 """
 
 import json
-import os
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import asyncpg
@@ -208,6 +208,25 @@ def _row_to_dict(row: asyncpg.Record) -> Dict[str, Any]:
     return d
 
 
+def _parse_iso_to_datetime(value: Any) -> Optional[datetime]:
+    """Safely parse an ISO-8601 string (or datetime) to a datetime object.
+
+    Returns None if the value is falsy or unparseable.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    if isinstance(value, str) and value:
+        try:
+            return datetime.fromisoformat(value)
+        except (ValueError, TypeError):
+            return None
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Analysis CRUD (blob-level — unchanged)
 # ---------------------------------------------------------------------------
@@ -246,8 +265,8 @@ async def save_analysis(state: Dict[str, Any]) -> None:
             state.get("intent"),
             state.get("user_query"),
             state.get("summary"),
-            state.get("started_at_iso"),
-            state.get("completed_at_iso"),
+            _parse_iso_to_datetime(state.get("started_at_iso")),
+            _parse_iso_to_datetime(state.get("completed_at_iso")),
             state.get("duration_seconds"),
             state_json,
         )
@@ -285,6 +304,32 @@ async def get_analysis_by_hash(program_hash: str) -> Optional[Dict[str, Any]]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             "SELECT * FROM analyses WHERE program_hash = $1 ORDER BY created_at DESC LIMIT 1",
+            program_hash,
+        )
+    if row is None:
+        return None
+    return _row_to_dict(row)
+
+
+async def get_best_analysis_by_hash(program_hash: str) -> Optional[Dict[str, Any]]:
+    """Return the best session for a hash (completed preferred, newest wins)."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT *
+            FROM analyses
+            WHERE program_hash = $1
+            ORDER BY
+                CASE status
+                    WHEN 'completed' THEN 0
+                    WHEN 'error' THEN 1
+                    WHEN 'initialized' THEN 2
+                    ELSE 9
+                END,
+                COALESCE(completed_at, started_at, created_at) DESC
+            LIMIT 1
+            """,
             program_hash,
         )
     if row is None:

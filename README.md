@@ -121,6 +121,15 @@ Edit `.env` and set your LLM API key:
 ANTHROPIC_API_KEY=your-api-key-here
 ```
 
+Optional: set one host placeholder so UI/API/Langfuse URLs stay aligned:
+
+```dotenv
+HOST=localhost
+API_PORT=8080
+UI_PORT=4173
+LANGFUSE_PORT=3100
+```
+
 ### 2. Build & Start
 
 ```bash
@@ -133,22 +142,22 @@ docker compose ps
 
 ### 3. Use
 
-Open **http://localhost:4173** in your browser, upload a binary, and start analyzing!
+Open **http://{HOST}:{UI_PORT}** in your browser, upload a binary, and start analyzing!
 
 Or use the API directly:
 
 ```bash
 # Upload a binary for analysis
-curl -X POST http://localhost:8080/analyze/upload \
+curl -X POST http://{HOST}:{API_PORT}/analyze/upload \
   -F "file=@/path/to/binary"
 
 # Poll analysis status
-curl http://localhost:8080/status/{session_id}
+curl http://{HOST}:{API_PORT}/status/{session_id}
 
-# Chat with the agent about the binary
-curl -X POST http://localhost:8080/chat/{session_id} \
+# Query the agent about the binary
+curl -X POST http://{HOST}:{API_PORT}/query \
   -H "Content-Type: application/json" \
-  -d '{"message": "What does the main function do?"}'
+  -d '{"session_id": "{session_id}", "query": "What does the main function do?"}'
 ```
 
 Or use the included helper script:
@@ -165,12 +174,12 @@ python analyze.py sample-binary/chargen
  ├────────────┬──────────────────────┬────────┬───────────────┤
  │  Service   │  Image               │  Port  │  Purpose      │
  ├────────────┼──────────────────────┼────────┼───────────────┤
- │  ui        │  app/Dockerfile.ui   │  4173  │  React SPA    │
- │  agent     │  backend/Dockerfile  │  8080  │  FastAPI + LG │
+│  ui        │  app/Dockerfile.ui   │  ${UI_PORT:-4173}    │  React SPA    │
+│  agent     │  backend/Dockerfile  │  ${API_PORT:-8080}   │  FastAPI + LG │
  │  ghidra    │  gireng-runner       │  ----  │  Ghidra RE    │
  │  radare2   │  radare/radare2      │  ----  │  Radare2 RE   │
  │  postgres  │  postgres:16-alpine  │  ----  │  Database     │
- │  langfuse  │  langfuse/langfuse:2 │  3100  │  LLM Tracing  │
+│  langfuse  │  langfuse/langfuse:2 │  ${LANGFUSE_PORT:-3100} │  LLM Tracing  │
  └────────────┴──────────────────────┴────────┴───────────────┘
 ```
 
@@ -230,7 +239,7 @@ gireng/
 |--------|----------|-------------|
 | `POST` | `/analyze/upload` | Upload binary for analysis |
 | `GET` | `/status/{session_id}` | Poll analysis status |
-| `POST` | `/chat/{session_id}` | Chat with the agent |
+| `POST` | `/query` | Query the agent about a binary |
 | `GET` | `/api/analysis/{hash}/analyzers` | Get Ghidra + R2 results |
 | `WS` | `/stream/{session_id}` | Real-time analysis stream |
 | `GET` | `/health` | Service health check |

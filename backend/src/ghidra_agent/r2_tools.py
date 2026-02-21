@@ -5,9 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from langchain.tools import tool
 
-from ghidra_agent.logging import logger
 from ghidra_agent.radare.runner import Radare2Runner
-
 
 # Shared runner instance — use get_runner() for lazy access with verification
 _runner: Optional[Radare2Runner] = None
