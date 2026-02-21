@@ -6,9 +6,6 @@ import {
   Edit3, 
   Search, 
   Clock, 
-  Plug, 
-  FileText, 
-  Calendar,
   MessageSquare,
   Shield,
   ShieldAlert,
@@ -17,30 +14,12 @@ import {
   Trash2,
   Loader2,
 } from 'lucide-react';
-import type { Chat, NavItem } from '@/types';
 import { getHistory, restoreSession, deleteHistoryItem, type HistoryItem } from '@/lib/api';
 
 interface SidebarProps {
-  chats?: Chat[];
-  activeChatId?: string;
-  onChatSelect?: (chatId: string) => void;
   onNewChat?: () => void;
   onRestoreSession?: (sessionId: string, programHash: string) => void;
 }
-
-const navItems: NavItem[] = [
-  { id: 'history', icon: 'Clock', label: 'History' },
-  { id: 'plugins', icon: 'Plug', label: 'Plugins' },
-  { id: 'files', icon: 'FileText', label: 'Files', hasNotification: true },
-  { id: 'calendar', icon: 'Calendar', label: 'Calendar' },
-];
-
-const iconMap: Record<string, React.ElementType> = {
-  Clock,
-  Plug,
-  FileText,
-  Calendar,
-};
 
 export function Sidebar({ 
   onNewChat,
@@ -101,7 +80,8 @@ export function Sidebar({
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '';
-    const d = new Date(dateStr + (dateStr.includes('Z') ? '' : 'Z'));
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return '';
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -134,7 +114,7 @@ export function Sidebar({
           transition: 'width 0.3s ease',
         }}
       >
-        {/* Left Icon Navigation */}
+        {/* Left Icon Strip */}
         <div className="w-[60px] border-r border-white/10 flex flex-col items-center py-4 flex-shrink-0"
           style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
         >
@@ -149,36 +129,13 @@ export function Sidebar({
             <MessageSquare className="w-5 h-5 text-accent-blue" />
           </div>
 
-          {/* Nav Icons */}
-          <nav className="flex flex-col gap-2">
-            {navItems.map((item) => {
-              const Icon = iconMap[item.icon];
-              return (
-                <button
-                  key={item.id}
-                  className="relative w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-150 group"
-                  title={item.label}
-                >
-                  <Icon className="w-5 h-5" />
-                  {item.hasNotification && (
-                    <span className="absolute top-1 right-1 w-2 h-2 bg-accent-blue rounded-full shadow-lg shadow-accent-blue/50" />
-                  )}
-                  
-                  {/* Tooltip */}
-                  <span className="absolute left-full ml-2 px-2 py-1 rounded-lg opacity-0 group-hover:opacity-100 pointer-events-none whitespace-nowrap z-50 transition-opacity duration-150 text-xs"
-                    style={{
-                      background: 'rgba(15, 22, 40, 0.9)',
-                      backdropFilter: 'blur(8px)',
-                      border: '1px solid rgba(100, 120, 180, 0.2)',
-                      color: '#F0F6FC',
-                    }}
-                  >
-                    {item.label}
-                  </span>
-                </button>
-              );
-            })}
-          </nav>
+          {/* History Icon */}
+          <button
+            className="relative w-10 h-10 rounded-xl flex items-center justify-center text-accent-blue bg-white/5 transition-all duration-150"
+            title="History"
+          >
+            <Clock className="w-5 h-5" />
+          </button>
         </div>
 
         {/* Right Content Panel */}

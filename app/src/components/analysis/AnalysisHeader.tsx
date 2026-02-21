@@ -1,5 +1,4 @@
 import { motion } from 'framer-motion';
-import { Maximize2 } from 'lucide-react';
 import { CircularProgress } from './CircularProgress';
 import { StatusBadge } from './StatusBadge';
 import { TagCloud } from './TagCloud';
@@ -45,9 +44,6 @@ export function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
                 {analysis.hash} <span className="mx-2">•</span> {analysis.size} <span className="mx-2">•</span> {analysis.type}
               </p>
             </div>
-            <button className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-150 flex-shrink-0">
-              <Maximize2 className="w-4 h-4" />
-            </button>
           </div>
 
           {/* Verdict Badge */}

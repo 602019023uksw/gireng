@@ -1,6 +1,6 @@
 services:
   ghidra:
-    image: ${RUNNER_IMAGE:-ireng-runner}
+    image: ${RUNNER_IMAGE:-danilid/ireng-runner:2.0.1}
     container_name: ghidra_headless
     entrypoint:
       - "/bin/sh"
@@ -129,7 +129,7 @@ services:
       langfuse:
         condition: service_healthy
     environment:
-      GHIDRA_DOCKER_IMAGE: ${RUNNER_IMAGE:-ireng-runner}
+      GHIDRA_DOCKER_IMAGE: ${RUNNER_IMAGE:-danilid/ireng-runner:2.0.1}
       GHIDRA_PROJECT_ROOT: /data/projects
       GHIDRA_SHARED_ROOT: /data/shared
       GHIDRA_VOLUME_CONTAINER: ghidra_headless

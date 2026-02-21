@@ -7,8 +7,15 @@ interface ToolCallCardProps {
   tool: ToolCall;
 }
 
+function getResultFileId(result: unknown): string | null {
+  if (!result || typeof result !== 'object') return null;
+  const maybeFileId = (result as { fileId?: unknown }).fileId;
+  return typeof maybeFileId === 'string' ? maybeFileId : null;
+}
+
 export function ToolCallCard({ tool }: ToolCallCardProps) {
   const [isExpanded, setIsExpanded] = useState(true);
+  const resultFileId = getResultFileId(tool.result);
 
   return (
     <motion.div
@@ -90,7 +97,7 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
               )}
 
               {/* Result Preview */}
-              {tool.status === 'completed' && tool.result && (
+              {tool.status === 'completed' && resultFileId && (
                 <div 
                   className="flex items-center gap-3 p-3 rounded-lg"
                   style={{
@@ -101,7 +108,7 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
                   <FileText className="w-5 h-5 text-text-secondary" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-text-primary truncate">
-                      {tool.result.fileId?.substring(0, 50)}...
+                      {resultFileId.substring(0, 50)}...
                     </p>
                     <p className="text-xs text-text-muted">Sent for analysis...</p>
                   </div>

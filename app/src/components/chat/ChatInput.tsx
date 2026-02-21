@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Plus, Sparkles, SlidersHorizontal, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { AgentPicker } from './AgentPicker';
 
 interface ChatInputProps {
@@ -171,29 +171,7 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
         />
 
         {/* Input Actions */}
-        <div className="flex items-center justify-between px-3 pb-3">
-          <div className="flex items-center gap-1">
-            <button
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 hover:bg-white/5"
-              title="Add attachment"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-            <button
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-text-secondary hover:text-text-primary transition-all duration-150 hover:bg-white/5"
-              title="Model settings"
-            >
-              <Sparkles className="w-4 h-4" />
-              <span className="text-xs">8</span>
-            </button>
-            <button
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 hover:bg-white/5"
-              title="Filter"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
-          </div>
-
+        <div className="flex items-center justify-end px-3 pb-3">
           <button
             onClick={handleSubmit}
             disabled={!message.trim()}

@@ -8,42 +8,12 @@ import type {
   Analyzer, 
   Model, 
   QuickAction, 
-  Chat, 
   FileNode, 
   Analysis, 
   Report,
-  NavItem,
   CodeFile,
   SimilarFile
 } from '@/types';
-
-// ============================================================================
-// CHAT HISTORY
-// ============================================================================
-// API: GET /api/history
-// Description: List of persisted analysis sessions
-
-export const mockChats: Chat[] = [
-  // Template: Add chat sessions here
-  // {
-  //   id: 'chat-id',
-  //   title: 'Chat Title',
-  //   timestamp: new Date(),
-  //   isActive: true,
-  // }
-];
-
-// ============================================================================
-// NAVIGATION ITEMS
-// ============================================================================
-// Description: Sidebar navigation items (static configuration)
-
-export const mockNavItems: NavItem[] = [
-  { id: 'history', icon: 'Clock', label: 'History' },
-  { id: 'plugins', icon: 'Plug', label: 'Plugins' },
-  { id: 'files', icon: 'FileText', label: 'Files' },
-  { id: 'calendar', icon: 'Calendar', label: 'Calendar' },
-];
 
 // ============================================================================
 // AI MODELS

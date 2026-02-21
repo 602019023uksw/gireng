@@ -36,7 +36,6 @@ import {
 } from '@/lib/api';
 
 import {
-  mockChats,
   mockQuickActions,
   mockAnalysisResult,
   mockSimilarFiles,
@@ -57,6 +56,14 @@ const currentUser = { name: '' };
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   return String(err);
+}
+
+function asString(value: unknown, fallback = ''): string {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function getArrayLength(value: unknown): number {
+  return Array.isArray(value) ? value.length : 0;
 }
 
 function App() {
@@ -204,12 +211,13 @@ function App() {
       // Poll until done, updating status message on each tick
       const startTime = Date.now();
       const result = await pollStatus(session_id, (statusUpdate) => {
+        const state = statusUpdate.state as Record<string, unknown>;
         const elapsed = Math.round((Date.now() - startTime) / 1000);
         const mins = Math.floor(elapsed / 60);
         const secs = elapsed % 60;
         const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-        const step = statusUpdate.state?.current_step || statusUpdate.status || 'analyzing';
-        const rawProgress = Number(statusUpdate.state?.progress ?? 0);
+        const step = asString(state.current_step, statusUpdate.status || 'analyzing');
+        const rawProgress = Number(state.progress ?? 0);
         const progress = Number.isFinite(rawProgress) ? Math.max(0, Math.min(100, rawProgress)) : 0;
         setMessages(prev =>
           prev.map(m =>
@@ -226,16 +234,23 @@ function App() {
         );
       });
 
-      const hash = result.state.program_hash;
+      const state = result.state as Record<string, unknown>;
+      const hash = asString(state.program_hash);
+      if (!hash) {
+        throw new Error('Analysis response is missing program hash');
+      }
       sessionRef.current = { id: session_id, hash };
 
       // Build result message
-      const summary = result.state.summary || 'Analysis completed.';
-      const funcCount = result.state.analysis_results?.functions?.functions?.length || 0;
-      const strCount = result.state.analysis_results?.strings?.strings?.length || 0;
+      const summary = asString(state.summary, 'Analysis completed.');
+      const analysisResults = (state.analysis_results as Record<string, unknown> | undefined) ?? {};
+      const functionsResult = (analysisResults.functions as Record<string, unknown> | undefined) ?? {};
+      const stringsResult = (analysisResults.strings as Record<string, unknown> | undefined) ?? {};
+      const funcCount = getArrayLength(functionsResult.functions);
+      const strCount = getArrayLength(stringsResult.strings);
 
       // Count analyzers: Ghidra always present, R2 if results exist
-      const hasR2 = !!result.state.analysis_results?.r2 || !!result.state.r2_analysis_results;
+      const hasR2 = Boolean(analysisResults.r2) || Boolean(state.r2_analysis_results);
       const analyzerTotal = hasR2 ? 2 : 1;
       const resultMsg: Message = {
         id: (Date.now() + 2).toString(),
@@ -266,7 +281,10 @@ function App() {
         ...mockAnalysisResult,
         hash,
         status: result.status.toUpperCase(),
-        type: result.state.analysis_results?.binary?.architecture || 'Unknown',
+        type: asString(
+          (analysisResults.binary as Record<string, unknown> | undefined)?.architecture,
+          'Unknown',
+        ),
         verdict: '',
         duration: durationStr,
         started: startedStr,
@@ -432,6 +450,13 @@ function App() {
     }
   }, [fetchAnalysisData]);
 
+  const handleQuickAction = useCallback((actionId: string) => {
+    const action = mockQuickActions.find(a => a.id === actionId);
+    if (action) {
+      handleSendMessage(action.label);
+    }
+  }, [handleSendMessage]);
+
   const handleViewAnalysis = () => {
     setViewState('analysis');
   };
@@ -516,7 +541,6 @@ function App() {
       <MainLayout
         sidebar={
           <Sidebar
-            chats={mockChats}
             onNewChat={handleNewChat}
             onRestoreSession={handleRestoreSession}
           />
@@ -600,6 +624,7 @@ function App() {
                   onModelSelect={setSelectedModelId}
                   onSendMessage={handleSendMessage}
                   onFileUpload={handleFileUpload}
+                  onQuickAction={handleQuickAction}
                 />
               </motion.div>
             )}
