@@ -2,11 +2,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ChevronLeft, 
-  ChevronRight,
   Edit3, 
   Search, 
   Clock, 
-  MessageSquare,
   Shield,
   ShieldAlert,
   ShieldCheck,
@@ -108,37 +106,26 @@ export function Sidebar({
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
         className="h-screen backdrop-blur-xl flex flex-shrink-0"
         style={{
-          width: isCollapsed ? '60px' : '260px',
+          width: isCollapsed ? '48px' : '260px',
           background: 'rgba(12, 16, 32, 0.85)',
           borderRight: '1px solid rgba(100, 120, 180, 0.12)',
           transition: 'width 0.3s ease',
         }}
       >
-        {/* Left Icon Strip */}
-        <div className="w-[60px] border-r border-white/10 flex flex-col items-center py-4 flex-shrink-0"
-          style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
-        >
-          {/* Logo */}
-          <div className="w-10 h-10 rounded-xl backdrop-blur-md flex items-center justify-center mb-6"
-            style={{
-              background: 'linear-gradient(135deg, rgba(88, 166, 255, 0.2) 0%, rgba(88, 166, 255, 0.05) 100%)',
-              border: '1px solid rgba(88, 166, 255, 0.2)',
-              boxShadow: '0 0 20px rgba(88, 166, 255, 0.15)',
-            }}
-          >
-            <MessageSquare className="w-5 h-5 text-accent-blue" />
+        {/* Collapsed: show icon to expand */}
+        {isCollapsed && (
+          <div className="flex flex-col items-center py-4 w-full">
+            <button
+              onClick={() => setIsCollapsed(false)}
+              className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent-blue hover:bg-white/5 transition-all duration-150"
+              title="Show History"
+            >
+              <Clock className="w-5 h-5" />
+            </button>
           </div>
+        )}
 
-          {/* History Icon */}
-          <button
-            className="relative w-10 h-10 rounded-xl flex items-center justify-center text-accent-blue bg-white/5 transition-all duration-150"
-            title="History"
-          >
-            <Clock className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Right Content Panel */}
+        {/* Content Panel */}
         <AnimatePresence>
           {!isCollapsed && (
             <motion.div
@@ -275,28 +262,6 @@ export function Sidebar({
           )}
         </AnimatePresence>
       </motion.aside>
-
-      {/* Expand Button (outside sidebar, fixed position) */}
-      <AnimatePresence>
-        {isCollapsed && (
-          <motion.button
-            initial={{ opacity: 0, x: -10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.2 }}
-            onClick={() => setIsCollapsed(false)}
-            className="fixed left-[60px] top-1/2 -translate-y-1/2 z-50 w-6 h-12 rounded-r-lg flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 hover:bg-white/10"
-            style={{
-              background: 'rgba(15, 22, 40, 0.95)',
-              border: '1px solid rgba(100, 120, 180, 0.3)',
-              borderLeft: 'none',
-              boxShadow: '4px 0 12px rgba(0, 0, 0, 0.3)',
-            }}
-          >
-            <ChevronRight className="w-4 h-4" />
-          </motion.button>
-        )}
-      </AnimatePresence>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Share, PanelRight, ArrowLeft } from 'lucide-react';
+import { PanelRight, ArrowLeft } from 'lucide-react';
 
 import { Sidebar } from '@/components/layout/Sidebar';
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -14,7 +14,7 @@ import { AnalyzerList } from '@/components/analysis/AnalyzerList';
 import { AnalysisSection } from '@/components/analysis/AnalysisSection';
 import CallGraphView from '@/components/analysis/CallGraphView';
 import { DataTable } from '@/components/data/DataTable';
-import { ShareModal } from '@/components/modals/ShareModal';
+
 import { ModelSelector } from '@/components/chat/ModelSelector';
 import { MarkdownContent } from '@/components/common/MarkdownContent';
 
@@ -74,7 +74,6 @@ function App() {
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('resources');
   const [activeCodeFileId, setActiveCodeFileId] = useState<string>('');
-  const [shareModalOpen, setShareModalOpen] = useState(false);
   const [rightPanelWidth, setRightPanelWidth] = useState(400);
   
   const [currentAnalysis, setCurrentAnalysis] = useState(mockAnalysisResult);
@@ -594,15 +593,7 @@ function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShareModalOpen(true)}
-              className="flex items-center gap-2 px-3 py-1.5 text-text-secondary hover:text-text-primary rounded-lg transition-all duration-150 hover:bg-white/5"
-            >
-              <Share className="w-4 h-4" />
-              <span className="text-sm">Share</span>
-            </button>
-          </div>
+          <div className="flex items-center gap-2" />
         </header>
 
         {/* Main Content Area */}
@@ -731,12 +722,6 @@ function App() {
         </div>
       </MainLayout>
 
-      {/* Share Modal */}
-      <ShareModal
-        isOpen={shareModalOpen}
-        onClose={() => setShareModalOpen(false)}
-        chatTitle="Analysis Session"
-      />
     </div>
   );
 }
