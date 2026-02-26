@@ -7,13 +7,18 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Set, Tuple
 
+from ghidra_agent.function_priority import is_library_function
+
 ENTRY_HINTS = {"main", "_start", "entry0", "entry", "start", "winmain"}
 
 SINK_PATTERNS = {
-    "Execution": {"system", "popen", "execve", "execv", "execl", "createprocess", "winexec"},
-    "Network": {"socket", "connect", "send", "sendto", "recv", "recvfrom", "wsastartup", "wsasocket"},
-    "File I/O": {"fopen", "fwrite", "fclose", "open", "write", "read"},
+    "Execution": {"system", "popen", "execve", "execv", "execl", "createprocess", "winexec", "pclose"},
+    "Network": {"socket", "connect", "send", "sendto", "recv", "recvfrom", "wsastartup", "wsasocket",
+                "gethostbyname", "getaddrinfo", "getnameinfo", "bind", "listen", "accept"},
+    "File I/O": {"fopen", "fwrite", "fclose", "open", "write", "read", "fread", "fopen64"},
     "Crypto": {"encrypt", "decrypt", "crypt", "aes", "rsa"},
+    "Recon": {"gethostname", "uname", "getifaddrs", "getpwuid", "getuid", "getenv", "getcwd", "readlink"},
+    "Timing": {"sleep", "usleep", "nanosleep", "poll", "select"},
 }
 
 MAX_CHAIN_DEPTH = 10
@@ -160,8 +165,24 @@ def analyze_call_graph(call_graph: Dict[str, Any]) -> Dict[str, Any]:
         if mapped and mapped in known_nodes:
             entry_candidates.append(mapped)
 
-    fallback_entries = _detect_entry_nodes(known_nodes, indegree)
-    entries = sorted(set(entry_candidates or fallback_entries))
+    # ALWAYS prefer ENTRY_HINTS (main, _start, entry0, etc.) if they exist in
+    # the graph.  For statically-linked binaries, Ghidra's entry_points list
+    # contains hundreds of OpenSSL/library exports which pollute the DFS.
+    hint_entries = [n for n in known_nodes if _normalize_name(n) in ENTRY_HINTS]
+
+    # Filter entry_candidates: remove library functions that are not useful
+    # starting points for attack-chain analysis.
+    app_candidates = [n for n in entry_candidates if not is_library_function(n)]
+
+    if hint_entries:
+        # Prefer hints; add a few app-level candidates as supplement
+        entries = sorted(set(hint_entries + app_candidates[:5]))
+    elif app_candidates:
+        entries = sorted(set(app_candidates[:15]))
+    else:
+        # Fallback: indegree-0 nodes or just first 5
+        fallback_entries = _detect_entry_nodes(known_nodes, indegree)
+        entries = sorted(set(fallback_entries))
     chains, cycles = _find_chains_and_cycles(adjacency, entries)
     adjacency_rows = [
         {

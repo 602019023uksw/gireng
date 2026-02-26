@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from html import escape
 from typing import Any, Dict, List
 
+from ghidra_agent.function_priority import is_library_function
 from ghidra_agent.ioc_extractor import IOCs, calculate_verdict, extract_iocs_from_state
 
 logger = logging.getLogger(__name__)
@@ -445,26 +446,44 @@ def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
-# Suspicious API patterns that indicate malicious or interesting behavior
-_SUSPICIOUS_APIS = {
-    "system", "popen", "execve", "execv", "execl", "exec", "fork",
+# ---------------------------------------------------------------------------
+# Suspicious API patterns for code evidence section.
+# Uses *word-boundary* matching (not substring) to avoid false positives.
+# ---------------------------------------------------------------------------
+
+# High-value APIs: always interesting in application code
+_HIGH_VALUE_APIS = {
+    "system", "popen", "pclose", "execve", "execv", "execl", "exec", "fork",
     "socket", "connect", "send", "sendto", "recv", "recvfrom", "bind", "listen", "accept",
-    "fopen", "fwrite", "open", "write", "read", "unlink", "remove", "rename",
-    "encrypt", "decrypt", "crypt", "aes", "rsa",
+    "fopen", "fwrite", "fread", "open", "write", "read", "unlink", "remove", "rename",
     "mmap", "mprotect", "ptrace", "dlopen", "dlsym",
+    "gethostname", "uname", "getifaddrs", "getpwuid", "getuid", "getenv", "getcwd",
+    "gethostbyname", "getaddrinfo", "getnameinfo",
+    "sleep", "usleep", "nanosleep", "poll", "select",
+    "snprintf", "sprintf", "sscanf", "strchr", "strcasecmp", "strftime",
     "createprocess", "winexec", "shellexecute", "virtualalloc", "virtualprotect",
     "writeprocessmemory", "createremotethread", "ntcreatethreadex",
     "regsetvalue", "regcreatekey", "createservice", "schtasks",
     "getprocaddress", "loadlibrary", "getenvironmentvariable",
-    "strcmp", "strstr", "memcpy", "memset", "malloc", "free", "realloc",
 }
+
+# APIs that are only interesting in *non-library* functions (too noisy otherwise)
+_CONTEXT_APIS = {
+    "encrypt", "decrypt", "crypt", "aes", "rsa",
+    "malloc", "free", "realloc", "memcpy", "memset",
+    "strcmp", "strstr",
+}
+
+# Compiled word-boundary regex for each API
+_API_WORD_RE = {api: re.compile(r'\b' + re.escape(api) + r'\b', re.IGNORECASE) for api in (_HIGH_VALUE_APIS | _CONTEXT_APIS)}
 
 
 def _render_code_evidence(state: Dict[str, Any]) -> str:
     """Render code evidence section showing malicious/interesting code snippets.
 
-    Scans all decompiled functions for suspicious API calls and renders
-    the relevant lines with their function name and address context.
+    Scans decompiled functions for suspicious API calls.  Library functions
+    (OpenSSL, zlib, libc internals) are excluded to reduce noise.
+    Application-code functions are rendered first.
     """
     decomp_cache = state.get("decompilation_cache", {})
     r2_decomp_cache = state.get("r2_decompilation_cache", {})
@@ -477,23 +496,36 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
         for f in flist:
             addr_map[f.get("name", "")] = f.get("address", "?")
 
-    evidence_blocks: List[str] = []
+    app_blocks: List[str] = []   # Non-library function blocks
+    lib_blocks: List[str] = []   # Library function blocks (shown after app)
 
     for source, cache in [("Ghidra", decomp_cache), ("Radare2", r2_decomp_cache)]:
         for func_name, code in cache.items():
-            code_lower = code.lower()
-            # Check if function contains suspicious API calls
-            found_apis = [api for api in _SUSPICIOUS_APIS if api in code_lower]
+            is_lib = is_library_function(func_name)
+
+            # Choose which API set to match against
+            api_set = _HIGH_VALUE_APIS if is_lib else (_HIGH_VALUE_APIS | _CONTEXT_APIS)
+
+            # Word-boundary matching (not substring)
+            found_apis = [api for api in api_set if _API_WORD_RE[api].search(code)]
             if not found_apis:
                 continue
+
+            # For library functions, only keep if genuinely high-value API found
+            if is_lib:
+                # Skip library functions that only match generic crypto names
+                non_crypto = [a for a in found_apis if a not in _CONTEXT_APIS]
+                if not non_crypto:
+                    continue
+                found_apis = non_crypto
 
             addr = addr_map.get(func_name, "?")
 
             # Extract the specific lines containing the suspicious calls (max 10 lines)
             interesting_lines: List[str] = []
             for line in code.split("\n"):
-                line_lower = line.strip().lower()
-                if any(api in line_lower for api in found_apis):
+                line_stripped = line.strip()
+                if any(_API_WORD_RE[api].search(line_stripped) for api in found_apis):
                     interesting_lines.append(line.rstrip())
                     if len(interesting_lines) >= 10:
                         break
@@ -504,7 +536,7 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
             snippet = escape("\n".join(interesting_lines))
             apis_str = ", ".join(sorted(set(found_apis)))
 
-            evidence_blocks.append(
+            block = (
                 f'<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;">'
                 f'<div style="background:#1f2937;color:white;padding:8px 14px;font-family:\'Roboto Mono\',monospace;font-size:0.82rem;">'
                 f'<strong>[{escape(source)}]</strong> {escape(func_name)} @ {escape(str(addr))} — '
@@ -512,6 +544,14 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
                 f'<pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;">'
                 f'<code>{snippet}</code></pre></div>'
             )
+
+            if is_lib:
+                lib_blocks.append(block)
+            else:
+                app_blocks.append(block)
+
+    # Application-logic functions first, then library (capped at 5)
+    evidence_blocks = app_blocks + lib_blocks[:5]
 
     if not evidence_blocks:
         return '<div class="text-gray-500 italic">No suspicious API calls detected in decompiled code.</div>'

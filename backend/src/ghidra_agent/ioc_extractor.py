@@ -64,6 +64,16 @@ _DOMAIN_CANDIDATE_PATTERN = re.compile(
 )
 
 
+# ELF section names / linker artifacts that look like domains but aren't
+_ELF_SECTION_NAMES = frozenset({
+    "data.rel.ro", "data.rel.ro.local", "note.gnu.build",
+    "note.ABI-tag", "note.gnu.property", "init.array",
+    "fini.array", "eh.frame", "eh.frame.hdr",
+    "gcc.except.table", "gnu.hash", "gnu.version",
+    "plt.got", "plt.sec",
+})
+
+
 def _is_valid_domain(match_str: str) -> bool:
     """Check if a domain candidate has a valid IANA TLD."""
     parts = match_str.rsplit('.', 1)
@@ -72,8 +82,11 @@ def _is_valid_domain(match_str: str) -> bool:
     tld = parts[1].lower()
     if tld not in IANA_TLDS:
         return False
-    # Filter out common library filenames and ELF artifacts
+    # Filter ELF section names
     name_lower = match_str.lower()
+    if name_lower in _ELF_SECTION_NAMES:
+        return False
+    # Filter out common library filenames and ELF artifacts
     if any(name_lower.endswith(ext) for ext in ('.so', '.o', '.a', '.dylib')):
         return False
     if any(name_lower.startswith(pfx) for pfx in ('lib', 'note.', 'ld-', 'ld.')):
@@ -99,6 +112,17 @@ WINDOWS_PATH_PATTERN = re.compile(
     r'[A-Za-z]:\\(?:[^\\/:*?"<>|\r\n]+\\)*[^\\/:*?"<>|\r\n]*',
     re.IGNORECASE
 )
+
+# Patterns that indicate a string is a library/OpenSSL identifier, not a mutex
+_LIBRARY_MUTEX_NOISE = re.compile(
+    r'(?i)'
+    r'(?:^(?:id-|oid-|nid|pkcs|rsa|dsa|ecdsa|sha|aes|des|evp|ssl|tls|x509|asn1))'      # OpenSSL prefixes
+    r'|(?:(?:With|Encryption|Signature|Digest|Algorithm|Certificate)$)'                    # OpenSSL suffixes
+    r'|(?:^(?:NID_|OBJ_|EVP_|SSL_|BIO_|RSA_|EC_|X509_|ASN1_|PEM_|OPENSSL_|CRYPTO_))'    # OpenSSL API prefixes
+    r'|(?:(?:data|text|rodata|bss|symtab|strtab|shstrtab|dynsym|dynstr|rela?\.)'           # ELF sections
+    r'|(?:^[a-z]{2,6}(?:With|And)[A-Z]))'                                                 # camelCase OID-style
+)
+
 
 # Windows Registry patterns
 REGISTRY_PATTERN = re.compile(
@@ -186,7 +210,8 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
                 iocs.file_paths.append(path)
 
         for path in WINDOWS_PATH_PATTERN.findall(value):
-            if path not in seen_paths and len(path) > 3:
+            # Require meaningful path content: at least 6 chars and a subdirectory
+            if path not in seen_paths and len(path) >= 6 and '\\' in path[3:]:
                 seen_paths.add(path)
                 iocs.file_paths.append(path)
 
@@ -204,8 +229,9 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
 
         # Extract potential mutexes/event names (long alphanumeric strings)
         # Require mixed case or special patterns to reduce false positives
+        # Filter out library identifiers (OpenSSL OIDs, ELF symbol names, etc.)
         if len(value) >= 16 and value.isalnum() and not value.isdigit() and not value.islower() and not value.isupper():
-            if value not in seen_mutexes:
+            if value not in seen_mutexes and not _LIBRARY_MUTEX_NOISE.search(value):
                 seen_mutexes.add(value)
                 iocs.mutexes.append(value)
 

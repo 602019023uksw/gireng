@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malware Analysis Report - kworofd</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
+        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
+        .font-mono { font-family: 'Roboto Mono', monospace; }
+        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
+        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
+        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
+        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
+        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
+        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
+        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
+        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
+        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
+        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
+        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
+        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
+        .markdown-content li { margin-bottom: 6px; }
+        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
+        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
+        .markdown-content pre code { color: #374151; background: none; padding: 0; }
+        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
+        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
+        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
+        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
+        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
+        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
+        .finding-desc { color: #4b5563; }
+        /* Utility classes used by markdown renderer */
+        .w-full { width: 100%; }
+        .text-left { text-align: left; }
+        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
+        .text-xs { font-size: 0.75rem; line-height: 1rem; }
+        .text-gray-500 { color: #6b7280; }
+        .text-gray-600 { color: #4b5563; }
+        .text-gray-800 { color: #1f2937; }
+        .italic { font-style: italic; }
+        .font-bold { font-weight: 700; }
+        .break-all { word-break: break-all; }
+        .list-disc { list-style-type: disc; }
+        .pl-4 { padding-left: 1rem; }
+        .pl-6 { padding-left: 1.5rem; }
+        .pt-half { padding-top: 0.125rem; }
+        .pb-4 { padding-bottom: 1rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-3 { margin-bottom: 0.75rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .gap-4 { gap: 1rem; }
+        .items-start { align-items: flex-start; }
+        .flex { display: flex; }
+        .flex-shrink-0 { flex-shrink: 0; }
+        .space-y-4 > * + * { margin-top: 1rem; }
+        .border-b { border-bottom: 1px solid #e5e7eb; }
+        .border-dashed { border-style: dashed; }
+        .border-gray-200 { border-color: #e5e7eb; }
+
+        .leading-relaxed { line-height: 1.625; }
+        .uppercase { text-transform: uppercase; }
+        .border-l-2 { border-left: 2px solid; }
+        .border-gray-300 { border-color: #d1d5db; }
+        .pl-3 { padding-left: 0.75rem; }
+        .border-collapse { border-collapse: collapse; }
+        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
+    </style>
+</head>
+<body>
+    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
+        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
+            Print / Save PDF
+        </button>
+    </div>
+
+    <div class="page-container">
+        <!-- Header -->
+        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
+            <div>
+                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
+                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
+                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
+            </div>
+        </div>
+
+        <!-- Metadata -->
+        <div class="meta-box">
+            <div>
+                <div class="meta-label">File Name</div>
+                <div class="font-mono">kworofd</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Analysis ID</div>
+                <div class="font-mono">791ed6fc</div>
+            </div>
+            <div>
+                <div class="meta-label">Date Generated</div>
+                <div>2026-02-25 16:16 UTC</div>
+            </div>
+            <div style="text-align: right;">
+                <div class="meta-label" style="text-align: right;">Classification</div>
+                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
+            </div>
+        </div>
+
+        <!-- Risk Banner -->
+        <div class="risk-banner risk-high">
+            THREAT ASSESSMENT: SUSPICIOUS
+        </div>
+
+        
+        <!-- Executive Summary -->
+        <div>
+            <h2 class="section-header">1. Executive Summary</h2>
+            <div class="markdown-content"><p class="mb-3">The analyzed binary is a statically linked x86_64 ELF executable containing a substantial implementation of the OpenSSL cryptographic library. The primary capabilities observed in the decompiled code include advanced cryptographic transformations (AES, SHA, SEED), SSL/TLS protocol handling (SSLv3, DTLS), and data compression routines.</p>
+
+<p class="mb-3">While the code structure is typical of a legitimate cryptographic library, the presence of embedded strings referencing Google APIs—specifically for OAuth2 (<code>oauth2.googleapis.com</code>) and Google Sheets (<code>sheets.googleapis.com</code>)—along with specific access scopes, suggests the binary is a custom-built tool or client designed to communicate with these services. The binary utilizes static linking to obscure dependencies and includes hardware-optimized crypto routines (AES-NI). Based on the provided code snippets, which consist entirely of standard library implementations for cryptography and networking without explicit malicious payload logic (such as data exfiltration or system exploitation), the binary is assessed as <strong>Suspicious</strong>. It exhibits the infrastructure for encrypted communication but lacks the visible code to definitively classify it as malware, though the hardcoded Google API strings are atypical for standard library builds and warrant caution.</p></div>
+        </div>
+
+        <!-- Malware Capabilities -->
+        <div>
+            <h2 class="section-header">2. Malware Capabilities</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Capability</strong>: Cryptographic Operations (AES, SHA, SEED)</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>SEED_encrypt</code> @ <code>0x00465d00</code> — <code>uVar9 = (uint)s[8] &lt;&lt; 0x18 | (uint)s[9] &lt;&lt; 0x10 | (uint)s[0xb] | (uint)s[10] &lt;&lt; 8;</code></li>
+<li class="mb-2"><strong>Capability</strong>: AES-NI Hardware Acceleration</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>aesni_cbc_encrypt</code> @ <code>0x004e3780</code> — Referenced in exports/imports lists and call graph (<code>AESNI-CBC+SHA1 stitch for x86_64</code>).</li>
+<li class="mb-2"><strong>Capability</strong>: SSL/TLS Handshake (Client &amp; Server)</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>ssl3_connect</code> @ <code>0x0040d050</code> — Referenced in Ghidra exports/imports.</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>dtls1_connect</code> @ <code>0x00436920</code> — Referenced in Ghidra exports/imports.</li>
+<li class="mb-2"><strong>Capability</strong>: Session State Parsing (ASN.1)</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>d2i_SSL_SESSION</code> @ <code>0x00419450</code> — <code>pSVar5 = (SSL_SESSION *)FUN_00419450();</code></li>
+<li class="mb-2"><strong>Capability</strong>: Data Compression (Inflate)</li>
+<li class="mb-2"><strong>Evidence</strong>: <code>FUN_004f146f</code> @ <code>0x004f146f</code> — <code>if (*puVar3 == 0xb) { *puVar3 = 0xc; }</code> (Gzip header processing).</li>
+<li class="mb-2"><strong>Capability</strong>: Google API Communication Strings</li>
+<li class="mb-2"><strong>Evidence</strong>: String <code>oauth2.googleapis.com</code> @ <code>0x...</code> (found in Strings list).</li>
+</ul></div>
+        </div>
+
+        <!-- Binary Information -->
+        <div>
+            <h2 class="section-header">3. Binary Information</h2>
+            <div class="markdown-content"><table class="w-full text-left border-collapse"><tr><th>Property</th><th>Value</th></tr><tr><td>SHA256</td><td>fd043489720558128f03b9b42e4a85eb1b6b9ea61023bd64ada94b2b20de198c</td></tr><tr><td>Architecture</td><td>x86</td></tr><tr><td>Type</td><td>ELF/PE (inferred)</td></tr><tr><td>Image Base</td><td>00400000</td></tr><tr><td>Entry Point</td><td>0074a600, 0074abc0, 0074dc40, 0047d080, 00748760, 0074e440, 0041c6b0, 0046a9d0, 0046b160, 00767698, 0074e1c0, 0074e380, 0047fbd0, 0074a980, 0043e2d0, 0074df00, 0074bee0, 0074ae80, 0074e740, 0074b140, 0074bd60, 0046c340, 0074bb80, 00485830, 00483200, 0043f110, 0074dfc0, 00490df0, 0074ad80, 0074c160, 004c18e0, 0074d460, 00486610, 00748660, 0074bd20, 0046c1d0, 004ac750, 0044dcc0, 004d9710, 0074cfe0, 0074b480, 0074b580, 00750e80, 0074a840, 004cf0a0, 004a1b00, 00759be0, 004a1d50, 0074a9c0, 00765b68, 0074b4c0, 0074aa80, 0074a480, 0074c2e0, 00451e00, 0074dc00, 0074b6c0, 004a1be0, 0074e080, 00437e90, 0074ac00, 0074c120, 0044dcd0, 00748860, 0044d680, 0046aee0, 0074b9c0, 00472fb0, 0074cf60, 0074b340, 00485820, 007486a0, 0075e540, 0045fdc0, 0074c3e0, 004069f0, 0074be60, 0074e4c0, 004a71f0, 004ad920, 0074b600, 0074bf20, 0049dce0, 0044dbf0, 0074a780, 004ad280, 0074bce0, 0046b150, 0074ddc0, 00488d40, 0074aa00, 0074c320, 004dea30, 00406ab0, 0074c0a0, 0049dcc0, 004a2e30, 0049fc30, 0074b500, 004dea20, 0074acc0, 0046b850, 0074c2a0, 00446960, 0074ad40, 0046cad0, 0074b0c0, 0043f680, 00423580, 0046b7e0, 00447490, 0049f8d0, 0074e280, 0074e5c0, 0074afc0, 0074c220, 00748a80, 0074dd40, 0074ae00, 004a3640, 0074bca0, 004cf080, 0074e480, 0046af90, 0047cee0, 0074b3c0, 004a0ec0, 0046c550, 004cf980, 004c3a70, 0046ae40, 0074c3a0, 0074b380, 00483320, 0074d5a0, 0074b080, 0074bda0, 0074aa40, 0074be20, 004cfba0, 0074c260, 0074dcc0, 0074b040, 0074d560, 0074a7c0, 0074a4c0, 004717d0, 004ad900, 00472fa0, 004adf80, 0042c870, 00469120, 00406e10, 0074b000, 0074e640, 007487e0, 0074b100, 00472f90, 0044d6c0, 0074ba80, 0075e5a0, 0044d6b0, 0048cb10, 0074ac40, 004ac640, 0074e040, 004b3f40, 0074a880, 0074d6e0, 0074b180, 0074bea0, 0074a940, 0048a860, 00458800, 0074e140, 007487a0, 004ad1b0, 0074d4a0, 0074bb40, 0074b680, 004cfa10, 0046c240, 0074a900, 0047cd10, 0048ca70, 0041d780, 00438c90, 004831f0, 0074ad00, 0074c0e0, 0074b440, 0046b0b0, 0074e180, 0044d670, 0074b5c0, 004832e0, 0074ba00, 00412b40, 00763e88, 0074d520, 00767690, 0074bde0, 00488560, 0046b170, 0074bac0, 00748620, 0074e500, 004b3f60, 0074c1a0, 004a0410, 0074e3c0, 004cfb90, 004a26b0, 00446ef0, 0074bf60, 0046c250, 0046c570, 0046c210, 0074a580, 004a81a0, 0074ab80, 0046ade0, 007485e0, 004cfa40, 0049f420, 0074c1e0, 00424180, 0074ab40, 0074ab00, 0074e600, 004cfb80, 0074d660, 0044dc00, 007631e0, 0074de80, 004ae0a0, 00471b30, 0074bb00, 00413580, 004a0e80, 0074c360, 0046b190, 0074ae40, 0074e300, 0074b740, 0074d3e0, 0074b700, 0074b8c0, 004c3b10, 0074dd00, 0046b020, 0049dca0, 004cf9e0, 0074b900, 0074b540, 0074b400, 0044ceb0, 00470e40, 0074a740, 0074a500, 0074e240, 0074c420, 0074dd80, 00480f00, 0043ee20, 00763420, 0074dc80, 0074ac80, 00406f00, 00406880, 004f4718</td></tr><tr><td>Compiler</td><td>ghidra.program.database.ProgramCompilerSpec@511d31a6</td></tr><tr><td>Ghidra Imports</td><td>&lt;EXTERNAL&gt;::tcsetattr, &lt;EXTERNAL&gt;::fileno, &lt;EXTERNAL&gt;::printf, &lt;EXTERNAL&gt;::memset, &lt;EXTERNAL&gt;::ftell, &lt;EXTERNAL&gt;::snprintf, &lt;EXTERNAL&gt;::shutdown, &lt;EXTERNAL&gt;::close, &lt;EXTERNAL&gt;::ioctl, &lt;EXTERNAL&gt;::abort, &lt;EXTERNAL&gt;::memchr, &lt;EXTERNAL&gt;::gethostbyname, &lt;EXTERNAL&gt;::uname, &lt;EXTERNAL&gt;::fseek, &lt;EXTERNAL&gt;::exit, &lt;EXTERNAL&gt;::__assert_fail, &lt;EXTERNAL&gt;::strcasecmp, &lt;EXTERNAL&gt;::gettimeofday, &lt;EXTERNAL&gt;::read, &lt;EXTERNAL&gt;::strncmp, &lt;EXTERNAL&gt;::fopen, &lt;EXTERNAL&gt;::__libc_start_main, &lt;EXTERNAL&gt;::gmtime, &lt;EXTERNAL&gt;::setsockopt, &lt;EXTERNAL&gt;::getpid, &lt;EXTERNAL&gt;::fgets, &lt;EXTERNAL&gt;::getpwuid, &lt;EXTERNAL&gt;::vfprintf, &lt;EXTERNAL&gt;::__strtoul_internal, &lt;EXTERNAL&gt;::__strdup, &lt;EXTERNAL&gt;::fputc, &lt;EXTERNAL&gt;::strlen, &lt;EXTERNAL&gt;::ferror, &lt;EXTERNAL&gt;::opendir, &lt;EXTERNAL&gt;::__xstat, &lt;EXTERNAL&gt;::pclose, &lt;EXTERNAL&gt;::listen, &lt;EXTERNAL&gt;::__ctype_b_loc, &lt;EXTERNAL&gt;::readdir, &lt;EXTERNAL&gt;::sprintf, &lt;EXTERNAL&gt;::__strtol_internal, &lt;EXTERNAL&gt;::strrchr, &lt;EXTERNAL&gt;::sscanf, &lt;EXTERNAL&gt;::sleep, &lt;EXTERNAL&gt;::poll, &lt;EXTERNAL&gt;::strerror, &lt;EXTERNAL&gt;::strstr, &lt;EXTERNAL&gt;::sigaction, &lt;EXTERNAL&gt;::getifaddrs, &lt;EXTERNAL&gt;::strcat, &lt;EXTERNAL&gt;::getsockopt, &lt;EXTERNAL&gt;::fputs, &lt;EXTERNAL&gt;::readlink, &lt;EXTERNAL&gt;::connect, &lt;EXTERNAL&gt;::gethostname, &lt;EXTERNAL&gt;::tcgetattr, &lt;EXTERNAL&gt;::memcpy, &lt;EXTERNAL&gt;::signal, &lt;EXTERNAL&gt;::memmove, &lt;EXTERNAL&gt;::strchr, &lt;EXTERNAL&gt;::socket, &lt;EXTERNAL&gt;::fread, &lt;EXTERNAL&gt;::__fxstat, &lt;EXTERNAL&gt;::getenv, &lt;EXTERNAL&gt;::__errno_location, &lt;EXTERNAL&gt;::qsort, &lt;EXTERNAL&gt;::strncasecmp, &lt;EXTERNAL&gt;::getnameinfo, &lt;EXTERNAL&gt;::strcmp, &lt;EXTERNAL&gt;::getcwd, &lt;EXTERNAL&gt;::strcpy, &lt;EXTERNAL&gt;::strtok, &lt;EXTERNAL&gt;::freeifaddrs, &lt;EXTERNAL&gt;::srand, &lt;EXTERNAL&gt;::getuid, &lt;EXTERNAL&gt;::__ctype_tolower_loc, &lt;EXTERNAL&gt;::calloc, &lt;EXTERNAL&gt;::feof, &lt;EXTERNAL&gt;::fclose, &lt;EXTERNAL&gt;::strncpy, &lt;EXTERNAL&gt;::closedir, &lt;EXTERNAL&gt;::fopen64, &lt;EXTERNAL&gt;::bind, &lt;EXTERNAL&gt;::fwrite, &lt;EXTERNAL&gt;::perror, &lt;EXTERNAL&gt;::rand, &lt;EXTERNAL&gt;::fprintf, &lt;EXTERNAL&gt;::localtime, &lt;EXTERNAL&gt;::write, &lt;EXTERNAL&gt;::strftime, &lt;EXTERNAL&gt;::accept, &lt;EXTERNAL&gt;::popen, &lt;EXTERNAL&gt;::open, &lt;EXTERNAL&gt;::time, &lt;EXTERNAL&gt;::fflush, &lt;EXTERNAL&gt;::getservbyname, &lt;EXTERNAL&gt;::malloc, &lt;EXTERNAL&gt;::free, &lt;EXTERNAL&gt;::realloc, &lt;EXTERNAL&gt;::__gmon_start__</td></tr><tr><td>Ghidra Exports</td><td>X509_ATTRIBUTE_it, ASN1_IA5STRING_it, EXTENDED_KEY_USAGE_it, X509_STORE_get1_certs, DSA_SIG_it, CMS_RecipientInfo_it, d2i_SSL_SESSION, X509_ALGOR_free, i2d_X509_SIG, sigx_app, CMS_RecipientKeyIdentifier_it, CMS_KEKRecipientInfo_it, X509_VERIFY_PARAM_free, ASN1_INTEGER_it, MD5_Transform, CMS_CertificateChoices_it, PKCS7_DIGEST_it, DIRECTORYSTRING_it, CMS_SharedInfo_it, PBKDF2PARAM_it, PKCS7_ISSUER_AND_SERIAL_it, i2d_X509_AUX, PROXY_CERT_INFO_EXTENSION_it, POLICYINFO_free, GENERAL_NAME_free, SHA256_Transform, CMS_SignerInfo_it, OCSP_RESPID_free, ASN1_ANY_it, OCSP_REQINFO_it, DSA_new, X509_REQ_INFO_it, DIST_POINT_free, RSA_PSS_PARAMS_it, PKCS7_SIGNER_INFO_it, X509_free, gcm_ghash_4bit, d2i_DSAparams, policy_node_free, DHxparams_it, SXNETID_it, POLICYQUALINFO_it, X509_NAME_it, X509_CINF_it, d2i_X509_REQ, aesni_ccm64_encrypt_blocks, ssl3_ciphers, aesni_ctr32_encrypt_blocks, ASN1_ENUMERATED_it, app_pkey_methods, SXNET_it, ASN1_NULL_it, X509_ALGOR_it, OCSP_CERTSTATUS_it, BIO_vfree, BASIC_CONSTRAINTS_it, DIST_POINT_it, aesni_ccm64_decrypt_blocks, CMS_SignedData_it, ssl3_accept, ASN1_GENERALSTRING_it, OCSP_ONEREQ_it, d2i_DSAPrivateKey, DSAPublicKey_it, i2d_RSAPrivateKey, i2d_RSA_PUBKEY, AUTHORITY_KEYID_it, d2i_PKCS8_PRIV_KEY_INFO, DHparams_it, OTHERNAME_it, POLICYQUALINFO_free, RSA_OAEP_PARAMS_it, x509_file_lookup, EVP_PKEY_new, OCSP_CRLID_it, &lt;EXTERNAL&gt;::malloc, PKCS7_SIGN_ENVELOPE_it, CMS_DigestedData_it, SEED_encrypt, gcm_ghash_avx, NOTICEREF_it, PKCS7_ATTR_SIGN_it, vpaes_cbc_encrypt, i2d_DSAparams, X509_NAME_ENTRIES_it, gcm_ghash_clmul, PKCS7_SIGNED_it, X509_SIG_new, PKCS12_AUTHSAFES_it, POLICY_MAPPING_free, ASN1_BIT_STRING_it, OCSP_SINGLERESP_it, d2i_CMS_ContentInfo, &lt;EXTERNAL&gt;::free, OCSP_SIGNATURE_it, vpaes_decrypt, aesni_xts_decrypt, bsaes_xts_encrypt, CERTIFICATEPOLICIES_it, i2d_CMS_ContentInfo, ASN1_VISIBLESTRING_it, X509_NAME_ENTRY_free, OCSP_REVOKEDINFO_it, AES_encrypt, ASN1_BMPSTRING_it, d2i_AutoPrivateKey, PBEPARAM_it, SHA512_Transform, ssl3_connect, X509_NAME_free, AES_cbc_encrypt, bsaes_ctr32_encrypt_blocks, CMS_OriginatorPublicKey_it, CMS_ContentInfo_it, ASN1_SEQUENCE_ANY_it, OCSP_RESPONSE_it, dhx_asn1_meth, PKCS12_SAFEBAG_it, ASN1_PRINTABLE_it, aesni_cbc_encrypt, PKCS7_it, i2d_X509_REQ, CMS_EnvelopedData_it, d2i_PUBKEY, X509_STORE_get1_crls, GENERAL_NAME_it, aesni_decrypt, i2d_X509_CERT_PAIR, X509_CRL_free, i2d_DHxparams, i2d_DSA_PUBKEY, OCSP_BASICRESP_it, EDIPARTYNAME_it, d2i_GENERAL_NAME, X509_CRL_it, X509_EXTENSIONS_it, PKCS7_ENVELOPE_it, ASN1_OCTET_STRING_it, PKCS7_ENC_CONTENT_it, i2d_PrivateKey, OCSP_RESPID_it, PKCS12_MAC_DATA_it, X509_EXTENSION_it, X509_CRL_INFO_it, X509_NAME_INTERNAL_it, X509_ALGORS_it, X509_EXTENSION_free, gcm_gmult_avx, i2d_PKCS8_PRIV_KEY_INFO, BN_sub, dtls1_connect, ASN1_OBJECT_free, &lt;EXTERNAL&gt;::realloc, ASN1_SET_ANY_it, CMS_Attributes_Verify_it, DSAparams_it, PBE2PARAM_it, PKCS8_PRIV_KEY_INFO_new, d2i_RSAPrivateKey, POLICY_CONSTRAINTS_it, x509_dir_lookup, d2i_RSAPublicKey, d2i_PKCS7, ASN1_UTCTIME_it, gcm_gmult_4bit, CMS_RevocationInfoChoice_it, BN_pseudo_rand, X509_it, NETSCAPE_CERT_SEQUENCE_it, PKCS8_PRIV_KEY_INFO_it, PKCS7_ENCRYPT_it, X509_CERT_PAIR_it, policy_data_free, lh_strhash, CMS_KeyTransRecipientInfo_it, DSAPrivateKey_it, gcm_gmult_clmul, X509_REQ_it, PROXY_POLICY_it, DIST_POINT_NAME_it, d2i_X509_CRL, d2i_X509, X509_CERT_AUX_it, X509_STORE_CTX_get1_issuer, i2d_PKCS7, i2d_SSL_SESSION, dtls1_accept, GENERAL_NAMES_free, ASN1_UNIVERSALSTRING_it, OCSP_CERTID_it, PKEY_USAGE_PERIOD_it, d2i_RSA_PUBKEY, CMS_OtherKeyAttribute_it, i2d_RSAPublicKey, USERNOTICE_it, i2d_GENERAL_NAME, POLICY_MAPPING_it, ssl_cipher_ptr_id_cmp, obj_cleanup_defer, X509_REVOKED_it</td></tr><tr><td>Functions (Ghidra)</td><td>4217 total (40 decompiled)</td></tr><tr><td>Functions (R2)</td><td>2066 total (40 decompiled)</td></tr><tr><td>R2 Architecture</td><td>x86 (64-bit)</td></tr><tr><td>R2 OS</td><td>linux</td></tr><tr><td>R2 Imports</td><td>tcsetattr, fileno, printf, memset, ftell, snprintf, shutdown, close, ioctl, abort, memchr, gethostbyname, __gmon_start__, uname, fseek, exit, __assert_fail, strcasecmp, gettimeofday, read, strncmp, fopen, __libc_start_main, gmtime, setsockopt, getpid, fgets, getpwuid, vfprintf, __strtoul_internal, __strdup, fputc, strlen, ferror, opendir, __xstat, pclose, listen, __ctype_b_loc, readdir, sprintf, stdin, __strtol_internal, strrchr, sscanf, sleep, poll, strerror, strstr, sigaction, getifaddrs, strcat, getsockopt, fputs, readlink, connect, gethostname, tcgetattr, memcpy, signal, memmove, strchr, socket, fread, __fxstat, getenv, __errno_location, qsort, strncasecmp, getnameinfo, strcmp, getcwd, strcpy, strtok, freeifaddrs, srand, getuid, __ctype_tolower_loc, calloc, feof, fclose, strncpy, closedir, stderr, fopen64, bind, fwrite, perror, rand, fprintf, localtime, write, strftime, accept, popen, open, time, fflush, getservbyname, malloc</td></tr><tr><td>R2 Exports</td><td>X509_ATTRIBUTE_it, ASN1_IA5STRING_it, EXTENDED_KEY_USAGE_it, X509_STORE_get1_certs, DSA_SIG_it, CMS_RecipientInfo_it, d2i_SSL_SESSION, X509_ALGOR_free, i2d_X509_SIG, sigx_app, CMS_RecipientKeyIdentifier_it, CMS_KEKRecipientInfo_it, X509_VERIFY_PARAM_free, ASN1_INTEGER_it, MD5_Transform, CMS_CertificateChoices_it, PKCS7_DIGEST_it, DIRECTORYSTRING_it, CMS_SharedInfo_it, PBKDF2PARAM_it, PKCS7_ISSUER_AND_SERIAL_it, i2d_X509_AUX, PROXY_CERT_INFO_EXTENSION_it, POLICYINFO_free, GENERAL_NAME_free, SHA256_Transform, CMS_SignerInfo_it, OCSP_RESPID_free, ASN1_ANY_it, OCSP_REQINFO_it, DSA_new, X509_REQ_INFO_it, DIST_POINT_free, RSA_PSS_PARAMS_it, PKCS7_SIGNER_INFO_it, X509_free, gcm_ghash_4bit, d2i_DSAparams, policy_node_free, DHxparams_it, SXNETID_it, POLICYQUALINFO_it, X509_NAME_it, X509_CINF_it, d2i_X509_REQ, aesni_ccm64_encrypt_blocks, ssl3_ciphers, aesni_ctr32_encrypt_blocks, ASN1_ENUMERATED_it, app_pkey_methods, SXNET_it, ASN1_NULL_it, X509_ALGOR_it, OCSP_CERTSTATUS_it, BIO_vfree, BASIC_CONSTRAINTS_it, DIST_POINT_it, aesni_ccm64_decrypt_blocks, CMS_SignedData_it, ssl3_accept, ASN1_GENERALSTRING_it, OCSP_ONEREQ_it, d2i_DSAPrivateKey, DSAPublicKey_it, i2d_RSAPrivateKey, i2d_RSA_PUBKEY, AUTHORITY_KEYID_it, d2i_PKCS8_PRIV_KEY_INFO, DHparams_it, OTHERNAME_it, POLICYQUALINFO_free, RSA_OAEP_PARAMS_it, x509_file_lookup, EVP_PKEY_new, OCSP_CRLID_it, PKCS7_SIGN_ENVELOPE_it, CMS_DigestedData_it, SEED_encrypt, gcm_ghash_avx, NOTICEREF_it, PKCS7_ATTR_SIGN_it, vpaes_cbc_encrypt, i2d_DSAparams, X509_NAME_ENTRIES_it, gcm_ghash_clmul, PKCS7_SIGNED_it, X509_SIG_new, PKCS12_AUTHSAFES_it, POLICY_MAPPING_free, ASN1_BIT_STRING_it, OCSP_SINGLERESP_it, d2i_CMS_ContentInfo, OCSP_SIGNATURE_it, vpaes_decrypt, aesni_xts_decrypt, bsaes_xts_encrypt, CERTIFICATEPOLICIES_it, i2d_CMS_ContentInfo, ASN1_VISIBLESTRING_it, X509_NAME_ENTRY_free</td></tr><tr><td>Strings (Ghidra)</td><td>5852 extracted</td></tr><tr><td>Strings (R2)</td><td>5215 extracted</td></tr></table></div>
+        </div>
+
+        <!-- Technical Analysis -->
+        <div>
+            <h2 class="section-header">4. Technical Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
+            <div class="markdown-content"><strong>Cryptographic Library Implementation</strong>
+<p class="mb-3">The binary contains a full suite of cryptographic functions characteristic of the OpenSSL library. This includes low-level assembly implementations of AES (with Intel AES-NI support), SHA-1, SHA-256, SHA-512, and the SEED cipher. The presence of optimizations like &quot;AESNI-CBC+SHA1 stitch&quot; and &quot;gcm_ghash_clmul&quot; indicates a focus on performance.</p>
+
+<strong>SSL/TLS Protocol Stack</strong>
+<p class="mb-3">Functions for SSLv3 and DTLS (Datagram TLS) are present (<code>ssl3_connect</code>, <code>ssl3_accept</code>, <code>dtls1_connect</code>). The code handles session resumption via <code>d2i_SSL_SESSION</code>, parsing ASN.1 encoded session data. This suggests the binary acts as a secure client or server agent.</p>
+
+<strong>Embedded API Strings</strong>
+<p class="mb-3">Unlike standard library builds, this binary includes hardcoded JSON templates and URLs for Google&#x27;s OAuth2 and Sheets API. This implies the binary is a statically linked utility designed to authenticate and interact with Google services, likely using Sheets as a transport or storage mechanism.</p>
+
+<strong>Code Evidence</strong> (<code>FUN_004f146f</code> @ <code>0x004f146f</code>):
+<pre><code>// Function handles gzip decompression (inflate)
+if (*puVar3 == 0xb) {
+  *puVar3 = 0xc;
+}
+// ... parsing headers ...
+uVar23 = uVar23 + ((ulong)*local_70 &lt;&lt; ((byte)uVar21 &amp; 0x3f));
+</code></pre></div>
+        </div>
+
+        <!-- Functions Analysis -->
+        <div>
+            <h2 class="section-header">5. Functions Analysis</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
+            <div class="markdown-content"><strong>[FUN_0045a240] @ [0x0045a240] ([1733] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Error logging/wrapper function (Standard OpenSSL error handling).</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard library function.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Sets error queue state
+iVar4 = (*(int *)(lVar2 + 0x250) + 1) % 0x10;
+*(int *)(lVar2 + 0x250) = iVar4;
+</code></pre>
+
+<strong>[FUN_00496300] @ [0x00496300] ([7] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: SHA1 Transform / Cryptographic Hashing.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard crypto.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Bit rotation and mixing typical of SHA1
+uVar4 = uVar4 + 0x5a827999 + ((uVar5 ^ uVar10) &amp; uVar1 ^ uVar5) + uVar3 + (uVar11 &lt;&lt; 5 | uVar11 &gt;&gt; 0x1b);
+</code></pre>
+
+<strong>[FUN_00499500] @ [0x00499500] ([7] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: SHA256 Transform / Cryptographic Hashing.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard crypto.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// SHA-256 constants and mixing logic
+uVar28 = uVar11 + 0x5a827999 + uVar8 + (uVar13 * 0x20 | uVar13 &gt;&gt; 0x1b) + ((uVar11 ^ uVar17) &amp; uVar4 ^ uVar17);
+</code></pre>
+
+<strong>[FUN_0043ab10] @ [0x0043ab10] ([661] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Memory cleanup/Free wrapper.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard memory management.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Calls free with optional hook
+(*(code *)PTR_free_0075b230)(param_1);
+</code></pre>
+
+<strong>[FUN_00442100] @ [0x00442100] ([20] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: AES Encryption (Assembly implementation / AES-NI).</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard crypto.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// AES vector permutation
+auVar58 = pshufb(*param_2,_DAT_004434c0);
+auVar48._0_4_ = *0x4432c0 + auVar58._0_4_;
+</code></pre>
+
+<strong>[FUN_0043fec0] @ [0x0043fec0] ([20] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: SHA1 Cryptographic Transform.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard crypto.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Byte swapping and SHA1 round function
+uVar14 = uVar14 &gt;&gt; 0x18 | (uVar14 &amp; 0xff0000) &gt;&gt; 8 | (uVar14 &amp; 0xff00) &lt;&lt; 8 | uVar14 &lt;&lt; 0x18;
+</code></pre>
+
+<strong>[FUN_00454ff0] @ [0x00454ff0] ([2] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: BIO Print / Formatting utility.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard I/O.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Buffer allocation for printing
+lVar2 = FUN_0043a980(0x400,&quot;b_print.c&quot;,0x2f9);
+*param_2 = lVar2;
+</code></pre>
+
+<strong>[FUN_004f146f] @ [0x004f146f] ([1] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Gzip/Inflate Decompression.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard compression (used in SSL/TLS).</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Check gzip header magic number
+if (((puVar3[2] &amp; 2) == 0) || (uVar23 != 0x8b1f)) {
+  puVar3[4] = 0;
+  param_1[6] = (long)&quot;incorrect header check&quot;;
+  *puVar3 = 0x1b;
+}
+</code></pre>
+
+<strong>[d2i_SSL_SESSION] @ [0x00419450] ([2] xrefs)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: Parse SSL Session from ASN.1 format.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard SSL/TLS protocol.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Parse ASN1 header
+iVar2 = FUN_00471e50(&amp;local_e8,&amp;local_f0);
+</code></pre>
+
+<strong>[SEED_encrypt] @ [0x00465d00`</strong> (Note: Address mapping, likely body at 0x004... based on context)**
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: SEED Block Cipher Encryption.</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard crypto.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// SEED Key schedule mixing
+uVar2 = ks-&gt;data[1] ^ uVar8 ^ uVar5;
+</code></pre>
+
+<strong>[FUN_004287d0] @ [0x004287d0` ([0] xrefs in list, but referenced in analysis)</strong>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>Purpose</strong>: SSL3 Record Layer Processing (<code>s3_pkt.c</code>).</li>
+<li class="mb-2"><strong>Malicious/Interesting</strong>: No — Standard SSL/TLS.</li>
+<li class="mb-2"><strong>Key Code Evidence</strong>:</li>
+</ul>
+<pre><code>// Read SSL record header
+*puVar1 = (uint)*pbVar20;
+bVar7 = pbVar20[2];
+</code></pre></div>
+        </div>
+
+        <!-- Evidence -->
+        <div>
+            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
+            <div><div class="finding-item"><div class="finding-title">Finding 1</div><div class="finding-desc text-sm leading-relaxed pl-4">Hardcoded Google Sheets API Scopes — Function: `Strings` @ `0x...` - Code: `&quot;https://www.googleapis.com/auth/spreadsheets.readonly&quot;`</div></div><div class="finding-item"><div class="finding-title">Finding 2</div><div class="finding-desc text-sm leading-relaxed pl-4">Hardcoded OAuth2 Endpoint — Function: `Strings` @ `0x...` - Code: `&quot;https://oauth2.googleapis.com/token&quot;`</div></div><div class="finding-item"><div class="finding-title">Finding 3</div><div class="finding-desc text-sm leading-relaxed pl-4">Statically Linked OpenSSL (Unusual for legitimate apps, common for single-file malware/tools) — Function: `Exports` - Code: `ssl3_connect`, `AES_encrypt`, etc. are exported/bundled</div></div><div class="finding-item"><div class="finding-title">Finding 4</div><div class="finding-desc text-sm leading-relaxed pl-4">Base64 Encoded String (Potential Configuration/Key) — Function: `Strings` @ `0x...` - Code: `mNNMyNvSkC2S+MSg24Rw5ekigOILRaS6/h7fnSfHpsbucOH7VdZVnVRvhrFSCC/0bbPzIRSyPR2m+IOfC/D8AA==`</div></div></div>
+        </div>
+
+        <!-- Code Evidence -->
+        <div>
+            <h2 class="section-header">6b. Code Evidence (Suspicious API Calls)</h2>
+            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Exact code locations where suspicious or malicious API calls were found in decompiled functions. Only factual findings from both Ghidra and Radare2.</div>
+            <div><div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_0043ab10 @ 0043ab10 — <span style="color:#fbbf24;">free</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>  (*(code *)PTR_free_0075b230)(param_1);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004f146f @ 004f146f — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>          memcpy((void *)(*(long *)(lVar10 + 0x18) + (ulong)uVar7),local_70,(ulong)uVar5);
+      memcpy(local_68,local_70,uVar12);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_0043a980 @ 0043a980 — <span style="color:#fbbf24;">malloc</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    uVar1 = (*(code *)PTR_malloc_0075b258)((long)param_1,param_2,param_3);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004a4680 @ 004a4680 — <span style="color:#fbbf24;">aes</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>      auVar34 = aesenc(auVar33,auVar34);
+      auVar34 = aesenc(auVar34,*(undefined1 (*) [16])(param_4 + 8));
+      auVar34 = aesenc(auVar34,*(undefined1 (*) [16])(param_4 + 0xc));
+      auVar34 = aesenc(auVar34,*(undefined1 (*) [16])(param_4 + 0x10));
+      auVar34 = aesenc(auVar34,*(undefined1 (*) [16])(param_4 + 0x14));
+      auVar34 = aesenc(auVar34,*(undefined1 (*) [16])(param_4 + 0x18));
+      auVar34 = aesenc(auVar34,*pauVar1);
+      auVar61 = aesenc(auVar34,*(undefined1 (*) [16])(param_4 + 0x20));
+      auVar61 = aesenc(auVar61,*(undefined1 (*) [16])(param_4 + 0x24));
+        auVar61 = aesenc(auVar61,auVar34);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_00439f70 @ 00439f70 — <span style="color:#fbbf24;">crypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        FUN_00439d70(&quot;cryptlib.c&quot;,0x24d,&quot;pointer != NULL&quot;);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004287d0 @ 004287d0 — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>      memcpy(param_3,(void *)((ulong)*(uint *)(pbVar19 + 0x128) + *(long *)(pbVar19 + 0x130)),uVar15</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_00466f10 @ 00466f10 — <span style="color:#fbbf24;">memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>      memcpy((void *)(lVar7 + 0x250),param_4,0xd);
+      memset(&amp;local_7d8,0,0x400);
+        memset(&amp;local_7d8,0,0x400);
+          memcpy(puVar30,(void *)((ulong)(auStack_f0[uVar32 * 4] * 0x40) +
+        memset(&amp;local_7d8,0,0x400);
+          memcpy(*(void **)(auStack_3c8 + uVar32 * 10 + -2),(void *)(&amp;local_3d8)[uVar32 * 5],
+    memcpy(local_78,param_4,(long)param_3);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_00464c10 @ 00464c10 — <span style="color:#fbbf24;">memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>      memset(&amp;local_778,0,0x400);
+        memset(&amp;local_778,0,0x400);
+          memcpy(puVar27,(void *)((ulong)(auStack_f0[uVar30 * 4] * 0x40) +
+        memset(&amp;local_778,0,0x400);
+          memcpy(*(void **)(auStack_368 + uVar30 * 10 + -2),(void *)(&amp;local_378)[uVar30 * 5],
+    memcpy(local_78,param_4,(long)param_3);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004afa70 @ 004afa70 — <span style="color:#fbbf24;">memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>      memset(pvVar10,0,__n);
+      memset(local_b8,0,(long)local_bc);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> d2i_SSL_SESSION @ 0041c6b0 — <span style="color:#fbbf24;">free, memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>                memcpy(pSVar5-&gt;session_id,local_90,(long)(int)local_98[0]);
+                  memcpy(pSVar5-&gt;master_key,local_90,(long)(int)uVar3);
+                  memcpy(pSVar5-&gt;key_arg,local_90,(ulong)pSVar5-&gt;key_arg_length);
+                        X509_free(*(X509 **)(pSVar5-&gt;krb5_client_princ + 8));
+                                memcpy(pSVar5-&gt;sid_ctx,local_90,(long)(int)local_98[0]);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004799d0 @ 004799d0 — <span style="color:#fbbf24;">free, open</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>              X509_free(local_38);
+              X509_free(local_38);
+            X509_free(pXVar11);
+          X509_free(local_38);
+          X509_free(local_38);
+            X509_free(local_38);
+              FUN_00458280(lVar13,PTR_X509_free_00756fe0);
+            FUN_00458280(lVar13,PTR_X509_free_00756fe0);
+              X509_free(pXVar14);
+        pcVar15 = getenv(&quot;OPENSSL_ALLOW_PROXY_CERTS&quot;);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004680b0 @ 004680b0 — <span style="color:#fbbf24;">aes, crypt, encrypt, memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    aesni_cbc_encrypt(param_3,param_2,param_4,lVar15,param_1 + 0x28,0);
+      memset(pvVar12,0,0x40);
+    aesni_cbc_encrypt(param_3 + local_f8,param_2 + local_f8,param_4 - local_f8,lVar15,local_120,1);
+    memcpy(pvVar12,(void *)(param_3 + local_f8),local_100 - local_f8);
+  aesni_cbc_encrypt(pvVar12,pvVar12,param_4 - local_f8,lVar15,local_120,1);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> SEED_encrypt @ 004a71f0 — <span style="color:#fbbf24;">crypt, encrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>void SEED_encrypt(uchar *s,uchar *d,SEED_KEY_SCHEDULE *ks)</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> SEED_decrypt @ 004a81a0 — <span style="color:#fbbf24;">crypt, decrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>void SEED_decrypt(uchar *s,uchar *d,SEED_KEY_SCHEDULE *ks)</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_00465d00 @ 00465d00 — <span style="color:#fbbf24;">aes, crypt, encrypt, memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>      aesni_cbc_encrypt((long)param_3 + local_e0,(long)param_2 + local_e0,param_4 - local_e0,lVar14,
+      memcpy(pvVar7,(void *)((long)param_3 + local_e0),uVar19 - local_e0);
+    aesni_cbc_encrypt(pvVar7,pvVar7,param_4 - local_e0,lVar14,local_118,1);
+    aesni_cbc_encrypt(param_3,param_2,param_4,lVar14,param_1 + 0x28,0);
+  aesni_cbc_encrypt(local_100,local_f8,param_4,lVar14,param_1 + 0x28,0);
+    memset(pvVar7,0,0x40);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004095c0 @ 004095c0 — <span style="color:#fbbf24;">fopen, free, fwrite, malloc, memset, open, read, write</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    free(DAT_00763cf0);
+  free(local_78);
+            free(local_50);
+              free(pcVar8);
+                puVar9 = malloc(sVar4);
+                puVar10 = malloc(sVar4);
+                memset(puVar9,0,sVar4);
+                memset(puVar10,0,sVar4);
+                memset(local_338,0,0x104);
+                puVar12 = malloc(3);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> dtls1_accept @ 00438c90 — <span style="color:#fbbf24;">accept, memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>int dtls1_accept(uint *param_1)
+                  *(undefined **)(param_1 + 0xc) = PTR_dtls1_accept_007571c0;
+                  memcpy((void *)(lVar3 + 0xf),(void *)(*(long *)(param_1 + 0x22) + 4),</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004227f0 @ 004227f0 — <span style="color:#fbbf24;">rsa</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>  RSA *pRVar8;
+          pRVar8 = (RSA *)0x0;
+          pRVar8 = (RSA *)0x0;
+    pRVar8 = RSA_new();
+    if (pRVar8 == (RSA *)0x0) {
+          *(RSA **)(*(long *)(*(long *)(param_1 + 0x130) + 0x90) + 0x1d8) = pRVar8;
+              pRVar8 = (RSA *)0x0;
+                  pRVar8 = (RSA *)0x0;
+              pRVar8 = (RSA *)0x0;
+          pRVar8 = (RSA *)0x0;</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_0040a650 @ 0040a650 — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>                memcpy(pbVar19 + iVar8,(void *)(*(long *)(param_1 + 0x20) + 0xc4 + local_78),</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> ssl3_accept @ 00437e90 — <span style="color:#fbbf24;">accept</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>int ssl3_accept(int *param_1)
+              *(undefined **)(param_1 + 0xc) = PTR_ssl3_accept_007570e8;</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_00436920 @ 00436920 — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>              memcpy((void *)(*(long *)(param_1 + 0x22) + 0x104),local_40,uVar8);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_0042f800 @ 0042f800 — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        memcpy(param_3,(void *)((ulong)*(uint *)(lVar13 + 0x128) + *(long *)(lVar13 + 0x130)),</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004d3c80 @ 004d3c80 — <span style="color:#fbbf24;">free</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>                  ASN1_STRING_free(local_100);
+      ASN1_STRING_free(a);
+  ASN1_STRING_free(local_100);
+    ASN1_OBJECT_free(local_60);
+    ASN1_STRING_free(local_100);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> dtls1_connect @ 0042c870 — <span style="color:#fbbf24;">connect, memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>int dtls1_connect(uint *param_1)
+        puVar4 = PTR_dtls1_connect_00756ff8;
+        memcpy((void *)(*(long *)(param_1 + 0x22) + 4),(void *)(*(long *)(param_1 + 0x16) + 3),</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_0040d050 @ 0040d050 — <span style="color:#fbbf24;">free, memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>                              memcpy(*(void **)(*(long *)(param_1 + 0x130) + 0x100),__s2,uVar20);
+                        memcpy(__dest,local_50 + 2,(ulong)uVar18);
+                  FUN_00458280(*(undefined8 *)(param_1 + 0x1e8),PTR_OCSP_RESPID_free_00756d50);
+                        OCSP_RESPID_free(a);
+                        OCSP_RESPID_free(a);
+                    FUN_00458280(*(long *)(param_1 + 0x1f0),PTR_X509_EXTENSION_free_00756e10);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_004e7450 @ 004e7450 — <span style="color:#fbbf24;">memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>      memcpy(local_130,param_5,param_6);
+              memset(local_a8 + iVar2,0,(long)(iVar3 - iVar2));
+              memcpy(param_8,local_130,param_6);
+        memcpy(local_128,local_130,param_6);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Ghidra]</strong> FUN_0042b000 @ 0042b000 — <span style="color:#fbbf24;">memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memset(pbVar8,0,(ulong)local_34c);
+    memcpy(pbVar8,param_8,(ulong)param_9);
+    memset(local_58,0,(ulong)(local_334 - 4));
+    memset(local_58,0,(ulong)local_334);
+      memcpy(local_1bb,param_5,(ulong)(local_34c - 0xd));
+      memcpy(&amp;local_1c8,(void *)((ulong)local_34c + (long)param_4),__n);
+      memcpy((void *)((long)&amp;local_1c8 + __n),param_5,(ulong)(local_34c - (local_344 - local_34c)));
+      memset(local_148,0x5c,(ulong)local_348);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004619f0 @ 0x4619f0 — <span style="color:#fbbf24;">free</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>                            sym.ASN1_STRING_free(arg1_00);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.0047c170 @ 0x47c170 — <span style="color:#fbbf24;">free</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    sym.X509_EXTENSION_free(uVar5);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.0041f2c0 @ 0x41f2c0 — <span style="color:#fbbf24;">memcpy, memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        memcpy (r12 + 5, *((rbp + 0x248)), r15);
+        memset (r12 + r15 + 6, 0, ebx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004a4680 @ 0x4a4680 — <span style="color:#fbbf24;">aes</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>            auVar34 = aesenc(auVar33,auVar34);
+            auVar34 = aesenc(auVar34,*(arg4 + 8));
+            auVar34 = aesenc(auVar34,*(arg4 + 0xc));
+            auVar34 = aesenc(auVar34,*(arg4 + 0x10));
+            auVar34 = aesenc(auVar34,*(arg4 + 0x14));
+            auVar34 = aesenc(auVar34,*(arg4 + 0x18));
+            auVar34 = aesenc(auVar34,*pauVar1);
+            auVar62 = aesenc(auVar34,*(arg4 + 0x20));
+            auVar62 = aesenc(auVar62,*(arg4 + 0x24));
+                auVar62 = aesenc(auVar62,auVar34);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.00454ff0 @ 0x454ff0 — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memcpy (rax, *(rcx), rdx);
+        al = memcpy (rdi, *(rax), rdx);
+        memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rcx), rdx);
+    memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rbx), rdx);
+    memcpy (rdi, *(rax), rdx);
+    memcpy (rdi, *(rax), rdx);
+        eax = memcpy (rdi, *(rax), rdx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004f146f @ 0x4f146f — <span style="color:#fbbf24;">memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>                memcpy (r8 + rdi, *((rsp + 0x28)), rdx);
+        memcpy (*((rsp + 0x30)), *((rsp + 0x28)), rax);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004afa70 @ 0x4afa70 — <span style="color:#fbbf24;">memset</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memset (rdi, 0, rdx);
+    memset (rdi, 0, rdx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> sym.SEED_encrypt @ 0x4a71f0 — <span style="color:#fbbf24;">crypt, encrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>void sym.SEED_encrypt(uint8_t *arg1,uchar *arg2,uint32_t *arg3)</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> sym.SEED_decrypt @ 0x4a81a0 — <span style="color:#fbbf24;">crypt, decrypt</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>void sym.SEED_decrypt(uint8_t *arg1,uchar *arg2,uint32_t *arg3)</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> sym.d2i_SSL_SESSION @ 0x41c6b0 — <span style="color:#fbbf24;">free, memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>    memcpy (rbp + 0x48, *((rsp + 0x68)), rdx);
+    memcpy (rdi, rsi, rdx);
+        memcpy (rbp + 8, *((rsp + 0x68)), *((rbp + 4)));
+            X509_free ();
+    memcpy (rbp + 0x6c, *((rsp + 0x68)), rdx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004799d0 @ 0x4799d0 — <span style="color:#fbbf24;">free, open</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        X509_free ();
+    X509_free ();
+    X509_free ();
+        X509_free ();
+    fcn_00458280 (rbp, *(reloc.X509_free));
+    X509_free ();
+    rax = getenv (&quot;OPENSSL_ALLOW_PROXY_CERTS&quot;);
+    X509_free ();
+    rax = X509_free ();
+    X509_NAME_ENTRY_free ();</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> fcn.004227f0 @ 0x4227f0 — <span style="color:#fbbf24;">rsa</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        iVar7 = sym.RSA_new();</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> main @ 0x4095c0 — <span style="color:#fbbf24;">fopen, free, fwrite, malloc, memset, open, read, write</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>        eax = free (rdi);
+    free (*((rsp + 0x750)));
+        free (rbp);
+        free (*((rsp + 0x788)));
+    free (*((rsp + 0x778)));
+    free (rbx);
+    rax = malloc (rbx);
+    rax = malloc (rbx);
+    memset (*((rsp + 0x38)), 0, rbx);
+    memset (*((rsp + 0x30)), 0, rbx);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> sym.dtls1_accept @ 0x438c90 — <span style="color:#fbbf24;">accept, memcpy</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>uint64_t dtls1_accept (int64_t arg_4h, int64_t arg_8h, int64_t arg_18h, int64_t arg_28h, int64_t arg_2ch, int64_t arg_30h, int64_t arg_38h, int64_t arg_3ch, int64_t arg_44h, uint32_t arg_48h, uint32_t arg_50h, int64_t arg_60h, int64_t arg_64h, int64_t arg_80h, void * s2, int64_t arg_a8h, uint32_t arg_100h, int64_t arg_130h, int64_t arg_140h, int64_t arg_150h, int64_t arg_160h, int64_t arg_168h, int64_t arg_19ah, int64_t arg_1e0h, uint32_t arg_204h, uint32_t arg_26ch, int64_t arg_270h, uint32_t arg_274h, int64_t arg1) {
+        memcpy (rbx, *((rbp + 0x88)), *((rsi + 0x204)));
+    rax = *(reloc.dtls1_accept);</code></pre></div>
+<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;"><div style="background:#1f2937;color:white;padding:8px 14px;font-family:'Roboto Mono',monospace;font-size:0.82rem;"><strong>[Radare2]</strong> sym.ssl3_accept @ 0x437e90 — <span style="color:#fbbf24;">accept</span></div><pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;"><code>uint64_t ssl3_accept (int64_t arg_4h, int64_t arg_8h, int64_t arg_18h, int64_t arg_28h, int64_t arg_2ch, int64_t arg_30h, int64_t arg_38h, int64_t arg_3ch, int64_t arg_44h, uint32_t arg_48h, uint32_t arg_50h, int64_t arg_60h, int64_t arg_80h, int64_t arg_a8h, uint32_t arg_100h, int64_t arg_130h, int64_t arg_140h, int64_t arg_150h, int64_t arg_160h, int64_t arg_168h, int64_t arg_19ah, int64_t arg_1e0h, uint32_t arg_204h, int64_t arg_26ch, int64_t arg_270h, uint32_t arg_274h, int64_t arg1) {
+    rax = *(reloc.ssl3_accept);</code></pre></div></div>
+        </div>
+
+        <!-- Operational Flow -->
+        <div>
+            <h2 class="section-header">7. Operational Flow</h2>
+            <div class="markdown-content"><ol class="list-decimal pl-6 mb-4">
+<li class="mb-2"><strong>Initialization</strong>: Setup of cryptographic engine and error handling — Evidence: <code>FUN_0045a240</code> @ <code>0x0045a240</code>.</li>
+<li class="mb-2"><strong>Setup</strong>: Allocation of buffers and memory for SSL contexts — Evidence: <code>FUN_0043a980</code> @ <code>0x0043a980</code>.</li>
+<li class="mb-2"><strong>Main Operation</strong>: Execution of cryptographic transforms (AES/SHA) or SSL handshake. The binary acts as a conduit for encrypted data. — Evidence: <code>aesni_cbc_encrypt</code> @ <code>0x004e3780</code>, <code>ssl3_connect</code> @ <code>0x0040d050</code>.</li>
+<li class="mb-2"><strong>Persistence</strong>: No persistence mechanism found in the provided code snippets.</li>
+</ol></div>
+        </div>
+
+        <!-- C2 & Networking -->
+        <div>
+            <h2 class="section-header">8. C2 & Networking</h2>
+            <div class="markdown-content"><ul class="list-disc pl-6 mb-4">
+<li class="mb-2">  <strong>C2 Servers</strong>:</li>
+<li class="mb-2">  <code>oauth2.googleapis.com</code> — Purpose: Authentication Token Retrieval — Evidence: String @ <code>0x...</code></li>
+<li class="mb-2">  <code>sheets.googleapis.com</code> — Purpose: Data Exfiltration/Storage/Command via Google Sheets API — Evidence: String @ <code>0x...</code></li>
+<li class="mb-2">  <strong>Protocols</strong>: HTTPS (SSL/TLS).</li>
+<li class="mb-2">  <strong>Communication Pattern</strong>: Uses standard Google API scopes (<code>https://www.googleapis.com/auth/spreadsheets.readonly</code>, etc.) and OAuth2 flows. The specific logic to send/receive is not in the provided snippets, but the templates are present in strings.</li>
+</ul></div>
+        </div>
+
+        <!-- Recommendations -->
+        <div>
+            <h2 class="section-header">9. Recommendations</h2>
+            <div class="space-y-4"><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">1</div><div class="text-sm pt-half text-gray-800">Block network access to <code>oauth2.googleapis.com</code> and <code>sheets.googleapis.com</code> for endpoints where this binary is not explicitly required for business operations.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">2</div><div class="text-sm pt-half text-gray-800">Investigate the source of the binary (hash <code>fd043489...</code>) to determine if it is part of a known legitimate toolset or a custom script.</div></div><div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">3</div><div class="text-sm pt-half text-gray-800">Monitor systems for the presence of this file, specifically checking for static linking of OpenSSL and the specific Google API strings.</div></div></div>
+        </div>
+
+        <!-- IOCs -->
+        <div>
+            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
+            <div class="markdown-content">
+                <table class="w-full text-left">
+                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
+                    <tbody><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">openssl.org</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">oauth2.googleapis.com</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">sheets.googleapis.com</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">www.googleapis.com</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">www.openssl.org</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Domain</td><td class="font-mono text-sm break-all">data.rel.ro</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://oauth2.googleapis.com/token</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/spreadsheets.readonly</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/spreadsheets</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/drive.file</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/drive.readonly</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">https://www.googleapis.com/auth/drive</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">URL</td><td class="font-mono text-sm break-all">http://www.openssl.org/support/faq.html</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/proc/self/exe</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/lib/engines</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/var/run/egd-pool</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/egd-pool</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/egd-pool</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/etc/entropy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/urandom</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/random</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/srandom</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/private</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/certs</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/usr/local/ssl/cert.pem</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">/dev/tty</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">e:\n</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">s:\n%</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">e:\n%</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">r:\n</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">s:\n</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">a:\n</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">File Path</td><td class="font-mono text-sm break-all">o:\n</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Email</td><td class="font-mono text-sm break-all">appro@openssl.org</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">md2WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">md5WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">stateOrProvinceName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">organizationName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">organizationalUnitName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">shaWithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">unstructuredName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">challengePassword</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">unstructuredAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">extendedCertificateAttributes</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha1WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">nsCaRevocationUrl</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">privateKeyUsagePeriod</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">basicConstraints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">certificatePolicies</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">authorityKeyIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">crlDistributionPoints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pbeWithMD5AndCast5CBC</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">ripemd160WithRSA</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">extendedKeyUsage</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pbeWithSHA1And128BitRC4</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pbeWithSHA1And40BitRC4</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pkcs8ShroudedKeyBag</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">authorityInfoAccess</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">basicOCSPResponse</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">acceptableResponses</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">md4WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subjectInfoAccess</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">policyConstraints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">targetInformation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionCode</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionNone</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionCallIssuer</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">holdInstructionReject</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotAttributeType</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotAttributeSyntax</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotObjectClass</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">caseIgnoreIA5StringSyntax</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">domainRelatedObject</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">simpleSecurityObject</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotOrganization</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">qualityLabelledData</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">textEncodedORAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">documentIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">documentLocation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">homeTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">lastModifiedTime</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pilotAttributeType27</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">associatedDomain</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">homePostalAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">mobileTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pagerTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">friendlyCountryName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">organizationalStatus</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">mailPreferenceOption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">singleLevelQuality</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subtreeMinimumQuality</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subtreeMaximumQuality</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">personalSignature</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">documentPublisher</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">x500UniqueIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">generationQualifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">rsaOAEPEncryptionSET</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">msSmartcardLogin</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha256WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha384WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha512WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">sha224WithRSAEncryption</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">inhibitAnyPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subjectDirectoryAttributes</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">issuingDistributionPoint</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">certificateIssuer</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">businessCategory</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">physicalDeliveryOfficeName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">teletexTerminalIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">facsimileTelephoneNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">internationaliSDNNumber</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">registeredAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">destinationIndicator</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">preferredDeliveryMethod</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">presentationAddress</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">supportedApplicationContext</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">authorityRevocationList</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">certificateRevocationList</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">crossCertificatePair</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">enhancedSearchGuide</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">protocolInformation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">distinguishedName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">supportedAlgorithms</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">deltaRevocationList</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">anyExtendedKeyUsage</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">jurisdictionLocalityName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">jurisdictionCountryName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">jurisdictionStateOrProvinceName</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">maskGenAlgorithm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">affiliationChanged</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">cessationOfOperation</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">privilegeWithdrawn</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">policyIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">CRLDistributionPoints</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">issuerDomainPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">subjectDomainPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">requireExplicitPolicy</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">inhibitPolicyMapping</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">permittedSubtrees</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">excludedSubtrees</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">pcPathLengthConstraint</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">signatureAlgorithm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">singleRequestExtensions</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">requestExtensions</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">optionalSignature</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">revocationReason</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">singleExtensions</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">responseExtensions</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">digitalSignature</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">dataEncipherment</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">otherRevInfoFormat</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">digestAlgorithms</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">encapContentInfo</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">contentEncryptionAlgorithm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">encryptedContent</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">keyEncryptionAlgorithm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">recipientEncryptedKeys</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">keyDerivationAlgorithm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">encryptedContentInfo</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">unprotectedAttrs</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">compressionAlgorithm</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">signedContentIdentifier</td></tr><tr><td class="font-bold text-xs text-gray-500 uppercase">Mutex</td><td class="font-mono text-sm break-all">originatorSignatureValue</td></tr></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Conclusion -->
+        <div>
+            <h2 class="section-header">11. Conclusion</h2>
+            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
+                <p class="mb-3">The binary is a statically linked x86_64 executable embedding the OpenSSL library. It contains strings and HTTP templates specifically designed to interact with Google&#x27;s OAuth2 and Sheets APIs. While the decompiled code provided consists entirely of standard cryptographic library implementations (AES, SHA, SSL) rather than explicit malware payload code, the use of static linking, the presence of hardcoded API endpoints/scopes, and the lack of a clear standard application signature make it suspicious. It likely functions as a custom tool for interacting with Google services, which could be used for legitimate automation or data exfiltration/C2.</p>
+
+<strong>Verdict: Suspicious</strong>
+            </div>
+        </div>
+
+        <!-- Call Graph -->
+        <div>
+            <h2 class="section-header">12. Call Graph &amp; Attack Chains</h2>
+            <div class="markdown-content"><h3>Ghidra Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 3971 | <strong>Edges:</strong> 10188 | <strong>Entries:</strong> ACCESS_DESCRIPTION_free, AES_cbc_encrypt, AES_decrypt, AES_encrypt, ASN1_OBJECT_free, ASN1_STRING_free, ASN1_TYPE_free, BN_add, BN_pseudo_rand, BN_rand | <strong>Attack Chains:</strong> 7</p>
+<h4>Attack Chains</h4>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><strong>[Crypto]</strong> bsaes_cbc_encrypt &rarr; AES_decrypt</li>
+<li class="mb-2"><strong>[Crypto]</strong> bsaes_xts_decrypt &rarr; AES_decrypt</li>
+<li class="mb-2"><strong>[Crypto]</strong> bsaes_ctr32_encrypt_blocks &rarr; AES_encrypt</li>
+<li class="mb-2"><strong>[Crypto]</strong> bsaes_xts_decrypt &rarr; AES_encrypt</li>
+<li class="mb-2"><strong>[Crypto]</strong> bsaes_xts_encrypt &rarr; AES_encrypt</li>
+<li class="mb-2"><strong>[Crypto]</strong> dtls1_connect &rarr; FUN_004227f0 &rarr; RSA_new</li>
+<li class="mb-2"><strong>[Crypto]</strong> ssl3_connect &rarr; FUN_004227f0 &rarr; RSA_new</li>
+</ul>
+<h4>Adjacency — Top 10 of 300 Functions</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>ACCESS_DESCRIPTION_free</code></td><td>FUN_0046d940</td></tr>
+<tr><td><code>AES_cbc_encrypt</code></td><td>FUN_00446500, FUN_004466f0, FUN_00446a20, FUN_00446c00</td></tr>
+<tr><td><code>AES_decrypt</code></td><td>FUN_00446c00</td></tr>
+<tr><td><code>AES_encrypt</code></td><td>FUN_004466f0</td></tr>
+<tr><td><code>ASN1_OBJECT_free</code></td><td>FUN_0043ab10</td></tr>
+<tr><td><code>ASN1_STRING_free</code></td><td>FUN_0043ab10</td></tr>
+<tr><td><code>ASN1_TYPE_free</code></td><td>FUN_0046d940</td></tr>
+<tr><td><code>BN_add</code></td><td>FUN_00449590, FUN_004adc50, FUN_004ade60</td></tr>
+<tr><td><code>BN_pseudo_rand</code></td><td>FUN_004b3ca0</td></tr>
+<tr><td><code>BN_rand</code></td><td>FUN_004b3ca0</td></tr>
+</table>
+<h4>Detected Cycles — Top 5 of 12</h4>
+<ul class="list-disc pl-6 mb-4">
+<li class="mb-2"><code>FUN_00427750 -&gt; FUN_00427750</code></li>
+<li class="mb-2"><code>FUN_0046d520 -&gt; FUN_0046d520</code></li>
+<li class="mb-2"><code>FUN_0046ed90 -&gt; FUN_0046ed90</code></li>
+<li class="mb-2"><code>FUN_00439f70 -&gt; FUN_00439e80 -&gt; FUN_00439f70</code></li>
+<li class="mb-2"><code>FUN_00439f70 -&gt; FUN_0043a110 -&gt; FUN_00439f70</code></li>
+</ul>
+<h3>Radare2 Call Graph</h3>
+<p class="mb-3"><strong>Nodes:</strong> 1856 | <strong>Edges:</strong> 6162 | <strong>Entries:</strong> fcn.00406880 | <strong>Attack Chains:</strong> 0</p>
+<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>
+<h4>Adjacency — Top 10 of 300 Functions</h4>
+<table class="w-full text-left border-collapse">
+<tr><th>Function</th><th>Calls</th></tr>
+<tr><td><code>entry0</code></td><td>sym.imp.__libc_start_main</td></tr>
+<tr><td><code>fcn.00406880</code></td><td>fcn.00406f2c, fcn.00406fb0, fcn.0043a460, fcn.004f46e0</td></tr>
+<tr><td><code>fcn.00406f2c</code></td><td>-</td></tr>
+<tr><td><code>fcn.00406fb0</code></td><td>-</td></tr>
+<tr><td><code>fcn.00406fe0</code></td><td>sym.imp.malloc, sym.imp.strlen</td></tr>
+<tr><td><code>fcn.00407120</code></td><td>sym.imp.malloc, sym.imp.realloc, sym.imp.strcat, sym.imp.strlen</td></tr>
+<tr><td><code>fcn.00407310</code></td><td>sym.imp.fgets, sym.imp.free, sym.imp.malloc, sym.imp.memset, sym.imp.pclose, sym.imp.popen, sym.imp.realloc, sym.imp.strcpy, sym.imp.strlen</td></tr>
+<tr><td><code>fcn.00407480</code></td><td>sym.imp.malloc, sym.imp.strncpy, sym.imp.strstr</td></tr>
+<tr><td><code>fcn.00407500</code></td><td>sym.imp.free, sym.imp.malloc, sym.imp.memset, sym.imp.realloc, sym.imp.strchr, sym.imp.strlen, sym.imp.strncpy, sym.imp.strrchr, sym.imp.strstr, sym.imp.strtok</td></tr>
+<tr><td><code>fcn.004077a0</code></td><td>fcn.004f0cdf, fcn.004f0df4, fcn.004f146f, sym.imp.calloc, sym.imp.free, sym.imp.memcpy</td></tr>
+</table></div>
+        </div>
+    
+
+        <!-- Footer -->
+        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
+            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
+            <div>Generated by Ghidra + Radare2 Analysis Agent</div>
+        </div>
+    </div>
+</body>
+</html>

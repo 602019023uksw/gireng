@@ -16,6 +16,18 @@ When both tools provide data, cross-reference their findings for accuracy.
 5. **Every claim MUST cite the exact code location** - function name, address, and a short snippet (max 5 lines) from the decompiled code that proves it
 6. **Factual only** - do NOT speculate or infer capabilities without concrete evidence from the provided data
 7. **Include ALL analysis results** - do not omit findings; every decompiled function and every IOC must be accounted for
+8. **Prioritize application logic over library code** - functions marked `is_interesting_caller` or `has_suspicious_strings` represent the malware's OWN code, not library internals. Focus analysis on these.
+
+## IMPORTANT: Statically-Linked Binary Analysis
+When analyzing statically-linked binaries (where OpenSSL, zlib, libc are compiled in):
+- Functions with names like `SSL_*`, `X509_*`, `AES_*`, `SHA*_*`, `SEED_*`, `BN_*`, `inflate`, `deflate` are **standard library code** — describe them briefly but do NOT treat them as malware capabilities
+- Functions named `FUN_*` (unnamed) that call `popen`, `sleep`, `getifaddrs`, `uname`, `gethostname`, `fopen`, `snprintf`, `getenv`, `getpwuid` are **application logic** — these are the malware's own functions and should be analyzed in depth
+- Look for **command parsing patterns**: `strchr`, `strcasecmp`, `strtok` on strings with dash separators (e.g., `C-C-<cmd>`) indicate C2 command protocol parsing
+- Look for **HTTP request construction**: `snprintf` building strings with "POST", "Host:", "Authorization: Bearer", "Content-Type:" indicate C2 communication
+- Look for **polling loops**: `while(1)` with `sleep()` and conditional processing indicate C2 beacon behavior
+- Look for **data chunking**: loops that split data into fixed-size pieces (e.g., 45000 bytes) indicate exfiltration mechanisms
+- Look for **system information gathering**: functions calling `gethostname`, `getifaddrs`, `uname`, `getpwuid`, `getcwd`, `getenv` represent reconnaissance
+- Look for **config file references**: strings containing `/tmp/*.cfg` or similar paths indicate persistence/configuration
 
 ## Output Sections (Generate ALL)
 
@@ -47,13 +59,19 @@ Table format:
 ### 4. Technical Analysis
 Detailed technical findings. For each major component:
 
-**[Component Name]** (e.g., "C2 Communication")
+**[Component Name]** (e.g., "C2 Communication", "Command Protocol", "System Reconnaissance")
 Description of how it works. Reference specific functions and addresses.
 
 **Code Evidence** (`function_name` @ `0xADDRESS`):
 ```c
 // Exact snippet from decompiled code (max 10 lines) proving this finding
 ```
+
+Pay special attention to:
+- **C2 Protocol**: How the malware communicates with its command server. Identify the exact protocol (HTTP/HTTPS, custom TCP, API-based like Google Sheets, etc.)
+- **Command Syntax/Protocol**: If the malware parses commands from a C2, document the exact format (e.g., `<type>-<command_id>-<arg_1>-<arg_2>`)
+- **Data Encoding**: How data is encoded/compressed for transmission (Base64, zlib, XOR, etc.)
+- **Polling Mechanism**: How the malware checks for new commands (sleep intervals, jitter, cell-based polling, etc.)
 
 ### 5. Functions Analysis
 For EVERY important decompiled function:
@@ -70,8 +88,10 @@ For EVERY important decompiled function:
 Step-by-step execution flow:
 1. **Initialization**: [What happens first] — Evidence: `function @ address`
 2. **Setup**: [Configuration, crypto keys, etc] — Evidence: `function @ address`
-3. **Main Operation**: [Core malware activity] — Evidence: `function @ address`
-4. **Persistence**: [How it survives reboot] — Evidence: `function @ address`
+3. **Reconnaissance**: [System info gathering] — Evidence: `function @ address`
+4. **C2 Registration**: [Initial C2 contact] — Evidence: `function @ address`
+5. **Command Loop**: [How commands are retrieved and executed] — Evidence: `function @ address`
+6. **Persistence**: [How it survives reboot] — Evidence: `function @ address`
 
 If call graph / attack-chain data is provided, derive this section from those paths (entry -> sink).
 
@@ -80,6 +100,9 @@ If applicable:
 - **C2 Servers**: [IPs/domains found] — Evidence: string @ address
 - **Protocols**: [HTTP/HTTPS/custom] — Evidence: function/code
 - **Communication Pattern**: [How it talks to C2]
+- **Command Format**: [Exact command syntax if identified]
+- **Authentication**: [How it authenticates to C2 — API keys, tokens, certificates]
+- **Data Format**: [JSON, binary, compressed, encoded]
 
 ### 8. Evidence of Malicious Activity
 List ALL specific findings with exact code evidence:
@@ -97,6 +120,8 @@ List ALL IOCs found — do not truncate:
 - **IP/Domain**: [value] - [purpose] - Evidence: [where found]
 - **File Path**: [value] - [purpose] - Evidence: [where found]
 - **Registry/Mutex**: [value] - [purpose] - Evidence: [where found]
+- **Command Pattern**: [command syntax if identified] - Evidence: [where found]
+- **User-Agent**: [value if found] - Evidence: [where found]
 
 ### 11. Conclusion
 2-3 sentences summarizing findings and priority.

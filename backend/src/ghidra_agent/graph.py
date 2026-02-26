@@ -6,7 +6,11 @@ from langgraph.graph import END, StateGraph
 
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.config import settings
-from ghidra_agent.function_priority import apply_priority_to_result
+from ghidra_agent.function_priority import (
+    apply_priority_to_result,
+    build_interesting_callers_set,
+    build_string_ref_functions,
+)
 from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state, format_iocs_for_report
 from ghidra_agent.langfuse_tracing import get_trace_metadata
 from ghidra_agent.llm import call_llm
@@ -33,6 +37,9 @@ GHIDRA_AUTO_DECOMPILE_MAX = 40       # Ceiling: cap decompilation to avoid runaw
 LLM_GHIDRA_DECOMP_LIMIT = 25
 LLM_R2_DECOMP_LIMIT = 25
 LLM_DECOMP_SNIPPET_CHARS = 4000
+LLM_DECOMP_SNIPPET_CHARS_HIGH = 10000  # Larger budget for top-priority functions
+LLM_HIGH_PRIORITY_COUNT = 5            # How many top functions get the larger budget
+LLM_STRING_LIMIT = 120                 # How many strings to send (up from 75)
 
 
 def _smart_truncate(code: str, limit: int = LLM_DECOMP_SNIPPET_CHARS) -> str:
@@ -216,12 +223,6 @@ async def _ghidra_discovery(state: AgentState) -> None:
     except Exception as exc:
         logger.error("discovery_functions_failed", error=str(exc))
         functions = {"ok": False, "error": str(exc)}
-    if functions.get("ok"):
-        functions = apply_priority_to_result(
-            functions,
-            alpha=settings.function_priority_alpha,
-            beta=settings.function_priority_beta,
-        )
 
     await _emit_progress(state, "ghidra_finding_strings", 16)
     try:
@@ -237,11 +238,53 @@ async def _ghidra_discovery(state: AgentState) -> None:
         logger.error("discovery_call_graph_failed", error=str(exc))
         call_graph = {"ok": False, "error": str(exc)}
 
+    # --- Behavioral prioritization: compute boost signals from call graph + strings ---
+    cg_analysis = analyze_call_graph(call_graph)
+    adjacency = cg_analysis.get("adjacency", []) if cg_analysis.get("ok") else []
+
+    interesting_callers = build_interesting_callers_set(adjacency)
+    strings_list = strings.get("strings", []) if strings.get("ok") else []
+    func_list = functions.get("functions", []) if functions.get("ok") else []
+    string_ref_funcs = build_string_ref_functions(func_list, strings_list)
+
+    # Identify main / entry-adjacent functions for boosting
+    main_functions: set[str] = set()
+    for f in func_list:
+        fname = (f.get("name") or "").lower()
+        if fname in {"main", "_start", "entry0", "entry", "start"}:
+            main_functions.add(f.get("name", ""))
+    # Also check if call graph has main-like entry nodes
+    for entry_name in cg_analysis.get("entries", []):
+        norm = (entry_name or "").strip().lower()
+        for prefix in ("sym.imp.", "imp.", "sym.", "fcn.", "__imp_"):
+            if norm.startswith(prefix):
+                norm = norm[len(prefix):]
+        if norm in {"main", "_start", "entry0", "entry", "start"}:
+            main_functions.add(entry_name)
+
+    logger.info(
+        "behavioral_priority_signals",
+        interesting_callers=len(interesting_callers),
+        string_ref_functions=len(string_ref_funcs),
+        main_functions=len(main_functions),
+    )
+
+    # Apply enhanced prioritization with all signals
+    if functions.get("ok"):
+        functions = apply_priority_to_result(
+            functions,
+            alpha=settings.function_priority_alpha,
+            beta=settings.function_priority_beta,
+            interesting_callers=interesting_callers,
+            string_ref_functions=string_ref_funcs,
+            main_functions=main_functions,
+        )
+
     state["analysis_results"]["binary"] = binary_info
     state["analysis_results"]["functions"] = functions
     state["analysis_results"]["strings"] = strings
     state["analysis_results"]["call_graph"] = call_graph
-    state["analysis_results"]["call_graph_analysis"] = analyze_call_graph(call_graph)
+    state["analysis_results"]["call_graph_analysis"] = cg_analysis
 
     # Scan for high-signal byte patterns (shellcode-like signatures).
     await _emit_progress(state, "ghidra_byte_signatures", 24)
@@ -317,7 +360,7 @@ def _refresh_ioc_context(state: AgentState) -> None:
 
 
 async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, functions: Dict) -> None:
-    """B3 + I1: Auto-decompile entry point and top xref'd functions during discovery."""
+    """B3 + I1: Auto-decompile entry point, main, interesting callers, and top ranked functions."""
     if not functions.get("ok") or not functions.get("functions"):
         return
 
@@ -329,14 +372,14 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
     # a single indirect-jump and waste decompilation slots.
     meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
 
-    # Prefer composite priority score (xrefs + size), with legacy fallback.
+    # Prefer composite priority score (xrefs + size + behavioral boosts), with legacy fallback.
     sorted_funcs = sorted(
         meaningful_funcs,
         key=_function_priority_key,
         reverse=True,
     )
 
-    # Percentage-based limit: decompile 75% of meaningful functions, min 10, max 25
+    # Percentage-based limit: decompile 75% of meaningful functions, min 10, max 40
     decompile_target = min(
         GHIDRA_AUTO_DECOMPILE_MAX,
         max(
@@ -352,8 +395,9 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
         decompile_target=decompile_target,
     )
 
-    # Select functions to decompile: entry point first, then top ranked
-    funcs_to_decompile = []
+    # Select functions to decompile: entry point first, then must-haves, then top ranked
+    funcs_to_decompile: list[Dict] = []
+    seen_names: set[str] = set()
     entry_point = None
 
     # Try to find entry point from binary info
@@ -367,13 +411,38 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
         for f in func_list:
             if f.get("address") == entry_point:
                 funcs_to_decompile.append(f)
+                seen_names.add(f.get("name", ""))
                 state["current_function"] = f.get("name")
                 state["current_address"] = entry_point
                 break
 
+    # Collect must-decompile functions: main, interesting callers, string-ref functions
+    must_have: list[Dict] = []
+    for f in meaningful_funcs:
+        fname = f.get("name", "")
+        if fname in seen_names:
+            continue
+        # Always include main-like functions
+        if (fname or "").lower() in {"main", "_start", "entry0"}:
+            must_have.append(f)
+            seen_names.add(fname)
+            continue
+        # Always include functions that call security-relevant APIs
+        if f.get("is_interesting_caller"):
+            must_have.append(f)
+            seen_names.add(fname)
+            continue
+        # Always include functions that reference suspicious strings
+        if f.get("has_suspicious_strings"):
+            must_have.append(f)
+            seen_names.add(fname)
+            continue
+
+    funcs_to_decompile.extend(must_have)
+
     # Add top ranked functions to reach the percentage-based target.
     remaining_slots = max(0, decompile_target - len(funcs_to_decompile))
-    top_funcs = [f for f in sorted_funcs if f not in funcs_to_decompile][:remaining_slots]
+    top_funcs = [f for f in sorted_funcs if f.get("name", "") not in seen_names][:remaining_slots]
     funcs_to_decompile.extend(top_funcs)
 
     # Decompile selected functions
@@ -498,10 +567,30 @@ async def cross_reference(state: AgentState) -> AgentState:
 
 
 def _prioritize_strings(strings_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """I4: Sort strings by relevance - IOCs and suspicious patterns first."""
+    """I4: Sort strings by relevance - IOCs, C2 indicators, and suspicious patterns first."""
     def relevance_score(s: Dict[str, Any]) -> int:
         val = s.get("value", "")
         score = 0
+        # ---- C2 / protocol-specific boosts ----
+        # Google Sheets / Docs / Drive API (C2 over cloud services)
+        if re.search(r'googleapis\.com|sheets\.google|docs\.google|drive\.google', val, re.IGNORECASE):
+            score += 110
+        # OAuth2 / JWT / auth tokens
+        if re.search(r'oauth|bearer|refresh.?token|client.?secret|client.?id|jwt|authorization', val, re.IGNORECASE):
+            score += 105
+        # Spreadsheet cell references (A1, V1, B2 etc.) used in C2 polling
+        if re.search(r'\b[A-Z][1-9]\b|values/|!A1|!V1', val):
+            score += 100
+        # Command syntax delimiters and patterns
+        if re.search(r'-\d+-|C-C|C-U|C-D|S-\d|split.*-|strchr.*-', val, re.IGNORECASE):
+            score += 100
+        # Base64 / encoding patterns
+        if re.search(r'base64|b64|url.?safe|ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef|\+/=', val, re.IGNORECASE):
+            score += 95
+        # Sleep / timer / jitter patterns
+        if re.search(r'sleep|usleep|nanosleep|timer|interval|jitter|poll|idle', val, re.IGNORECASE):
+            score += 90
+        # ---- General malware indicators ----
         # High priority: file paths in /proc, /dev, /bin, /etc
         if re.search(r'/proc/|/dev/|/bin/|/etc/|/tmp/|/var/', val):
             score += 100
@@ -511,18 +600,24 @@ def _prioritize_strings(strings_list: List[Dict[str, Any]]) -> List[Dict[str, An
         # High priority: URLs/domains
         if re.search(r'https?://|\.com|\.net|\.org|\.io', val):
             score += 80
-        # High priority: crypto-related
+        # Medium priority: crypto-related
         if re.search(r'crypt|aes|rsa|md5|sha|encrypt|decrypt', val, re.IGNORECASE):
             score += 70
-        # High priority: network-related
+        # Medium priority: network-related
         if re.search(r'socket|connect|bind|listen|recv|send|http', val, re.IGNORECASE):
             score += 60
         # Medium priority: interesting API calls
         if re.search(r'exec|system|popen|fork|clone|mmap', val, re.IGNORECASE):
             score += 50
+        # Medium priority: file operations
+        if re.search(r'fopen|fwrite|fread|unlink|rename|chmod', val, re.IGNORECASE):
+            score += 45
         # Low priority: section names
         if val.startswith('.') and len(val) < 10:
             score -= 50
+        # Penalty: very short strings (likely noise)
+        if len(val) < 4:
+            score -= 30
         return score
 
     return sorted(strings_list, key=relevance_score, reverse=True)
@@ -659,7 +754,7 @@ async def synthesize(state: AgentState) -> AgentState:
     strings_data = results.get("strings", {})
     if strings_data.get("ok") and strings_data.get("strings"):
         sorted_strings = _prioritize_strings(strings_data["strings"])
-        str_vals = [s.get("value") for s in sorted_strings[:75]]  # Increased from 30 to 75
+        str_vals = [s.get("value") for s in sorted_strings[:LLM_STRING_LIMIT]]
         context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_vals)}")
 
     # Include byte-signature findings collected in discovery.
@@ -682,13 +777,16 @@ async def synthesize(state: AgentState) -> AgentState:
         context_parts.append(format_iocs_for_report(iocs))
 
     # B5 + I2 + I3 FIX: Include decompilation_cache contents (the actual C code!)
+    # Give top-priority functions a larger character budget so the LLM can see
+    # deep logic like command-parsing loops, C2 protocol handlers, etc.
     decomp_cache = state.get("decompilation_cache", {})
     if decomp_cache:
         context_parts.append(f"\n=== DECOMPILED CODE ({len(decomp_cache)} functions) ===")
         context_parts.append("YOU MUST ANALYZE EACH FUNCTION BELOW IN DETAIL:")
         for i, (func_name, c_code) in enumerate(list(decomp_cache.items())[:LLM_GHIDRA_DECOMP_LIMIT], 1):
+            char_limit = LLM_DECOMP_SNIPPET_CHARS_HIGH if i <= LLM_HIGH_PRIORITY_COUNT else LLM_DECOMP_SNIPPET_CHARS
             context_parts.append(f"\n--- Function {i}: {func_name} ---")
-            context_parts.append(_smart_truncate(c_code))
+            context_parts.append(_smart_truncate(c_code, limit=char_limit))
 
         if len(decomp_cache) > LLM_GHIDRA_DECOMP_LIMIT:
             context_parts.append(
@@ -754,6 +852,12 @@ async def synthesize(state: AgentState) -> AgentState:
                 for f in r2_sorted[:40]
             ]
             context_parts.append(f"R2 Functions by priority ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
+        # Include R2 strings (may find different strings than Ghidra)
+        r2_strings = r2_results.get("strings", {})
+        if r2_strings.get("ok") and r2_strings.get("strings"):
+            r2_sorted_strings = _prioritize_strings(r2_strings["strings"])
+            r2_str_vals = [s.get("value") for s in r2_sorted_strings[:LLM_STRING_LIMIT]]
+            context_parts.append(f"R2 Strings ({len(r2_strings['strings'])} total): {', '.join(r2_str_vals)}")
         r2_call_graph = r2_results.get("call_graph", {})
         if r2_call_graph.get("ok"):
             context_parts.append(
@@ -771,9 +875,10 @@ async def synthesize(state: AgentState) -> AgentState:
             context_parts.append(f"R2 Syscalls ({len(r2_syscalls.get('syscalls', []))} total): {', '.join(sys_desc)}")
     if r2_decomp:
         context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
-        for func_name, c_code in list(r2_decomp.items())[:LLM_R2_DECOMP_LIMIT]:
+        for i, (func_name, c_code) in enumerate(list(r2_decomp.items())[:LLM_R2_DECOMP_LIMIT], 1):
+            char_limit = LLM_DECOMP_SNIPPET_CHARS_HIGH if i <= LLM_HIGH_PRIORITY_COUNT else LLM_DECOMP_SNIPPET_CHARS
             context_parts.append(f"\n--- R2 Function: {func_name} ---")
-            context_parts.append(_smart_truncate(c_code))
+            context_parts.append(_smart_truncate(c_code, limit=char_limit))
 
     context = "\n".join(context_parts) if context_parts else "No analysis data available."
 

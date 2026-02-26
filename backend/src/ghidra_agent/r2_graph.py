@@ -5,7 +5,11 @@ from typing import Any, Dict
 
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.config import settings
-from ghidra_agent.function_priority import apply_priority_to_result
+from ghidra_agent.function_priority import (
+    apply_priority_to_result,
+    build_interesting_callers_set,
+    build_string_ref_functions,
+)
 from ghidra_agent.logging import logger
 from ghidra_agent.r2_tools import (
     r2_analyze_binary,
@@ -101,12 +105,6 @@ async def r2_discovery(state: AgentState) -> AgentState:
 
     await _emit_progress(state, "r2_listing_functions", 12)
     functions = await _safe_call(r2_list_functions, tool_args, "r2_discovery_functions_failed")
-    if functions.get("ok"):
-        functions = apply_priority_to_result(
-            functions,
-            alpha=settings.function_priority_alpha,
-            beta=settings.function_priority_beta,
-        )
 
     # These steps are independent once function listing has run.
     await _emit_progress(state, "r2_parallel_discovery", 16)
@@ -116,10 +114,37 @@ async def r2_discovery(state: AgentState) -> AgentState:
         _safe_call(r2_syscall_analysis, tool_args, "r2_discovery_syscalls_failed"),
     )
 
+    # --- Behavioral prioritization: compute boost signals from call graph + strings ---
+    cg_analysis = analyze_call_graph(call_graph)
+    adjacency = cg_analysis.get("adjacency", []) if cg_analysis.get("ok") else []
+
+    interesting_callers = build_interesting_callers_set(adjacency)
+    strings_list = strings.get("strings", []) if strings.get("ok") else []
+    func_list = functions.get("functions", []) if functions.get("ok") else []
+    string_ref_funcs = build_string_ref_functions(func_list, strings_list)
+
+    # Identify main-like functions
+    main_functions: set[str] = set()
+    for f in func_list:
+        fname = (f.get("name") or "").lower()
+        if fname in {"main", "_start", "entry0", "entry", "start"}:
+            main_functions.add(f.get("name", ""))
+
+    # Apply enhanced prioritization with all signals
+    if functions.get("ok"):
+        functions = apply_priority_to_result(
+            functions,
+            alpha=settings.function_priority_alpha,
+            beta=settings.function_priority_beta,
+            interesting_callers=interesting_callers,
+            string_ref_functions=string_ref_funcs,
+            main_functions=main_functions,
+        )
+
     state["r2_analysis_results"]["binary"] = binary_info
     state["r2_analysis_results"]["functions"] = functions
     state["r2_analysis_results"]["call_graph"] = call_graph
-    state["r2_analysis_results"]["call_graph_analysis"] = analyze_call_graph(call_graph)
+    state["r2_analysis_results"]["call_graph_analysis"] = cg_analysis
     state["r2_analysis_results"]["strings"] = strings
     state["r2_analysis_results"]["syscalls"] = syscalls
 
@@ -156,7 +181,7 @@ async def _r2_auto_decompile(
         reverse=True,
     )
 
-    # Percentage-based limit: decompile 75% of meaningful functions, min 10, max 25
+    # Percentage-based limit: decompile 75% of meaningful functions, min 10, max 40
     decompile_target = min(
         R2_AUTO_DECOMPILE_MAX,
         max(
@@ -165,7 +190,26 @@ async def _r2_auto_decompile(
         ),
     )
 
-    funcs_to_decompile = sorted_funcs[:decompile_target]
+    # Collect must-decompile functions (interesting callers, string-ref, main-like)
+    seen_names: set[str] = set()
+    must_have: list[dict] = []
+    for f in sorted_funcs:
+        fname = f.get("name", "")
+        if fname in seen_names:
+            continue
+        if (fname or "").lower() in {"main", "_start", "entry0"}:
+            must_have.append(f)
+            seen_names.add(fname)
+            continue
+        if f.get("is_interesting_caller") or f.get("has_suspicious_strings"):
+            must_have.append(f)
+            seen_names.add(fname)
+            continue
+
+    # Fill remaining slots from top ranked
+    remaining_slots = max(0, decompile_target - len(must_have))
+    top_fill = [f for f in sorted_funcs if f.get("name", "") not in seen_names][:remaining_slots]
+    funcs_to_decompile = must_have + top_fill
 
     sem = asyncio.Semaphore(5)
     total_funcs = len(funcs_to_decompile)
