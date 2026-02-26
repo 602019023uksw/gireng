@@ -17,6 +17,8 @@ When both tools provide data, cross-reference their findings for accuracy.
 6. **Factual only** - do NOT speculate or infer capabilities without concrete evidence from the provided data
 7. **Include ALL analysis results** - do not omit findings; every decompiled function and every IOC must be accounted for
 8. **Prioritize application logic over library code** - functions marked `is_interesting_caller` or `has_suspicious_strings` represent the malware's OWN code, not library internals. Focus analysis on these.
+9. **ALWAYS cite exact strings verbatim** - when the binary contains file paths (e.g., `/tmp/something.cfg`), URLs, error messages, format strings, or config references, quote them EXACTLY as they appear in the Strings list. Do NOT paraphrase "a config file" when the exact path is available — write the full literal path.
+10. **Extract ALL file path IOCs** - any string matching `/tmp/*`, `*.cfg`, `*.conf`, `*.dat`, `*.key`, `*.pem`, `*.json`, or other config/data file extensions MUST be listed in the IOCs section with its exact value.
 
 ## IMPORTANT: Statically-Linked Binary Analysis
 When analyzing statically-linked binaries (where OpenSSL, zlib, libc are compiled in):
@@ -27,7 +29,8 @@ When analyzing statically-linked binaries (where OpenSSL, zlib, libc are compile
 - Look for **polling loops**: `while(1)` with `sleep()` and conditional processing indicate C2 beacon behavior
 - Look for **data chunking**: loops that split data into fixed-size pieces (e.g., 45000 bytes) indicate exfiltration mechanisms
 - Look for **system information gathering**: functions calling `gethostname`, `getifaddrs`, `uname`, `getpwuid`, `getcwd`, `getenv` represent reconnaissance
-- Look for **config file references**: strings containing `/tmp/*.cfg` or similar paths indicate persistence/configuration
+- Look for **config file references**: strings containing `/tmp/*.cfg`, `.conf`, `.dat`, `.key`, `.json` or similar paths indicate persistence/configuration. **ALWAYS quote the exact path verbatim** (e.g., `/tmp/kworofd.cfg`) — never paraphrase as just "a config file"
+- Look for **error messages about files**: strings like "Error no key path" or "Operation not permitted" often reveal config file dependencies — quote them exactly and explain their significance
 
 ## Output Sections (Generate ALL)
 
@@ -116,12 +119,14 @@ Numbered list:
 3. [Actionable recommendation]
 
 ### 10. IOCs (Indicators of Compromise)
-List ALL IOCs found — do not truncate:
-- **IP/Domain**: [value] - [purpose] - Evidence: [where found]
-- **File Path**: [value] - [purpose] - Evidence: [where found]
+List ALL IOCs found — do not truncate. **Quote every value EXACTLY as it appears in the binary strings.**
+- **IP/Domain**: [exact value] - [purpose] - Evidence: [string list or code location]
+- **File Path**: [exact path verbatim] - [purpose] - Evidence: [where found]. Include ALL paths with extensions like `.cfg`, `.conf`, `.dat`, `.key`, `.pem`, `.json`, `/tmp/*`, etc.
+- **Config File**: [exact path] - [what it stores / why malware reads it] - Evidence: [function + code snippet]
 - **Registry/Mutex**: [value] - [purpose] - Evidence: [where found]
 - **Command Pattern**: [command syntax if identified] - Evidence: [where found]
-- **User-Agent**: [value if found] - Evidence: [where found]
+- **User-Agent**: [exact value] - Evidence: [where found]
+- **Error Messages**: [exact error string] - [what it reveals about malware behavior] - Evidence: [string list or code]
 
 ### 11. Conclusion
 2-3 sentences summarizing findings and priority.
@@ -137,13 +142,13 @@ Do NOT default to "Malware" just because the binary contains networking function
 - [ ] Used ONLY data from the provided analysis
 - [ ] Did not invent malware family names
 - [ ] Cited actual addresses (0xXXXXXXXX)
-- [ ] Referenced actual strings from the binary
+- [ ] Referenced actual strings from the binary — VERBATIM, not paraphrased
 - [ ] Did not copy from example data
 - [ ] Every malicious/interesting finding has exact code evidence (function + address + snippet)
 - [ ] All findings are factual — no speculation without evidence
-- [ ] Cited actual addresses (0xXXXXXXXX)
-- [ ] Referenced actual strings from the binary
-- [ ] Did not copy from example data
+- [ ] ALL file paths from binary strings are quoted exactly (e.g., `/tmp/kworofd.cfg` not "a config file")
+- [ ] ALL config/data file paths listed in IOCs section with exact values
+- [ ] Error messages and format strings quoted verbatim where relevant
 """.strip()
 
 
