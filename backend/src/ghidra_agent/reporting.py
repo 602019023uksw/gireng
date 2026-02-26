@@ -359,86 +359,625 @@ def _extract_evidence(summary: str) -> List[str]:
     return evidence
 
 
+# Icon/color cycle for recommendation cards
+_REC_STYLES = [
+    ("fas fa-shield-alt", "blue"),
+    ("fas fa-search", "purple"),
+    ("fas fa-ban", "red"),
+    ("fas fa-file-invoice", "green"),
+    ("fas fa-network-wired", "orange"),
+    ("fas fa-user-secret", "cyan"),
+]
+
+
 def _render_evidence(evidence: List[str]) -> str:
-    """Render evidence items as HTML."""
+    """Render evidence items as compact horizontal cards (revamp template style)."""
     if not evidence:
-        return '<div class="text-gray-500 italic">Evidence extracted from analysis data. Review summary for details.</div>'
+        return '<p class="text-sm text-slate-500 italic">Evidence extracted from analysis data. Review summary for details.</p>'
 
-    # Heuristic to detect code-like content (hex addrs, C operators, decompiler output)
-    _CODE_RE = re.compile(
-        r'(0x[0-9a-fA-F]{4,}|FUN_[0-9a-fA-F]+|->|<<|>>|\bparam_\d+|\buVar\d+|\biVar\d+|\bint \*)',
-    )
-
-    html = ''
+    parts = ['<div class="space-y-3">']
     for i, item in enumerate(evidence, 1):
         # Split on " - Evidence:" if present
-        parts = item.split(' - Evidence:', 1)
-        if len(parts) == 2:
-            title = parts[0].strip()
-            desc = parts[1].strip()
+        chunks = item.split(' - Evidence:', 1)
+        if len(chunks) == 2:
+            title = chunks[0].strip()
+            desc = chunks[1].strip()
         else:
-            title = f'Finding {i}'
-            desc = item.strip()
-
-        # Separate code snippets from narrative text
-        desc_lines = desc.split('\n') if '\n' in desc else [desc]
-        narrative_parts: List[str] = []
-        code_parts: List[str] = []
-        for line in desc_lines:
-            stripped = line.strip()
-            if not stripped:
-                continue
-            if _CODE_RE.search(stripped):
-                code_parts.append(stripped)
+            # Try to grab first sentence as title
+            raw = item.strip()
+            dot = raw.find('.')
+            if 0 < dot < 80:
+                title = raw[:dot]
+                desc = raw[dot + 1:].strip()
             else:
-                narrative_parts.append(stripped)
+                title = raw[:80]
+                desc = raw[80:].strip() if len(raw) > 80 else ''
 
-        # If the whole desc looks like code (single line with hex/func refs), treat it as code
-        if not code_parts and len(narrative_parts) == 1 and _CODE_RE.search(narrative_parts[0]):
-            code_parts = narrative_parts
-            narrative_parts = []
+        circle_bg = 'bg-red-100 dark:bg-red-900/30' if i <= 3 else 'bg-orange-100 dark:bg-orange-900/30'
+        circle_txt = 'text-red-600 dark:text-red-400' if i <= 3 else 'text-orange-600 dark:text-orange-400'
 
-        block = f'<div class="finding-item"><div class="finding-title">{escape(title)}</div>'
-        if narrative_parts:
-            block += f'<div class="finding-desc text-sm leading-relaxed pl-4">{escape(" ".join(narrative_parts))}</div>'
-        if code_parts:
-            snippet = escape("\n".join(code_parts))
-            block += (
-                f'<pre style="margin:6px 0 0 1rem;padding:10px 14px;background:#f8f9fa;'
-                f'border:1px solid #e5e7eb;border-radius:4px;overflow-x:auto;'
-                f'font-family:\'Roboto Mono\',monospace;font-size:0.8rem;line-height:1.6;'
-                f'color:#374151;white-space:pre-wrap;word-break:break-word;">'
-                f'<code>{snippet}</code></pre>'
-            )
-        block += '</div>'
-        html += block
-    return html
+        desc_html = f'<p class="text-xs text-slate-500 dark:text-slate-400 mt-1 leading-relaxed">{escape(desc)}</p>' if desc else ''
+        parts.append(
+            f'<div class="evidence-compact bg-white dark:bg-slate-800 p-4 rounded shadow-sm flex items-start gap-4">'
+            f'<span class="flex-shrink-0 w-6 h-6 rounded-full {circle_bg} {circle_txt} flex items-center justify-center text-xs font-bold">{i}</span>'
+            f'<div class="flex-1">'
+            f'<div class="font-bold text-slate-900 dark:text-white text-sm">{escape(title)}</div>'
+            f'{desc_html}'
+            f'</div></div>'
+        )
+    parts.append('</div>')
+    return '\n'.join(parts)
 
 
 def _render_recommendations(recommendations: List[str]) -> str:
-    """Render recommendations as HTML."""
+    """Render recommendations as styled cards in a 2-column grid."""
     if not recommendations:
-        return '<div class="text-gray-500 italic">No specific recommendations available.</div>'
-    html = ''
-    for i, rec in enumerate(recommendations, 1):
-        # Convert inline markdown: **bold** and `code`
+        return '<p class="text-sm text-slate-500 italic">No specific recommendations available.</p>'
+
+    cards: List[str] = []
+    for i, rec in enumerate(recommendations):
+        icon, color = _REC_STYLES[i % len(_REC_STYLES)]
         safe = escape(rec)
-        safe = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', safe)
-        safe = re.sub(r'`(.+?)`', r'<code>\1</code>', safe)
-        # Clean trailing ### markers from section splitting
+        safe = re.sub(r'\*\*(.+?)\*\*', r'\1', safe)
         safe = re.sub(r'\s*#{2,3}\s*$', '', safe).strip()
-        html += f'<div class="flex gap-4 items-start pb-4 border-b border-dashed border-gray-200 last:border-0"><div class="flex-shrink-0" style="width:24px;height:24px;border-radius:50%;background:#1f2937;color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:bold;">{i}</div><div class="text-sm pt-half text-gray-800">{safe}</div></div>'
-    return html
+
+        if ':' in safe:
+            title, desc = safe.split(':', 1)
+            title, desc = title.strip(), desc.strip()
+        else:
+            title = f'Recommendation {i + 1}'
+            desc = safe
+
+        col_span = ' md:col-span-2' if (i == len(recommendations) - 1 and len(recommendations) % 2 == 1 and len(recommendations) > 1) else ''
+        cards.append(
+            f'<div class="rec-card bg-white dark:bg-slate-800 p-5 rounded-lg shadow-sm{col_span}">'
+            f'<div class="flex items-start gap-3">'
+            f'<div class="w-8 h-8 rounded-lg bg-{color}-100 dark:bg-{color}-900/30 text-{color}-600 dark:text-{color}-400 flex items-center justify-center flex-shrink-0">'
+            f'<i class="{icon}"></i></div>'
+            f'<div><h4 class="font-bold text-slate-900 dark:text-white mb-1 text-sm">{title}</h4>'
+            f'<p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">{desc}</p>'
+            f'</div></div></div>'
+        )
+    joined = "\n".join(cards)
+    return f'<div class="grid grid-cols-1 md:grid-cols-2 gap-4">{joined}</div>'
+
+
+# ---------------------------------------------------------------------------
+# Section-specific renderers (card-based layouts)
+# ---------------------------------------------------------------------------
+
+# Icon/color cycle for capability cards
+_CAP_ICONS = [
+    ("fas fa-server", "red"),
+    ("fas fa-network-wired", "blue"),
+    ("fas fa-terminal", "purple"),
+    ("fas fa-eye", "orange"),
+    ("fas fa-key", "green"),
+    ("fas fa-bug", "pink"),
+    ("fas fa-bolt", "cyan"),
+    ("fas fa-shield-virus", "yellow"),
+]
+
+# Icon/color cycle for technical analysis cards
+_TECH_ICONS = [
+    ("fas fa-satellite-dish", "blue"),
+    ("fas fa-code", "purple"),
+    ("fas fa-lock", "red"),
+    ("fas fa-terminal", "green"),
+    ("fas fa-database", "orange"),
+    ("fas fa-microchip", "cyan"),
+    ("fas fa-shield-virus", "pink"),
+    ("fas fa-cogs", "slate"),
+]
+
+
+def _inline_code_html(text: str) -> str:
+    """Escape text and convert backtick-wrapped spans to styled <code> tags."""
+    s = escape(text)
+    s = re.sub(
+        r'`(.+?)`',
+        r'<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">\1</code>',
+        s,
+    )
+    s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
+    return s
+
+
+def _render_capabilities_cards(md_text: str) -> str:
+    """Render Malware Capabilities as a 2-col grid of icon cards with evidence boxes."""
+    if not md_text:
+        return '<p class="text-slate-500 italic">Capabilities analysis not available.</p>'
+
+    # Parse bullets: - **Title**: ... / sub-bullets with Evidence
+    # Split on top-level bullets that have a bold title
+    raw_blocks: List[str] = []
+    current: List[str] = []
+    for line in md_text.split('\n'):
+        stripped = line.strip()
+        if re.match(r'^[-*]\s+\*\*', stripped):
+            if current:
+                raw_blocks.append('\n'.join(current))
+            current = [stripped]
+        else:
+            current.append(line)
+    if current:
+        raw_blocks.append('\n'.join(current))
+
+    if not raw_blocks or not re.match(r'^[-*]\s+\*\*', raw_blocks[0].strip()):
+        return _markdown_to_html(md_text)
+
+    cards: List[str] = []
+    for idx, block in enumerate(raw_blocks):
+        block = block.strip()
+        if not block:
+            continue
+        # Title line
+        title_m = re.match(r'^[-*]\s+\*\*(.+?)\*\*[:\s]*(.*)', block, re.DOTALL)
+        if not title_m:
+            continue
+        title = escape(title_m.group(1).strip())
+        rest = title_m.group(2).strip()
+
+        # Gather evidence and description lines
+        evidence_lines: List[str] = []
+        desc_lines: List[str] = []
+        for line in rest.split('\n'):
+            line = line.strip()
+            ev_m = re.match(r'^[-*]\s+\*\*Evidence\*\*[:\s]*(.*)', line)
+            if ev_m:
+                evidence_lines.append(ev_m.group(1).strip())
+                continue
+            ev_m2 = re.match(r'^Evidence[:\s]+(.*)', line, re.IGNORECASE)
+            if ev_m2:
+                evidence_lines.append(ev_m2.group(1).strip())
+                continue
+            cleaned = re.sub(r'^[-*]\s+', '', line).strip()
+            if cleaned:
+                desc_lines.append(cleaned)
+
+        icon, color = _CAP_ICONS[idx % len(_CAP_ICONS)]
+
+        # Evidence box
+        evidence_html = ''
+        if evidence_lines:
+            ev_items = ''.join(
+                '<div>' + _inline_code_html(ev) + '</div>'
+                for ev in evidence_lines
+            )
+            evidence_html = (
+                '<div class="mt-3 bg-slate-50 dark:bg-slate-900/50 rounded-lg p-3 border border-slate-200 dark:border-slate-700">'
+                '<div class="text-[10px] font-bold text-slate-400 dark:text-slate-500 mb-1 uppercase tracking-widest">Evidence</div>'
+                '<div class="text-xs text-slate-700 dark:text-slate-300 font-mono leading-relaxed space-y-1">'
+                + ev_items + '</div></div>'
+            )
+
+        desc_html = ''
+        if desc_lines:
+            joined_desc = '<br>'.join(escape(d) for d in desc_lines)
+            desc_html = f'<p class="text-xs text-slate-500 dark:text-slate-400 mt-1.5 leading-relaxed">{joined_desc}</p>'
+
+        cards.append(
+            f'<div class="capability-card bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-5 '
+            f'hover:shadow-lg hover:border-{color}-400 dark:hover:border-{color}-600 transition-all duration-200">'
+            f'<div class="flex items-start gap-3">'
+            f'<div class="w-9 h-9 rounded-lg bg-{color}-100 dark:bg-{color}-900/30 text-{color}-500 dark:text-{color}-400 '
+            f'flex items-center justify-center flex-shrink-0 text-sm"><i class="{icon}"></i></div>'
+            f'<div class="flex-1 min-w-0">'
+            f'<h4 class="font-bold text-slate-900 dark:text-white text-sm leading-snug">{title}</h4>'
+            f'{desc_html}{evidence_html}'
+            f'</div></div></div>'
+        )
+
+    if not cards:
+        return _markdown_to_html(md_text)
+
+    joined = "\n".join(cards)
+    return f'<div class="grid grid-cols-1 md:grid-cols-2 gap-4">{joined}</div>'
+
+
+def _render_technical_cards(md_text: str) -> str:
+    """Render Technical Analysis sub-sections as stacked cards with code blocks."""
+    if not md_text:
+        return '<p class="text-slate-500 italic">Technical analysis not available.</p>'
+
+    # Protect code blocks first
+    code_blocks: List[tuple] = []
+
+    def _save_code(m):
+        code_blocks.append((m.group(1) or 'c', m.group(2)))
+        return f'\x00TCODE{len(code_blocks) - 1}\x00'
+
+    protected = re.sub(r'```(\w+)?\n(.*?)```', _save_code, md_text, flags=re.DOTALL)
+
+    # Split on **bold headings** at the start of a line
+    parts = re.split(r'(?m)^(\*\*[^*\n]+\*\*)', protected)
+
+    # parts = [preamble, heading1, body1, heading2, body2, ...]
+    sections: List[tuple] = []  # (title, body)
+    preamble = ''
+    i = 0
+    while i < len(parts):
+        p = parts[i].strip()
+        if p.startswith('**') and p.endswith('**'):
+            title = p.strip('*').strip()
+            body = parts[i + 1] if i + 1 < len(parts) else ''
+            sections.append((title, body.strip()))
+            i += 2
+        else:
+            if p:
+                preamble = p
+            i += 1
+
+    if not sections:
+        return _markdown_to_html(md_text)
+
+    cards: List[str] = []
+
+    # Preamble text (if any)
+    if preamble:
+        cards.append(f'<div class="text-sm text-slate-600 dark:text-slate-400 mb-2 leading-relaxed">{_inline_code_html(preamble)}</div>')
+
+    sec_idx = 0
+    skip_next = False
+    for j, (title, body) in enumerate(sections):
+        if skip_next:
+            skip_next = False
+            continue
+
+        # Skip "Code Evidence" sub-headers — fold them into previous card
+        if title.lower().startswith('code evidence'):
+            continue
+
+        icon, color = _TECH_ICONS[sec_idx % len(_TECH_ICONS)]
+        sec_idx += 1
+
+        # Check if next section is a "Code Evidence" block and merge
+        merged_body = body
+        if j + 1 < len(sections) and sections[j + 1][0].lower().startswith('code evidence'):
+            merged_body = body + '\n' + sections[j + 1][1]
+            skip_next = True
+
+        # Build body HTML
+        body_parts: List[str] = []
+        for line in merged_body.split('\n'):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            code_m = re.match(r'\x00TCODE(\d+)\x00', stripped)
+            if code_m:
+                ci = int(code_m.group(1))
+                lang, code = code_blocks[ci]
+                body_parts.append(
+                    '<div class="mt-3 bg-slate-900 rounded-lg overflow-hidden">'
+                    f'<div class="px-3 py-1.5 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-400 font-mono uppercase tracking-wider">{escape(lang)}</div>'
+                    f'<pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>{escape(code)}</code></pre></div>'
+                )
+            elif stripped.startswith('- ') or stripped.startswith('* '):
+                body_parts.append(f'<div class="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">'
+                                  f'<span class="text-slate-400 mt-0.5">&bull;</span><span>{_inline_code_html(stripped[2:])}</span></div>')
+            else:
+                body_parts.append(f'<p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{_inline_code_html(stripped)}</p>')
+
+        inner = "\n".join(body_parts)
+        cards.append(
+            f'<div class="tech-card bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden '
+            f'hover:shadow-lg hover:border-{color}-400 dark:hover:border-{color}-600 transition-all duration-200">'
+            f'<div class="flex items-center gap-3 px-5 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">'
+            f'<div class="w-7 h-7 rounded-lg bg-{color}-100 dark:bg-{color}-900/30 text-{color}-500 dark:text-{color}-400 '
+            f'flex items-center justify-center flex-shrink-0 text-xs"><i class="{icon}"></i></div>'
+            f'<h3 class="font-bold text-slate-900 dark:text-white text-sm">{_inline_code_html(title)}</h3></div>'
+            f'<div class="p-5 space-y-2">{inner}</div></div>'
+        )
+
+    if not cards:
+        return _markdown_to_html(md_text)
+
+    joined = "\n".join(cards)
+    return f'<div class="space-y-4">{joined}</div>'
+
+
+def _render_functions_cards(md_text: str) -> str:
+    """Render Functions Analysis as cards with nested code boxes."""
+    if not md_text:
+        return '<p class="text-slate-500 italic">Functions analysis not available.</p>'
+
+    # Protect code blocks
+    code_blocks: List[tuple] = []
+
+    def _save_code(m):
+        code_blocks.append((m.group(1) or 'c', m.group(2)))
+        return f'\x00FCODE{len(code_blocks) - 1}\x00'
+
+    protected = re.sub(r'```(\w+)?\n(.*?)```', _save_code, md_text, flags=re.DOTALL)
+
+    # Split on function headers: **FunctionName @ 0xADDR (N xrefs)**
+    # or **FunctionName** at the start of a line
+    parts = re.split(r'(?m)^(\*\*[^*\n]+\*\*)', protected)
+
+    sections: List[tuple] = []
+    i = 0
+    while i < len(parts):
+        p = parts[i].strip()
+        if p.startswith('**') and p.endswith('**'):
+            title = p.strip('*').strip()
+            body = parts[i + 1] if i + 1 < len(parts) else ''
+            sections.append((title, body.strip()))
+            i += 2
+        else:
+            i += 1
+
+    if not sections:
+        return _markdown_to_html(md_text)
+
+    cards: List[str] = []
+    for idx, (title, body) in enumerate(sections):
+        # Parse title: "FunctionName @ 0xADDR (N xrefs)" or just "FunctionName"
+        addr_m = re.match(r'(.+?)\s*@\s*(0x[\da-fA-F]+)(?:\s*\((.+?)\))?', title)
+        if addr_m:
+            fname = addr_m.group(1).strip()
+            faddr = addr_m.group(2).strip()
+            fxrefs = addr_m.group(3).strip() if addr_m.group(3) else ''
+        else:
+            fname = title
+            faddr = ''
+            fxrefs = ''
+
+        # Parse body: Purpose, Malicious, Key Code Evidence
+        purpose = ''
+        malicious = ''
+        is_malicious = False
+        body_lines: List[str] = []
+        code_html: List[str] = []
+
+        for line in body.split('\n'):
+            stripped = line.strip()
+            if not stripped:
+                continue
+            code_m = re.match(r'\x00FCODE(\d+)\x00', stripped)
+            if code_m:
+                ci = int(code_m.group(1))
+                lang, code = code_blocks[ci]
+                code_html.append(
+                    '<div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700">'
+                    f'<div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">{escape(lang)}</div>'
+                    f'<pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>{escape(code)}</code></pre></div>'
+                )
+                continue
+            # Check for Purpose line
+            purp_m = re.match(r'^[-*]\s+\*\*Purpose\*\*[:\s]*(.*)', stripped)
+            if purp_m:
+                purpose = purp_m.group(1).strip()
+                continue
+            mal_m = re.match(r'^[-*]\s+\*\*Malicious(?:/Interesting)?\*\*[:\s]*(.*)', stripped)
+            if mal_m:
+                malicious = mal_m.group(1).strip()
+                if re.match(r'^yes', malicious, re.IGNORECASE):
+                    is_malicious = True
+                continue
+            # Skip "Key Code Evidence:" header
+            if stripped.lower().startswith('- **key code') or stripped.lower().startswith('**key code'):
+                continue
+            body_lines.append(stripped)
+
+        # Card border color
+        border_cls = 'border-red-300 dark:border-red-700' if is_malicious else 'border-slate-200 dark:border-slate-700'
+        badge_cls = ('bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400', 'Malicious') if is_malicious else ('bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400', 'Clean')
+
+        # Header badges
+        addr_badge = f'<span class="text-xs font-mono text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">{escape(faddr)}</span>' if faddr else ''
+        xref_badge = f'<span class="text-xs text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">{escape(fxrefs)}</span>' if fxrefs else ''
+        mal_badge = f'<span class="text-[10px] font-bold px-2 py-0.5 rounded-full {badge_cls[0]} uppercase">{badge_cls[1]}</span>'
+
+        # Purpose row
+        purpose_html = ''
+        if purpose:
+            purpose_html = (
+                '<div class="flex items-start gap-2 text-sm">'
+                '<span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span>'
+                f'<span class="text-slate-700 dark:text-slate-300">{_inline_code_html(purpose)}</span></div>'
+            )
+
+        malicious_html = ''
+        if malicious:
+            malicious_html = (
+                '<div class="flex items-start gap-2 text-sm">'
+                '<span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span>'
+                f'<span class="text-slate-700 dark:text-slate-300">{_inline_code_html(malicious)}</span></div>'
+            )
+
+        extra_lines = ''
+        if body_lines:
+            extras = ''.join(f'<p class="text-xs text-slate-500 dark:text-slate-400">{_inline_code_html(bl)}</p>' for bl in body_lines)
+            extra_lines = f'<div class="mt-2 space-y-1">{extras}</div>'
+
+        code_block_html = "\n".join(code_html) if code_html else ''
+
+        cards.append(
+            f'<div class="func-card bg-white dark:bg-slate-800 rounded-xl border-2 {border_cls} overflow-hidden '
+            f'hover:shadow-lg transition-all duration-200">'
+            f'<div class="px-5 py-3 bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700 '
+            f'flex flex-wrap items-center gap-2">'
+            f'<i class="fas fa-cube text-xs text-slate-400"></i>'
+            f'<span class="font-bold text-slate-900 dark:text-white text-sm font-mono">{escape(fname)}</span>'
+            f'{addr_badge}{xref_badge}{mal_badge}</div>'
+            f'<div class="p-5 space-y-2">'
+            f'{purpose_html}{malicious_html}{extra_lines}{code_block_html}'
+            f'</div></div>'
+        )
+
+    if not cards:
+        return _markdown_to_html(md_text)
+
+    joined = "\n".join(cards)
+    return f'<div class="space-y-4">{joined}</div>'
+
+
+def _render_evidence_cards(evidence_items: List[str], md_text: str) -> str:
+    """Render Evidence of Malicious Activity as severity-colored cards."""
+    if not evidence_items and not md_text:
+        return '<p class="text-sm text-slate-500 italic">No evidence of malicious activity identified.</p>'
+
+    # Try structured evidence items first
+    if evidence_items:
+        cards: List[str] = []
+        _ev_colors = [
+            ("bg-red-500", "border-red-200 dark:border-red-800", "bg-red-50 dark:bg-red-900/10"),
+            ("bg-orange-500", "border-orange-200 dark:border-orange-800", "bg-orange-50 dark:bg-orange-900/10"),
+            ("bg-yellow-500", "border-yellow-200 dark:border-yellow-800", "bg-yellow-50 dark:bg-yellow-900/10"),
+            ("bg-blue-500", "border-blue-200 dark:border-blue-800", "bg-blue-50 dark:bg-blue-900/10"),
+            ("bg-purple-500", "border-purple-200 dark:border-purple-800", "bg-purple-50 dark:bg-purple-900/10"),
+        ]
+        for i, item in enumerate(evidence_items):
+            dot_bg, border, card_bg = _ev_colors[i % len(_ev_colors)]
+
+            # Split on common patterns
+            parts = re.split(r'\s*[-—]\s*(?:Function|Evidence|Code)[:\s]', item, maxsplit=1)
+            if len(parts) == 2:
+                title_str = parts[0].strip()
+                detail_str = parts[1].strip()
+            else:
+                s = item.strip()
+                dot = s.find('.')
+                if 0 < dot < 80:
+                    title_str = s[:dot]
+                    detail_str = s[dot + 1:].strip()
+                else:
+                    title_str = s[:100]
+                    detail_str = s[100:].strip() if len(s) > 100 else ''
+
+            detail_html = ''
+            if detail_str:
+                detail_html = (
+                    f'<div class="mt-2 bg-slate-50 dark:bg-slate-900/50 rounded p-2.5 border border-slate-200 dark:border-slate-700">'
+                    f'<div class="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed">{_inline_code_html(detail_str)}</div></div>'
+                )
+
+            cards.append(
+                f'<div class="evidence-card {card_bg} border {border} rounded-xl p-4 hover:shadow-md transition-all duration-200">'
+                f'<div class="flex items-start gap-3">'
+                f'<div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full {dot_bg} ring-2 ring-white dark:ring-slate-900 shadow-sm"></div></div>'
+                f'<div class="flex-1 min-w-0">'
+                f'<div class="font-semibold text-slate-900 dark:text-white text-sm">{_inline_code_html(title_str)}</div>'
+                f'{detail_html}'
+                f'</div>'
+                f'<span class="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">#{i + 1}</span>'
+                f'</div></div>'
+            )
+
+        joined = "\n".join(cards)
+        return f'<div class="space-y-3">{joined}</div>'
+
+    # Fallback: use markdown text as evidence section
+    if md_text:
+        return _markdown_to_html(md_text)
+
+    return '<p class="text-sm text-slate-500 italic">No evidence of malicious activity identified.</p>'
+
+
+def _render_operational_flow(md_text: str) -> str:
+    """Render Operational Flow as a vertical timeline with connected steps."""
+    if not md_text:
+        return '<p class="text-slate-500 italic">Operational flow analysis not available.</p>'
+
+    # Parse numbered steps: 1. **Title**: Description — Evidence: ...
+    steps: List[tuple] = []  # (title, desc, evidence)
+    for line in md_text.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        m = re.match(r'^(\d+)\.\s+\*\*(.+?)\*\*[:\s]*(.*)', stripped)
+        if m:
+            title = m.group(2).strip()
+            rest = m.group(3).strip()
+            # Split evidence from description
+            ev_split = re.split(r'\s*[-—]\s*Evidence[:\s]*', rest, maxsplit=1)
+            if len(ev_split) == 2:
+                desc = ev_split[0].strip()
+                evidence = ev_split[1].strip()
+            else:
+                desc = rest
+                evidence = ''
+            steps.append((title, desc, evidence))
+        elif steps:
+            # Continuation line — append to last step's description
+            prev_title, prev_desc, prev_ev = steps[-1]
+            cleaned = re.sub(r'^[-*]\s+', '', stripped).strip()
+            if cleaned:
+                steps[-1] = (prev_title, prev_desc + ' ' + cleaned, prev_ev)
+
+    if not steps:
+        # Fallback: try bullet format
+        for line in md_text.split('\n'):
+            stripped = line.strip()
+            m = re.match(r'^[-*]\s+\*\*(.+?)\*\*[:\s]*(.*)', stripped)
+            if m:
+                title = m.group(1).strip()
+                rest = m.group(2).strip()
+                ev_split = re.split(r'\s*[-—]\s*Evidence[:\s]*', rest, maxsplit=1)
+                if len(ev_split) == 2:
+                    steps.append((title, ev_split[0].strip(), ev_split[1].strip()))
+                else:
+                    steps.append((title, rest, ''))
+
+    if not steps:
+        return _markdown_to_html(md_text)
+
+    _flow_colors = ['red', 'orange', 'yellow', 'blue', 'purple', 'green', 'cyan', 'pink']
+
+    items: List[str] = []
+    for idx, (title, desc, evidence) in enumerate(steps):
+        color = _flow_colors[idx % len(_flow_colors)]
+        is_last = idx == len(steps) - 1
+
+        # Timeline connector
+        connector = '' if is_last else (
+            f'<div class="absolute left-[18px] top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div>'
+        )
+
+        ev_html = ''
+        if evidence:
+            ev_html = (
+                f'<div class="mt-2 flex items-start gap-1.5 text-xs text-slate-500 dark:text-slate-400">'
+                f'<i class="fas fa-fingerprint text-[10px] mt-0.5 text-slate-400"></i>'
+                f'<span class="font-mono">{_inline_code_html(evidence)}</span></div>'
+            )
+
+        items.append(
+            f'<div class="relative pl-12">'
+            f'{connector}'
+            f'<div class="absolute left-0 top-0 w-9 h-9 rounded-full bg-{color}-100 dark:bg-{color}-900/30 '
+            f'border-2 border-{color}-400 dark:border-{color}-600 flex items-center justify-center '
+            f'text-xs font-bold text-{color}-600 dark:text-{color}-400 z-10">{idx + 1}</div>'
+            f'<div class="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4 '
+            f'hover:shadow-md hover:border-{color}-300 dark:hover:border-{color}-700 transition-all duration-200">'
+            f'<h4 class="font-bold text-slate-900 dark:text-white text-sm">{escape(title)}</h4>'
+            f'<p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">{_inline_code_html(desc)}</p>'
+            f'{ev_html}'
+            f'</div></div>'
+        )
+
+    joined = "\n".join(items)
+    return f'<div class="space-y-6">{joined}</div>'
 
 
 def _render_iocs(iocs: List[Dict[str, str]]) -> str:
-    """Render IOCs as table rows."""
+    """Render IOCs as table rows with copy-to-clipboard buttons."""
     if not iocs:
-        return '<tr><td colspan="2" class="text-gray-500 italic">No IOCs extracted.</td></tr>'
-    html = ''
+        return '<tr><td colspan="3" class="px-6 py-3 text-slate-500 italic">No IOCs extracted.</td></tr>'
+    rows: List[str] = []
     for ioc in iocs:
-        html += f'<tr><td class="font-bold text-xs text-gray-500 uppercase">{escape(ioc["type"])}</td><td class="font-mono text-sm break-all">{escape(ioc["value"])}</td></tr>'
-    return html
+        ioc_type = escape(ioc['type'])
+        ioc_value = escape(ioc['value'])
+        js_val = ioc['value'].replace('\\', '\\\\').replace("'", "\\'")
+        rows.append(
+            f'<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group">'
+            f'<td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">{ioc_type}</td>'
+            f'<td class="px-6 py-3 font-mono text-xs break-all">{ioc_value}</td>'
+            f'<td class="w-10 no-print"><button onclick="copyToClipboard(\'{js_val}\')" '
+            f'class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3">'
+            f'<i class="fas fa-copy"></i></button></td></tr>'
+        )
+    return '\n'.join(rows)
 
 
 def _deduplicate_chains(chains: List[Dict[str, Any]], limit: int = 15) -> List[Dict[str, Any]]:
@@ -481,51 +1020,63 @@ def _deduplicate_chains(chains: List[Dict[str, Any]], limit: int = 15) -> List[D
 
 
 def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
-    """Render call-graph attack chains for one analyzer.
+    """Render call-graph analysis as a styled card (revamp template).
 
-    Adjacency tables are omitted from the main report (too verbose for
-    library-heavy binaries).  Cycles are shown only if meaningful.
+    Returns one card div.  The caller wraps two cards in a grid.
     """
-    if not analysis or not analysis.get("ok"):
-        return f'<div class="text-gray-500 italic mb-4">{escape(source)}: call graph data not available.</div>'
+    icon_color = 'text-purple-500' if source == 'Ghidra' else 'text-blue-500'
 
-    stats = analysis.get("stats", {})
-    entries = analysis.get("entries", []) or []
-    chains = analysis.get("chains", []) or []
-    cycles = analysis.get("cycles", []) or []
+    if not analysis or not analysis.get('ok'):
+        return (
+            f'<div class="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm border border-slate-200 dark:border-slate-700">'
+            f'<h3 class="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">'
+            f'<i class="fas fa-project-diagram {icon_color}"></i> {escape(source)} Analysis</h3>'
+            f'<p class="text-sm text-slate-500 italic">Call graph data not available.</p></div>'
+        )
 
-    parts = [
-        f'<h3>{escape(source)} Call Graph</h3>',
-        (
-            f'<p class="mb-3"><strong>Nodes:</strong> {stats.get("nodes", 0)} | '
-            f'<strong>Edges:</strong> {stats.get("edges", 0)} | '
-            f'<strong>Entries:</strong> {escape(", ".join(entries[:5])) or "N/A"} | '
-            f'<strong>Attack Chains:</strong> {len(chains)}</p>'
-        ),
-    ]
+    stats = analysis.get('stats', {})
+    chains = analysis.get('chains', []) or []
+    nodes = stats.get('nodes', 0)
+    edges = stats.get('edges', 0)
+    num_chains = len(chains)
 
+    # Chain stat cell styling
+    if num_chains > 0:
+        chain_cell = 'bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800'
+        chain_num_cls = ' text-red-600'
+    else:
+        chain_cell = 'bg-slate-50 dark:bg-slate-700/50'
+        chain_num_cls = ''
+
+    # Chain items
     if chains:
         deduped = _deduplicate_chains(chains)
-        parts.append('<h4>Attack Chains</h4>')
-        parts.append('<ul class="list-disc pl-6 mb-4">')
-        for chain in deduped:
-            category = escape(str(chain.get("category", "Unknown")))
-            path = " &rarr; ".join(escape(str(p)) for p in chain.get("path", []))
-            parts.append(f'<li class="mb-2"><strong>[{category}]</strong> {path}</li>')
-        parts.append('</ul>')
+        items: List[str] = []
+        for chain in deduped[:5]:
+            category = escape(str(chain.get('category', 'Unknown')))
+            path = ' \u2192 '.join(escape(str(p)) for p in chain.get('path', []))
+            cat_lower = category.lower()
+            if any(k in cat_lower for k in ('execution', 'crypto', 'file')):
+                cls = 'bg-red-50 dark:bg-red-900/10 text-red-800 dark:text-red-300'
+            else:
+                cls = 'bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400'
+            items.append(f'<div class="{cls} p-2 rounded">[{category}] {path}</div>')
+        chain_html = '<div class="space-y-1 text-xs font-mono">' + '\n'.join(items) + '</div>'
+        if len(deduped) > 5:
+            chain_html += f'<p class="text-xs text-slate-500 mt-2 italic">\u2026 and {len(deduped) - 5} more chains</p>'
     else:
-        parts.append('<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>')
+        chain_html = '<p class="text-sm text-slate-500 italic">No sink-reaching attack chains detected.</p>'
 
-    if cycles:
-        top_cycles = cycles[:5]
-        cycle_lines = [escape(" -> ".join(str(n) for n in c)) for c in top_cycles]
-        parts.append(f'<h4>Detected Cycles — Top {len(top_cycles)} of {len(cycles)}</h4>')
-        parts.append('<ul class="list-disc pl-6 mb-4">')
-        for c in cycle_lines:
-            parts.append(f'<li class="mb-2"><code>{c}</code></li>')
-        parts.append('</ul>')
-
-    return "\n".join(parts)
+    return (
+        f'<div class="bg-white dark:bg-slate-800 rounded-lg p-6 shadow-sm border border-slate-200 dark:border-slate-700">'
+        f'<h3 class="font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">'
+        f'<i class="fas fa-project-diagram {icon_color}"></i> {escape(source)} Analysis</h3>'
+        f'<div class="grid grid-cols-3 gap-4 mb-4 text-center">'
+        f'<div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded"><div class="text-xl font-bold">{nodes}</div><div class="text-xs text-slate-500">Nodes</div></div>'
+        f'<div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded"><div class="text-xl font-bold">{edges}</div><div class="text-xs text-slate-500">Edges</div></div>'
+        f'<div class="{chain_cell} p-3 rounded"><div class="text-xl font-bold{chain_num_cls}">{num_chains}</div><div class="text-xs text-slate-500">Chains</div></div>'
+        f'</div>{chain_html}</div>'
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -657,12 +1208,13 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
             apis_str = ", ".join(sorted(set(found_apis)))
 
             block = (
-                f'<div class="decomp-block" style="margin-bottom:16px;border:1px solid #d1d5db;border-radius:4px;overflow:hidden;">'
-                f'<div style="background:#1f2937;color:white;padding:8px 14px;font-family:\'Roboto Mono\',monospace;font-size:0.82rem;">'
-                f'<strong>[{escape(source)}]</strong> {escape(func_name)} @ {escape(str(addr))} — '
-                f'<span style="color:#fbbf24;">{escape(apis_str)}</span></div>'
-                f'<pre style="margin:0;padding:12px;background:#f8f9fa;overflow-x:auto;font-size:0.8rem;line-height:1.5;">'
-                f'<code>{snippet}</code></pre></div>'
+                f'<div class="bg-slate-900 rounded-lg overflow-hidden mb-4">'
+                f'<div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700">'
+                f'<span class="text-xs text-slate-400 font-mono">[{escape(source)}] {escape(func_name)} @ {escape(str(addr))}</span>'
+                f'<span class="text-xs text-yellow-400 font-mono">{escape(apis_str)}</span></div>'
+                f'<div class="p-4 overflow-x-auto">'
+                f'<pre class="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-wrap"><code>{snippet}</code></pre>'
+                f'</div></div>'
             )
 
             if is_lib:
@@ -675,13 +1227,13 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
     evidence_blocks = app_blocks[:10] + lib_blocks[:max(0, 10 - len(app_blocks[:10]))]
 
     if not evidence_blocks:
-        return '<div class="text-gray-500 italic">No suspicious API calls detected in decompiled code.</div>'
+        return '<p class="text-sm text-slate-500 italic">No suspicious API calls detected in decompiled code.</p>'
 
     return "\n".join(evidence_blocks)
 
 
 def build_report_html(state: Dict[str, Any]) -> str:
-    """Build HTML report matching professional template format."""
+    """Build HTML report using the revamp template (Tailwind + dark mode + sidebar)."""
 
     iocs = extract_iocs_from_state(state)
     verdict, verdict_class, indicators, score = calculate_verdict(iocs, state)
@@ -694,284 +1246,464 @@ def build_report_html(state: Dict[str, Any]) -> str:
     r2_funcs = r2_results.get("functions", {})
     strings_data = analysis_results.get("strings", {})
     r2_strings = r2_results.get("strings", {})
-    gh_call_graph_analysis = analysis_results.get("call_graph_analysis", {})
-    r2_call_graph_analysis = r2_results.get("call_graph_analysis", {})
+    gh_call_graph = analysis_results.get("call_graph_analysis", {})
+    r2_call_graph = r2_results.get("call_graph_analysis", {})
 
     program_hash = state.get("program_hash", "unknown")
     summary_text = state.get("summary", "")
-
-    logger.info("build_report_html: summary_text length=%d", len(summary_text))
-
-    # Extract executive summary; fallback strips markdown headers to avoid duplicates
-    exec_summary = _extract_section(summary_text, "Executive Summary")
-    if not exec_summary:
-        # Strip any leading markdown headers from the raw text to avoid duplicate headings
-        fallback = re.sub(r'^#{2,3}\s+.*$', '', summary_text[:2000], flags=re.MULTILINE).strip()
-        exec_summary = fallback or summary_text[:2000]
-
-    report_data = {
-        "file_name": escape(state.get("binary_path", "unknown").split("/")[-1]),
-        "summary": _markdown_to_html(exec_summary),
-        "malware_capabilities": _markdown_to_html(_extract_section(summary_text, "Malware Capabilities")),
-        "binary_info": _markdown_to_html(f"""| Property | Value |
-|----------|-------|
-| SHA256 | {program_hash} |
-| Architecture | {binary.get('architecture', 'unknown')} ({r2_binary.get('bits', '?')}-bit, {r2_binary.get('os', 'unknown')}) |
-| Image Base | {binary.get('image_base', 'unknown')} |
-| Entry Point | {_format_entry_points(binary.get('entry_points', ['unknown']))} |
-| Compiler | {_sanitize_compiler(binary.get('compiler', 'unknown'))} |
-| Imports | {_format_import_export_list(binary.get('imports', []))} |
-| Exports | {len(binary.get('exports', []))} symbols |
-| Functions | Ghidra: {len(funcs.get('functions', []))} ({len(state.get('decompilation_cache', {}))} decompiled) · R2: {len(r2_funcs.get('functions', []))} ({len(state.get('r2_decompilation_cache', {}))} decompiled) |
-| Strings | Ghidra: {len(strings_data.get('strings', []))} · R2: {len(r2_strings.get('strings', []))} |"""),
-        "technical_analysis": _markdown_to_html(_extract_section(summary_text, "Technical Analysis")),
-        "functions_analysis": _markdown_to_html(_extract_section(summary_text, "Functions Analysis")),
-        "how_it_works": _markdown_to_html(_extract_section(summary_text, "Operational Flow")),
-        "c2_analysis": _markdown_to_html(_extract_section(summary_text, "C2 & Networking")),
-        "evidence": _extract_evidence(summary_text),
-        "recommendations": _extract_recommendations(summary_text),
-        "iocs": _parse_iocs_for_template(iocs),
-        "conclusion": _markdown_to_html(_extract_section(summary_text, "Conclusion")),
-        "call_graph": (
-            _render_call_graph_section("Ghidra", gh_call_graph_analysis)
-            + "\n"
-            + _render_call_graph_section("Radare2", r2_call_graph_analysis)
-        ),
-        "code_evidence": _render_code_evidence(state),
-    }
-
+    file_name = escape(state.get("binary_path", "unknown").split("/")[-1])
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     task_id = state.get("session_id", "unknown")[:8]
 
-    risk_class = {
-        "malicious": "risk-critical",
-        "suspicious": "risk-high",
-        "clean": "risk-low",
-        "unknown": "risk-clean"
-    }.get(verdict_class, "risk-clean")
+    logger.info("build_report_html: summary_text length=%d", len(summary_text))
 
-    # Build HTML sections
-    sections_html = f'''
-        <!-- Executive Summary -->
-        <div>
-            <h2 class="section-header">1. Executive Summary</h2>
-            <div class="markdown-content">{report_data['summary']}</div>
-        </div>
+    # --- Extract sections from LLM summary ---
+    exec_summary = _extract_section(summary_text, "Executive Summary")
+    if not exec_summary:
+        fallback = re.sub(r'^#{2,3}\s+.*$', '', summary_text[:2000], flags=re.MULTILINE).strip()
+        exec_summary = fallback or summary_text[:2000]
 
-        <!-- Malware Capabilities -->
-        <div>
-            <h2 class="section-header">2. Malware Capabilities</h2>
-            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Identified capabilities and behaviors exhibited by this malware sample.</div>
-            <div class="markdown-content">{report_data['malware_capabilities'] if report_data['malware_capabilities'] else '<p>Capabilities analysis not available.</p>'}</div>
-        </div>
+    capabilities_md = _extract_section(summary_text, "Malware Capabilities")
+    technical_md = _extract_section(summary_text, "Technical Analysis")
+    functions_md = _extract_section(summary_text, "Functions Analysis")
+    operational_md = _extract_section(summary_text, "Operational Flow")
+    evidence_md = _extract_section(summary_text, "Evidence of Malicious Activity")
+    conclusion_text = _extract_section(summary_text, "Conclusion")
+    evidence_items = _extract_evidence(summary_text)
+    recommendations = _extract_recommendations(summary_text)
 
-        <!-- Binary Information -->
-        <div>
-            <h2 class="section-header">3. Binary Information</h2>
-            <div class="markdown-content">{report_data['binary_info']}</div>
-        </div>
+    # Render sections with dedicated card-based renderers
+    capabilities_html = _render_capabilities_cards(capabilities_md)
+    technical_html = _render_technical_cards(technical_md)
+    functions_html = _render_functions_cards(functions_md)
+    operational_html = _render_operational_flow(operational_md)
+    ioc_list = _parse_iocs_for_template(iocs)
 
-        <!-- Technical Analysis -->
-        <div>
-            <h2 class="section-header">4. Technical Analysis</h2>
-            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">In-depth technical examination of the malware code structure, algorithms, and implementation details.</div>
-            <div class="markdown-content">{report_data['technical_analysis'] if report_data['technical_analysis'] else '<p>Detailed technical analysis not available.</p>'}</div>
-        </div>
+    # --- Verdict display config ---
+    _VERDICT_CFG = {
+        "malicious": ("Critical", "fa-skull-crossbones", "bg-red-100 dark:bg-red-900/30", "text-red-800 dark:text-red-300", "border-red-200 dark:border-red-800"),
+        "suspicious": ("High Risk", "fa-exclamation-triangle", "bg-orange-100 dark:bg-orange-900/30", "text-orange-800 dark:text-orange-300", "border-orange-200 dark:border-orange-800"),
+        "clean": ("Low Risk", "fa-check-circle", "bg-green-100 dark:bg-green-900/30", "text-green-800 dark:text-green-300", "border-green-200 dark:border-green-800"),
+        "unknown": ("Unknown", "fa-question-circle", "bg-slate-100 dark:bg-slate-800", "text-slate-700 dark:text-slate-300", "border-slate-200 dark:border-slate-700"),
+    }
+    v_label, v_icon, v_badge_bg, v_badge_text, v_badge_border = _VERDICT_CFG.get(verdict_class, _VERDICT_CFG["unknown"])
 
-        <!-- Functions Analysis -->
-        <div>
-            <h2 class="section-header">5. Functions Analysis</h2>
-            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Key functions identified during static analysis, including decompiled pseudocode and behavioral descriptions.</div>
-            <div class="markdown-content">{report_data['functions_analysis'] if report_data['functions_analysis'] else '<p>Function analysis not available.</p>'}</div>
-        </div>
+    # Risk box gradient per verdict
+    _RISK_GRADIENT = {
+        "malicious": "background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);",
+        "suspicious": "background: linear-gradient(135deg, #ea580c 0%, #9a3412 100%);",
+        "clean": "background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);",
+        "unknown": "background: linear-gradient(135deg, #475569 0%, #334155 100%);",
+    }
+    risk_gradient = _RISK_GRADIENT.get(verdict_class, _RISK_GRADIENT["unknown"])
 
-        <!-- Evidence -->
-        <div>
-            <h2 class="section-header">6. Evidence of Malicious Activity</h2>
-            <div>{_render_evidence(report_data['evidence'])}</div>
-        </div>
+    # Binary format detection
+    arch = binary.get('architecture', r2_binary.get('architecture', 'unknown'))
+    bits = r2_binary.get('bits', '?')
+    os_name = r2_binary.get('os', 'unknown')
+    fmt_raw = str(binary.get('format', '')).lower() + str(r2_binary.get('format', '')).lower() + os_name.lower()
+    if 'elf' in fmt_raw or os_name.lower() == 'linux':
+        fmt_str = 'ELF'
+    elif 'pe' in fmt_raw or os_name.lower() == 'windows':
+        fmt_str = 'PE'
+    elif 'mach' in fmt_raw or 'mac' in os_name.lower():
+        fmt_str = 'Mach-O'
+    else:
+        fmt_str = 'Binary'
+    format_badge = f"{fmt_str}{bits}" if bits != '?' else fmt_str
 
-        <!-- Code Evidence -->
-        <div>
-            <h2 class="section-header">6b. Code Evidence (Suspicious API Calls)</h2>
-            <div class="text-sm text-gray-600 mb-4 italic border-l-2 border-gray-300 pl-3">Exact code locations where suspicious or malicious API calls were found in decompiled functions. Only factual findings from both Ghidra and Radare2.</div>
-            <div>{report_data['code_evidence']}</div>
-        </div>
+    hash_short = f"{program_hash[:6]}...{program_hash[-5:]}" if len(program_hash) > 16 else program_hash
 
-        <!-- Operational Flow -->
-        <div>
-            <h2 class="section-header">7. Operational Flow</h2>
-            <div class="markdown-content">{report_data['how_it_works'] if report_data['how_it_works'] else '<p>Operational flow analysis not available.</p>'}</div>
-        </div>
+    # --- Render dynamic sections ---
+    evidence_html = _render_evidence_cards(evidence_items, evidence_md)
+    code_evidence_html = _render_code_evidence(state)
+    call_graph_html = (
+        '<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">'
+        + _render_call_graph_section("Ghidra", gh_call_graph)
+        + _render_call_graph_section("Radare2", r2_call_graph)
+        + '</div>'
+    )
+    iocs_rows = _render_iocs(ioc_list)
+    recommendations_html = _render_recommendations(recommendations)
 
-        <!-- C2 & Networking -->
-        <div>
-            <h2 class="section-header">8. C2 & Networking</h2>
-            <div class="markdown-content">{report_data['c2_analysis'] if report_data['c2_analysis'] else '<p>C2 analysis not available.</p>'}</div>
-        </div>
+    # Conclusion inner HTML
+    if conclusion_text:
+        conclusion_inner = _markdown_to_html(conclusion_text)
+    else:
+        conclusion_inner = (
+            f'<p>This binary has been classified as <strong>{escape(verdict)}</strong> '
+            f'with a risk score of {score}/100. Review the technical analysis and IOCs '
+            f'above for detection and response guidance.</p>'
+        )
 
-        <!-- Recommendations -->
-        <div>
-            <h2 class="section-header">9. Recommendations</h2>
-            <div class="space-y-4">{_render_recommendations(report_data['recommendations'])}</div>
-        </div>
+    # Conclusion gradient colors
+    _CC = {
+        "malicious": ("from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/10",
+                       "border-red-200 dark:border-red-800/50", "text-red-900 dark:text-red-100",
+                       "text-red-800 dark:text-red-200", "bg-red-100 dark:bg-red-800/50",
+                       "text-red-600 dark:text-red-400"),
+        "suspicious": ("from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/10",
+                        "border-orange-200 dark:border-orange-800/50", "text-orange-900 dark:text-orange-100",
+                        "text-orange-800 dark:text-orange-200", "bg-orange-100 dark:bg-orange-800/50",
+                        "text-orange-600 dark:text-orange-400"),
+        "clean": ("from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/10",
+                   "border-green-200 dark:border-green-800/50", "text-green-900 dark:text-green-100",
+                   "text-green-800 dark:text-green-200", "bg-green-100 dark:bg-green-800/50",
+                   "text-green-600 dark:text-green-400"),
+    }
+    cc_grad, cc_border, cc_title, cc_body, cc_icon_bg, cc_icon_txt = _CC.get(verdict_class, _CC["malicious"])
 
-        <!-- IOCs -->
-        <div>
-            <h2 class="section-header">10. Indicators of Compromise (IOCs)</h2>
-            <div class="markdown-content">
-                <table class="w-full text-left">
-                    <thead><tr><th width="20%">Type</th><th>Value</th></tr></thead>
-                    <tbody>{_render_iocs(report_data['iocs'])}</tbody>
-                </table>
-            </div>
-        </div>
+    # Binary info table rows
+    binary_rows = f'''
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400 w-1/4">SHA256</td>
+                                        <td class="text-xs break-all">{escape(program_hash)}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Architecture</td>
+                                        <td>{escape(str(arch))} ({bits}-bit)</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Format</td>
+                                        <td>{escape(fmt_str)} - {escape(str(os_name))}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Image Base</td>
+                                        <td class="font-mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Entry Points</td>
+                                        <td class="font-mono text-xs">{escape(_format_entry_points(binary.get('entry_points', ['unknown'])))}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Compiler</td>
+                                        <td class="text-xs">{escape(_sanitize_compiler(binary.get('compiler', 'unknown')))}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Imports</td>
+                                        <td class="text-xs">{escape(_format_import_export_list(binary.get('imports', [])))}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Exports</td>
+                                        <td>{len(binary.get('exports', []))} symbols</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Functions</td>
+                                        <td>Ghidra: {len(funcs.get('functions', []))} ({len(state.get('decompilation_cache', {}))}&nbsp;decompiled) &middot; R2: {len(r2_funcs.get('functions', []))} ({len(state.get('r2_decompilation_cache', {}))}&nbsp;decompiled)</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Strings</td>
+                                        <td>Ghidra: {len(strings_data.get('strings', []))} &middot; R2: {len(r2_strings.get('strings', []))} extracted</td></tr>'''
 
-        <!-- Conclusion -->
-        <div>
-            <h2 class="section-header">11. Conclusion</h2>
-            <div class="markdown-content" style="background-color: #f9fafb; border: 1px solid #e5e7eb; padding: 16px; border-radius: 4px;">
-                {report_data['conclusion'] if report_data['conclusion'] else f'<p>This binary has been classified as <strong>{verdict}</strong> with a risk score of {score}/100. Review the technical analysis and IOCs above for detection and response guidance.</p>'}
-            </div>
-        </div>
-
-        <!-- Call Graph -->
-        <div>
-            <h2 class="section-header">12. Call Graph &amp; Attack Chains</h2>
-            <div class="markdown-content">{report_data['call_graph']}</div>
-        </div>
-    '''
-
-    # CSS styles
-    css_styles = '''
-        :root { --primary: #1f2937; --accent: #b91c1c; --border: #e5e7eb; }
-        body { font-family: 'Roboto', sans-serif; background-color: #f3f4f6; color: #111827; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-        .page-container { width: 210mm; min-height: 297mm; padding: 20mm; margin: 20px auto; background: white; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; }
-        .font-mono { font-family: 'Roboto Mono', monospace; }
-        h2.section-header { font-size: 14pt; font-weight: 700; text-transform: uppercase; color: var(--primary); border-bottom: 1px solid #9ca3af; padding-bottom: 4px; margin-top: 32px; margin-bottom: 16px; display: flex; align-items: center; }
-        h2.section-header::before { content: ''; display: inline-block; width: 6px; height: 18px; background-color: var(--accent); margin-right: 12px; }
-        .meta-box { border: 1px solid #d1d5db; background-color: #f9fafb; padding: 12px; font-size: 0.9rem; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 32px; }
-        .meta-label { font-weight: 600; color: #4b5563; text-transform: uppercase; font-size: 0.75rem; }
-        .risk-banner { text-align: center; padding: 6px; font-weight: bold; text-transform: uppercase; font-size: 0.9rem; letter-spacing: 0.1em; margin-bottom: 20px; border: 1px solid; }
-        .risk-critical { background-color: #fee2e2; color: #991b1b; border-color: #fca5a5; }
-        .risk-high { background-color: #ffedd5; color: #9a3412; border-color: #fdba74; }
-        .risk-medium { background-color: #fef9c3; color: #854d0e; border-color: #fde047; }
-        .risk-low { background-color: #dcfce7; color: #166534; border-color: #86efac; }
-        .risk-clean { background-color: #f3f4f6; color: #374151; border-color: #d1d5db; }
-        .markdown-content p { margin-bottom: 12px; line-height: 1.6; font-size: 10.5pt; }
-        .markdown-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 12px; }
-        .markdown-content li { margin-bottom: 6px; }
-        .markdown-content pre { background-color: #f3f4f6; border: 1px solid #d1d5db; border-left: 4px solid #6b7280; padding: 12px; overflow-x: auto; font-size: 0.85rem; margin: 16px 0; }
-        .markdown-content code { font-family: 'Roboto Mono', monospace; background-color: #f3f4f6; padding: 2px 4px; font-size: 0.9em; color: #b91c1c; }
-        .markdown-content pre code { color: #374151; background: none; padding: 0; }
-        .markdown-content h3 { font-size: 1.1rem; font-weight: 700; color: #1f2937; margin-top: 1.5rem; margin-bottom: 0.75rem; border-bottom: 1px dotted #d1d5db; padding-bottom: 4px; }
-        .markdown-content h4 { font-size: 1rem; font-weight: 600; color: #374151; margin-top: 1.25rem; margin-bottom: 0.5rem; }
-        .markdown-content table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.9rem; border: 1px solid #d1d5db; }
-        .markdown-content th { background-color: #e5e7eb; font-weight: 700; text-transform: uppercase; font-size: 0.75rem; color: #374151; padding: 8px 12px; text-align: left; border-bottom: 2px solid #9ca3af; }
-        .markdown-content td { padding: 8px 12px; border-bottom: 1px solid #e5e7eb; color: #1f2937; }
-        .finding-item { margin-bottom: 16px; border-bottom: 1px dashed #d1d5db; padding-bottom: 12px; }
-        .finding-title { font-weight: 700; color: #1f2937; font-size: 1rem; margin-bottom: 4px; }
-        .finding-desc { color: #4b5563; }
-        /* Utility classes used by markdown renderer */
-        .w-full { width: 100%; }
-        .text-left { text-align: left; }
-        .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
-        .text-xs { font-size: 0.75rem; line-height: 1rem; }
-        .text-gray-500 { color: #6b7280; }
-        .text-gray-600 { color: #4b5563; }
-        .text-gray-800 { color: #1f2937; }
-        .italic { font-style: italic; }
-        .font-bold { font-weight: 700; }
-        .break-all { word-break: break-all; }
-        .list-disc { list-style-type: disc; }
-        .pl-4 { padding-left: 1rem; }
-        .pl-6 { padding-left: 1.5rem; }
-        .pt-half { padding-top: 0.125rem; }
-        .pb-4 { padding-bottom: 1rem; }
-        .mb-2 { margin-bottom: 0.5rem; }
-        .mb-3 { margin-bottom: 0.75rem; }
-        .mb-4 { margin-bottom: 1rem; }
-        .gap-4 { gap: 1rem; }
-        .items-start { align-items: flex-start; }
-        .flex { display: flex; }
-        .flex-shrink-0 { flex-shrink: 0; }
-        .space-y-4 > * + * { margin-top: 1rem; }
-        .border-b { border-bottom: 1px solid #e5e7eb; }
-        .border-dashed { border-style: dashed; }
-        .border-gray-200 { border-color: #e5e7eb; }
-
-        .leading-relaxed { line-height: 1.625; }
-        .uppercase { text-transform: uppercase; }
-        .border-l-2 { border-left: 2px solid; }
-        .border-gray-300 { border-color: #d1d5db; }
-        .pl-3 { padding-left: 0.75rem; }
-        .border-collapse { border-collapse: collapse; }
-        @media print { body { background: white; } .page-container { margin: 0; padding: 15mm; box-shadow: none; width: 100%; } .no-print { display: none !important; } }
-    '''
-
-    # Complete HTML document
+    # --- Assemble full HTML ---
     html = f'''<!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Malware Analysis Report - {report_data['file_name']}</title>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <style>{css_styles}</style>
+    <title>Malware Analysis Report - {file_name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {{
+            darkMode: 'class',
+            theme: {{
+                extend: {{
+                    fontFamily: {{
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }},
+                    colors: {{
+                        primary: '#0f2937',
+                        accent: '#dc2626',
+                    }}
+                }}
+            }}
+        }}
+    </script>
+    <style>
+        @media print {{
+            @page {{ size: A4; margin: 10mm; }}
+            body {{ background: white !important; color: black !important; }}
+            .no-print {{ display: none !important; }}
+            .page-break {{ page-break-before: always; }}
+            .flow-arrow {{ color: black !important; }}
+        }}
+        .code-block {{ background: #1e1e1e; border-radius: 0.5rem; position: relative; overflow: hidden; }}
+        .code-content {{ padding: 1rem; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; line-height: 1.5rem; color: #d4d4d4; }}
+        .code-keyword {{ color: #569cd6; }} .code-string {{ color: #ce9178; }} .code-function {{ color: #dcdcaa; }}
+        .code-comment {{ color: #6a9955; font-style: italic; }} .code-number {{ color: #b5cea8; }}
+        .code-operator {{ color: #d4d4d4; }} .code-variable {{ color: #9cdcfe; }}
+        .section-header-accent {{ position: relative; padding-left: 1rem; }}
+        .section-header-accent::before {{ content: ''; position: absolute; left: 0; top: 0.25rem; bottom: 0.25rem; width: 4px; background: #dc2626; border-radius: 2px; }}
+        table.data-table {{ width: 100%; border-collapse: separate; border-spacing: 0; }}
+        table.data-table th {{ background: #f3f4f6; color: #374151; font-weight: 600; text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #e5e7eb; }}
+        .dark table.data-table th {{ background: #1f2937; color: #d1d5db; border-bottom-color: #374151; }}
+        table.data-table td {{ padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; font-size: 0.875rem; font-family: 'JetBrains Mono', monospace; }}
+        .dark table.data-table td {{ border-bottom-color: #374151; color: #e5e7eb; }}
+        .flow-container {{ display: flex; align-items: center; gap: 0.5rem; overflow-x: auto; padding: 1rem 0; }}
+        .flow-item {{ flex-shrink: 0; background: white; border: 2px solid #e5e7eb; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #374151; white-space: nowrap; }}
+        .dark .flow-item {{ background: #1f2937; border-color: #374151; color: #e5e7eb; }}
+        .flow-item.active {{ background: #dc2626; color: white; border-color: #dc2626; }}
+        .flow-arrow {{ color: #9ca3af; font-size: 1.25rem; flex-shrink: 0; }}
+        .function-box {{ border: 2px solid #e5e7eb; transition: all 0.2s; }}
+        .function-box:hover {{ border-color: #dc2626; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15); }}
+        .dark .function-box {{ border-color: #374151; }}
+        .dark .function-box:hover {{ border-color: #dc2626; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3); }}
+        .evidence-compact {{ border-left: 3px solid #dc2626; transition: all 0.2s; }}
+        .evidence-compact:hover {{ background-color: #f9fafb; padding-left: 1.25rem; }}
+        .dark .evidence-compact:hover {{ background-color: #1f2937; }}
+        /* Card component styles */
+        .capability-card {{ transition: all 0.25s ease; }}
+        .tech-card {{ transition: all 0.25s ease; }}
+        .func-card {{ transition: all 0.25s ease; }}
+        .evidence-card {{ transition: all 0.25s ease; }}
+        .evidence-card:hover {{ transform: translateX(4px); }}
+        .rec-card {{ transition: all 0.3s; border: 1px solid #e5e7eb; }}
+        .rec-card:hover {{ transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border-color: #dc2626; }}
+        .dark .rec-card {{ border-color: #374151; }}
+        .dark .rec-card:hover {{ border-color: #dc2626; }}
+        .tlp-banner {{ background: repeating-linear-gradient(45deg, #f59e0b, #f59e0b 10px, #d97706 10px, #d97706 20px); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3); font-weight: bold; padding: 0.25rem 0.75rem; font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 0.5rem; }}
+        .risk-box {{ {risk_gradient} color: white; position: relative; overflow: hidden; }}
+        .risk-box::before {{ content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.05) 10px, rgba(255,255,255,0.05) 20px);
+            animation: slide 20s linear infinite; }}
+        @keyframes slide {{ 0% {{ transform: translateX(0); }} 100% {{ transform: translateX(40px); }} }}
+        /* markdown-content overrides for Tailwind context */
+        .md-content p {{ margin-bottom: 0.75rem; line-height: 1.7; }}
+        .md-content ul {{ list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }}
+        .md-content ol {{ list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }}
+        .md-content li {{ margin-bottom: 0.375rem; }}
+        .md-content pre {{ background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; overflow-x: auto; font-size: 0.8rem; margin: 1rem 0; color: #e2e8f0; }}
+        .md-content code {{ font-family: 'JetBrains Mono', monospace; background: #f1f5f9; padding: 0.125rem 0.375rem; font-size: 0.85em; color: #dc2626; border-radius: 0.25rem; }}
+        .md-content pre code {{ color: #e2e8f0; background: none; padding: 0; }}
+        .md-content h3 {{ font-size: 1.125rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; }}
+        .md-content h4 {{ font-size: 1rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }}
+        .md-content table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.875rem; }}
+        .md-content th {{ background: #f1f5f9; font-weight: 700; text-transform: uppercase; font-size: 0.7rem; padding: 0.5rem 0.75rem; text-align: left; border-bottom: 2px solid #cbd5e1; }}
+        .md-content td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid #e2e8f0; }}
+        .dark .md-content code {{ background: #1e293b; color: #f87171; }}
+        .dark .md-content th {{ background: #1e293b; border-bottom-color: #475569; }}
+        .dark .md-content td {{ border-bottom-color: #334155; }}
+    </style>
 </head>
-<body>
-    <div class="no-print" style="position: fixed; bottom: 32px; right: 32px; z-index: 50;">
-        <button onclick="window.print()" style="background: #1f2937; color: white; padding: 12px 24px; border: none; cursor: pointer; font-weight: 500; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2);">
-            Print / Save PDF
+<body class="bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-200 font-sans">
+
+    <!-- Floating Tools -->
+    <div class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 no-print">
+        <button onclick="toggleDarkMode()" class="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 p-3 rounded-full shadow-lg border border-slate-200 dark:border-slate-700 hover:scale-110 transition-transform">
+            <i class="fas fa-moon dark:hidden"></i>
+            <i class="fas fa-sun hidden dark:block"></i>
+        </button>
+        <button onclick="window.print()" class="bg-red-600 text-white p-3 rounded-full shadow-lg hover:bg-red-700 hover:scale-110 transition-all">
+            <i class="fas fa-print"></i>
         </button>
     </div>
 
-    <div class="page-container">
-        <!-- Header -->
-        <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 8px; border-bottom: 2px solid #1f2937; padding-bottom: 16px;">
-            <div>
-                <div style="font-size: 12px; font-weight: bold; color: #6b7280; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px;">Confidential & Proprietary</div>
-                <h1 style="font-size: 30px; font-weight: bold; color: #111827; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Reverse Engineering Report</h1>
-            </div>
-            <div style="text-align: right;">
-                <div style="font-weight: bold; color: #111827;">CYBER SECURITY DIVISION</div>
-                <div style="font-size: 14px; color: #6b7280;">Incident Response Team</div>
-            </div>
+    <!-- Navigation Sidebar -->
+    <nav class="fixed left-0 top-0 h-full w-72 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 overflow-y-auto z-40 transform -translate-x-full lg:translate-x-0 transition-transform no-print shadow-xl">
+        <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Malware Analysis</div>
+            <div class="font-mono text-lg font-bold text-slate-800 dark:text-slate-100 truncate">{file_name}</div>
+            <div class="text-xs text-slate-500 mt-1">SHA256: {escape(hash_short)}</div>
         </div>
-
-        <!-- Metadata -->
-        <div class="meta-box">
-            <div>
-                <div class="meta-label">File Name</div>
-                <div class="font-mono">{report_data['file_name']}</div>
-            </div>
-            <div style="text-align: right;">
-                <div class="meta-label" style="text-align: right;">Analysis ID</div>
-                <div class="font-mono">{task_id}</div>
-            </div>
-            <div>
-                <div class="meta-label">Date Generated</div>
-                <div>{timestamp}</div>
-            </div>
-            <div style="text-align: right;">
-                <div class="meta-label" style="text-align: right;">Classification</div>
-                <div style="display: inline-block; background: black; color: #FFC000; padding: 2px 8px; font-size: 12px; font-weight: bold;">TLP:AMBER</div>
-            </div>
+        <div class="p-4 space-y-1 text-sm">
+            <a href="#executive-summary" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Executive Summary</a>
+            <a href="#capabilities" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Malware Capabilities</a>
+            <a href="#binary-info" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Binary Information</a>
+            <a href="#technical-analysis" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Technical Analysis</a>
+            <a href="#functions-analysis" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Functions Analysis</a>
+            <a href="#evidence" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Evidence</a>
+            <a href="#code-evidence" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Code Evidence</a>
+            <a href="#operational-flow" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Operational Flow</a>
+            <a href="#call-graph" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Call Graph</a>
+            <a href="#iocs" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">IOCs</a>
+            <a href="#recommendations" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Recommendations</a>
+            <a href="#conclusion" class="block px-3 py-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">Conclusion</a>
         </div>
+    </nav>
 
-        <!-- Risk Banner -->
-        <div class="risk-banner {risk_class}">
-            THREAT ASSESSMENT: {verdict.upper()}
-        </div>
+    <!-- Main Content -->
+    <div class="lg:ml-72 min-h-screen">
+        <div class="max-w-6xl mx-auto p-4 lg:p-8 space-y-8">
+            <div class="bg-white dark:bg-slate-900 rounded-lg shadow-xl border border-slate-200 dark:border-slate-800 overflow-hidden">
 
-        {sections_html}
+                <!-- Header -->
+                <header class="bg-slate-50 dark:bg-slate-950 border-b border-slate-200 dark:border-slate-800 p-8">
+                    <div class="flex flex-col lg:flex-row justify-between gap-6">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-3">
+                                <span class="px-2 py-1 {v_badge_bg} {v_badge_text} text-xs font-bold rounded-full border {v_badge_border}">{escape(v_label).upper()}</span>
+                                <span class="px-2 py-1 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-full">{escape(format_badge)}</span>
+                                <span class="tlp-banner rounded"><i class="fas fa-lock"></i> TLP:AMBER</span>
+                            </div>
+                            <h1 class="text-4xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">Reverse Engineering Report</h1>
+                            <p class="text-xl text-slate-600 dark:text-slate-400 font-mono">Sample: <span class="text-slate-900 dark:text-slate-100 font-bold">{file_name}</span></p>
+                        </div>
+                        <div class="lg:text-right space-y-2">
+                            <div class="text-sm font-bold text-slate-900 dark:text-white text-lg">Cyber Security Division</div>
+                            <div class="text-sm text-slate-600 dark:text-slate-400">Incident Response Team</div>
+                            <div class="font-mono text-xs text-slate-500 dark:text-slate-500 mt-2 space-y-1">
+                                <div>Analysis ID: <span class="text-slate-700 dark:text-slate-300">{escape(task_id)}</span></div>
+                                <div>Generated: <span class="text-slate-700 dark:text-slate-300">{escape(timestamp)}</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </header>
 
-        <!-- Footer -->
-        <div style="margin-top: 48px; padding-top: 24px; border-top: 1px solid #d1d5db; display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af;" class="no-print">
-            <div>Confidential & Proprietary - Do Not Distribute Without Authorization</div>
-            <div>Generated by Ghidra + Radare2 Analysis Agent</div>
+                <!-- Risk Banner -->
+                <div class="risk-box p-6 text-center relative">
+                    <div class="relative z-10 flex items-center justify-center gap-3">
+                        <i class="fas {v_icon} text-3xl opacity-80"></i>
+                        <div class="text-3xl font-bold uppercase tracking-widest">{escape(v_label)}</div>
+                    </div>
+                </div>
+
+                <div class="p-8 space-y-12">
+
+                    <!-- 1. Executive Summary -->
+                    <section id="executive-summary" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">1. Executive Summary</h2>
+                        <div class="md-content text-slate-700 dark:text-slate-300 leading-relaxed space-y-4 text-base">
+                            {_markdown_to_html(exec_summary)}
+                        </div>
+                    </section>
+
+                    <!-- 2. Malware Capabilities -->
+                    <section id="capabilities" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">2. Malware Capabilities</h2>
+                        {capabilities_html}
+                    </section>
+
+                    <!-- 3. Binary Information -->
+                    <section id="binary-info" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">3. Binary Information</h2>
+                        <div class="overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700">
+                            <table class="data-table">
+                                <tbody>{binary_rows}</tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- 4. Technical Analysis -->
+                    <section id="technical-analysis" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">4. Technical Analysis</h2>
+                        {technical_html}
+                    </section>
+
+                    <!-- 5. Functions Analysis -->
+                    <section id="functions-analysis" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">5. Functions Analysis</h2>
+                        {functions_html}
+                    </section>
+
+                    <!-- 6. Evidence -->
+                    <section id="evidence" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">6. Evidence of Malicious Activity</h2>
+                        {evidence_html}
+                    </section>
+
+                    <!-- 6b. Code Evidence -->
+                    <section id="code-evidence" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">6b. Code Evidence (Suspicious API Calls)</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mb-4 italic">Exact code locations where suspicious API calls were found in decompiled functions.</p>
+                        {code_evidence_html}
+                    </section>
+
+                    <!-- 7. Operational Flow -->
+                    <section id="operational-flow" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">7. Operational Flow</h2>
+                        {operational_html}
+                    </section>
+
+                    <!-- 8. Call Graph -->
+                    <section id="call-graph" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">8. Call Graph &amp; Attack Chains</h2>
+                        {call_graph_html}
+                    </section>
+
+                    <!-- 9. IOCs -->
+                    <section id="iocs" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">9. Indicators of Compromise (IOCs)</h2>
+                        <div class="bg-white dark:bg-slate-800 rounded-lg shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
+                            <table class="w-full text-left">
+                                <tbody class="divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+                                    {iocs_rows}
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- 10. Recommendations -->
+                    <section id="recommendations" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">10. Recommendations</h2>
+                        {recommendations_html}
+                    </section>
+
+                    <!-- 11. Conclusion -->
+                    <section id="conclusion" class="scroll-mt-20">
+                        <h2 class="text-2xl font-bold text-slate-900 dark:text-white mb-6 section-header-accent">11. Conclusion</h2>
+                        <div class="bg-gradient-to-r {cc_grad} border-2 {cc_border} rounded-lg p-6">
+                            <div class="flex items-start gap-4">
+                                <div class="hidden md:flex w-12 h-12 {cc_icon_bg} rounded-full items-center justify-center flex-shrink-0">
+                                    <i class="fas fa-exclamation-triangle {cc_icon_txt} text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold {cc_title} mb-2">Verdict: {escape(verdict)}</h3>
+                                    <div class="{cc_body} leading-relaxed text-sm mb-3 md-content">
+                                        {conclusion_inner}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                </div>
+
+                <!-- Footer -->
+                <footer class="bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-6 mt-12">
+                    <div class="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-lock"></i>
+                            <span>Confidential &amp; Proprietary &mdash; Do Not Distribute Without Authorization</span>
+                        </div>
+                        <div class="font-mono text-xs">ID: {escape(task_id)}</div>
+                    </div>
+                </footer>
+            </div>
         </div>
     </div>
+
+    <script>
+        // Dark mode
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {{
+            document.documentElement.classList.add('dark');
+        }} else {{
+            document.documentElement.classList.remove('dark');
+        }}
+        function toggleDarkMode() {{
+            if (document.documentElement.classList.contains('dark')) {{
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            }} else {{
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }}
+        }}
+        // Copy to clipboard
+        function copyToClipboard(text) {{
+            navigator.clipboard.writeText(text).then(() => {{
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-24 right-6 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg z-50 text-sm flex items-center gap-2 animate-bounce';
+                toast.innerHTML = '<i class="fas fa-check text-green-400"></i> Copied';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2000);
+            }});
+        }}
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {{
+            anchor.addEventListener('click', function (e) {{
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({{ behavior: 'smooth', block: 'start' }});
+            }});
+        }});
+        // Intersection observer for nav highlight
+        const observer = new IntersectionObserver((entries) => {{
+            entries.forEach(entry => {{
+                if (entry.isIntersecting) {{
+                    document.querySelectorAll('nav a').forEach(link => {{
+                        link.classList.remove('bg-slate-200', 'dark:bg-slate-700', 'text-red-600');
+                        if (link.getAttribute('href') === '#' + entry.target.id) {{
+                            link.classList.add('bg-slate-200', 'dark:bg-slate-700', 'text-red-600');
+                        }}
+                    }});
+                }}
+            }});
+        }}, {{ root: null, rootMargin: '-20% 0px -80% 0px', threshold: 0 }});
+        document.querySelectorAll('section[id]').forEach(section => {{ observer.observe(section); }});
+    </script>
 </body>
 </html>'''
 

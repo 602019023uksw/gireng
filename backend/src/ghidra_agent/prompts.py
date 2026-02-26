@@ -46,23 +46,10 @@ Bullet list format — EACH capability MUST include evidence:
 - **Capability**: Description
   - **Evidence**: `function_name` @ `0xADDRESS` — `short code snippet`
 
-### 3. Binary Information
-Table format:
-| Property | Value |
-|----------|-------|
-| SHA256 | [actual hash from data] |
-| Architecture | [x86/x64/ARM] |
-| Type | [ELF/PE/Mach-O] |
-| Image Base | [0xXXXXXXXX] |
-| Entry Point | [0xXXXXXXXX] |
-| Compiler | [GCC/MSVC/etc] |
-| Size | [X KB] |
-| Packing | [Packed/Unpacked] |
-
-### 4. Technical Analysis
+### 3. Technical Analysis
 Detailed technical findings. For each major component:
 
-**[Component Name]** (e.g., "C2 Communication", "Command Protocol", "System Reconnaissance")
+**[Component Name]** (e.g., "C2 Communication", "Command Protocol", "System Reconnaissance", "Encryption & Config")
 Description of how it works. Reference specific functions and addresses.
 
 **Code Evidence** (`function_name` @ `0xADDRESS`):
@@ -75,8 +62,10 @@ Pay special attention to:
 - **Command Syntax/Protocol**: If the malware parses commands from a C2, document the exact format (e.g., `<type>-<command_id>-<arg_1>-<arg_2>`)
 - **Data Encoding**: How data is encoded/compressed for transmission (Base64, zlib, XOR, etc.)
 - **Polling Mechanism**: How the malware checks for new commands (sleep intervals, jitter, cell-based polling, etc.)
+- **C2 Servers**: IPs/domains found — Evidence: string @ address
+- **Authentication**: How it authenticates to C2 — API keys, tokens, certificates
 
-### 5. Functions Analysis
+### 4. Functions Analysis
 For EVERY important decompiled function:
 
 **[Function Name] @ [0xXXXXXXXX] ([X] xrefs)**
@@ -86,6 +75,11 @@ For EVERY important decompiled function:
 ```c
 // The specific lines (max 5) that show the malicious or interesting behavior
 ```
+
+### 5. Evidence of Malicious Activity
+List ALL specific findings with exact code evidence:
+1. **Finding**: [Description] - Function: `name` @ `0xADDRESS` - Code: `exact snippet`
+2. **Finding**: [Description] - Function: `name` @ `0xADDRESS` - Code: `exact snippet`
 
 ### 6. Operational Flow
 Step-by-step execution flow:
@@ -98,37 +92,13 @@ Step-by-step execution flow:
 
 If call graph / attack-chain data is provided, derive this section from those paths (entry -> sink).
 
-### 7. C2 & Networking
-If applicable:
-- **C2 Servers**: [IPs/domains found] — Evidence: string @ address
-- **Protocols**: [HTTP/HTTPS/custom] — Evidence: function/code
-- **Communication Pattern**: [How it talks to C2]
-- **Command Format**: [Exact command syntax if identified]
-- **Authentication**: [How it authenticates to C2 — API keys, tokens, certificates]
-- **Data Format**: [JSON, binary, compressed, encoded]
-
-### 8. Evidence of Malicious Activity
-List ALL specific findings with exact code evidence:
-1. **Finding**: [Description] - Function: `name` @ `0xADDRESS` - Code: `exact snippet`
-2. **Finding**: [Description] - Function: `name` @ `0xADDRESS` - Code: `exact snippet`
-
-### 9. Recommendations
+### 7. Recommendations
 Numbered list:
 1. [Actionable recommendation]
 2. [Actionable recommendation]
 3. [Actionable recommendation]
 
-### 10. IOCs (Indicators of Compromise)
-List ALL IOCs found — do not truncate. **Quote every value EXACTLY as it appears in the binary strings.**
-- **IP/Domain**: [exact value] - [purpose] - Evidence: [string list or code location]
-- **File Path**: [exact path verbatim] - [purpose] - Evidence: [where found]. Include ALL paths with extensions like `.cfg`, `.conf`, `.dat`, `.key`, `.pem`, `.json`, `/tmp/*`, etc.
-- **Config File**: [exact path] - [what it stores / why malware reads it] - Evidence: [function + code snippet]
-- **Registry/Mutex**: [value] - [purpose] - Evidence: [where found]
-- **Command Pattern**: [command syntax if identified] - Evidence: [where found]
-- **User-Agent**: [exact value] - Evidence: [where found]
-- **Error Messages**: [exact error string] - [what it reveals about malware behavior] - Evidence: [string list or code]
-
-### 11. Conclusion
+### 8. Conclusion
 2-3 sentences summarizing findings and priority.
 
 **IMPORTANT: You MUST include an explicit overall verdict in one of these exact forms:**
