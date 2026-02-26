@@ -912,3 +912,57 @@ class TestCamelCaseAlphanumeric:
         """ripemd160WithRSA should be caught by _PKI_SUBSTRINGS too."""
         from ghidra_agent.ioc_extractor import _PKI_SUBSTRINGS
         assert _PKI_SUBSTRINGS.search("ripemd160WithRSA") is not None
+
+
+class TestReportFormatting:
+    """Test report formatting helpers: import cleanup, chain dedup."""
+
+    def test_clean_import_name_strips_external(self):
+        from ghidra_agent.reporting import _clean_import_name
+        assert _clean_import_name("<EXTERNAL>::malloc") == "malloc"
+        assert _clean_import_name("malloc") == "malloc"
+
+    def test_format_import_export_list_caps(self):
+        from ghidra_agent.reporting import _format_import_export_list
+        items = [f"<EXTERNAL>::func_{i}" for i in range(100)]
+        result = _format_import_export_list(items)
+        assert "func_0" in result
+        assert "func_14" in result
+        assert "+85 more" in result
+        assert "<EXTERNAL>" not in result
+
+    def test_format_import_export_list_empty(self):
+        from ghidra_agent.reporting import _format_import_export_list
+        assert _format_import_export_list([]) == "N/A"
+
+    def test_deduplicate_chains_removes_subpaths(self):
+        from ghidra_agent.reporting import _deduplicate_chains
+        chains = [
+            {"category": "Recon", "path": ["main", "fcn.A", "getenv"]},
+            {"category": "Recon", "path": ["main", "fcn.A", "fcn.B", "fcn.C", "getenv"]},
+            {"category": "Recon", "path": ["main", "fcn.A"]},
+        ]
+        deduped = _deduplicate_chains(chains)
+        paths = [c["path"] for c in deduped]
+        # "main -> fcn.A" is a prefix of "main -> fcn.A -> getenv" — removed
+        # "main -> fcn.A -> getenv" is a prefix of the 5-step chain — removed
+        assert ["main", "fcn.A", "fcn.B", "fcn.C", "getenv"] in paths
+        assert ["main", "fcn.A"] not in paths
+
+    def test_deduplicate_chains_keeps_different_categories(self):
+        from ghidra_agent.reporting import _deduplicate_chains
+        chains = [
+            {"category": "Recon", "path": ["main", "getenv"]},
+            {"category": "File I/O", "path": ["main", "fopen"]},
+        ]
+        deduped = _deduplicate_chains(chains)
+        assert len(deduped) == 2
+
+    def test_deduplicate_chains_respects_limit(self):
+        from ghidra_agent.reporting import _deduplicate_chains
+        chains = [
+            {"category": f"Cat{i}", "path": [f"fn{i}", "sink"]}
+            for i in range(30)
+        ]
+        deduped = _deduplicate_chains(chains, limit=10)
+        assert len(deduped) == 10

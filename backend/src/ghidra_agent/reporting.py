@@ -41,6 +41,28 @@ def _format_entry_points(entry_points: list, limit: int = _MAX_ENTRY_POINTS) -> 
     return result
 
 
+_MAX_IMPORT_EXPORT = 15  # Max imports/exports to show inline
+
+
+def _clean_import_name(name: str) -> str:
+    """Strip Ghidra's ``<EXTERNAL>::`` prefix from import names."""
+    if name.startswith("<EXTERNAL>::"):
+        return name[len("<EXTERNAL>::"):]
+    return name
+
+
+def _format_import_export_list(items: list, limit: int = _MAX_IMPORT_EXPORT) -> str:
+    """Format an imports/exports list, cleaning noise and capping length."""
+    if not items:
+        return 'N/A'
+    cleaned = [_clean_import_name(str(i)) for i in items]
+    shown = cleaned[:limit]
+    result = ', '.join(shown)
+    if len(cleaned) > limit:
+        result += f' … (+{len(cleaned) - limit} more)'
+    return result
+
+
 def _extract_section(text: str, section_name: str) -> str:
     """Extract a section from markdown text using a robust split-based approach."""
     if not text:
@@ -419,8 +441,51 @@ def _render_iocs(iocs: List[Dict[str, str]]) -> str:
     return html
 
 
+def _deduplicate_chains(chains: List[Dict[str, Any]], limit: int = 15) -> List[Dict[str, Any]]:
+    """Remove attack chains that are strict sub-paths of longer chains.
+
+    If chain A's path is a prefix of chain B's path within the same category,
+    keep only B (the longer, more informative chain).  Then cap at *limit*.
+    """
+    if not chains:
+        return []
+
+    # Group by category
+    by_cat: Dict[str, List[List[str]]] = {}
+    for c in chains:
+        cat = c.get("category", "Unknown")
+        path = [str(p) for p in c.get("path", [])]
+        by_cat.setdefault(cat, []).append(path)
+
+    # For each category, remove sub-paths
+    kept: List[Dict[str, Any]] = []
+    for cat, paths in by_cat.items():
+        # Sort by length descending so longer chains come first
+        paths.sort(key=len, reverse=True)
+        unique: List[List[str]] = []
+        for path in paths:
+            # Is this path a prefix of an already-kept (longer) path?
+            is_subpath = False
+            for existing in unique:
+                if len(path) < len(existing) and existing[:len(path)] == path:
+                    is_subpath = True
+                    break
+            if not is_subpath:
+                unique.append(path)
+        for path in unique:
+            kept.append({"category": cat, "path": path})
+
+    # Sort by category then path length for a clean presentation
+    kept.sort(key=lambda c: (c["category"], len(c["path"])))
+    return kept[:limit]
+
+
 def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
-    """Render call-graph adjacency and attack chains for one analyzer."""
+    """Render call-graph attack chains for one analyzer.
+
+    Adjacency tables are omitted from the main report (too verbose for
+    library-heavy binaries).  Cycles are shown only if meaningful.
+    """
     if not analysis or not analysis.get("ok"):
         return f'<div class="text-gray-500 italic mb-4">{escape(source)}: call graph data not available.</div>'
 
@@ -428,40 +493,28 @@ def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
     entries = analysis.get("entries", []) or []
     chains = analysis.get("chains", []) or []
     cycles = analysis.get("cycles", []) or []
-    adjacency = analysis.get("adjacency", []) or []
 
     parts = [
         f'<h3>{escape(source)} Call Graph</h3>',
         (
             f'<p class="mb-3"><strong>Nodes:</strong> {stats.get("nodes", 0)} | '
             f'<strong>Edges:</strong> {stats.get("edges", 0)} | '
-            f'<strong>Entries:</strong> {escape(", ".join(entries[:10])) or "N/A"} | '
-            f'<strong>Attack Chains:</strong> {stats.get("chains", len(chains))}</p>'
+            f'<strong>Entries:</strong> {escape(", ".join(entries[:5])) or "N/A"} | '
+            f'<strong>Attack Chains:</strong> {len(chains)}</p>'
         ),
     ]
 
     if chains:
+        deduped = _deduplicate_chains(chains)
         parts.append('<h4>Attack Chains</h4>')
         parts.append('<ul class="list-disc pl-6 mb-4">')
-        for chain in chains:
+        for chain in deduped:
             category = escape(str(chain.get("category", "Unknown")))
             path = " &rarr; ".join(escape(str(p)) for p in chain.get("path", []))
             parts.append(f'<li class="mb-2"><strong>[{category}]</strong> {path}</li>')
         parts.append('</ul>')
     else:
         parts.append('<p class="text-gray-500 italic">No sink-reaching attack chains were detected.</p>')
-
-    if adjacency:
-        top_adj = adjacency[:10]
-        parts.append(f'<h4>Adjacency — Top {len(top_adj)} of {len(adjacency)} Functions</h4>')
-        parts.append('<table class="w-full text-left border-collapse">')
-        parts.append('<tr><th>Function</th><th>Calls</th></tr>')
-        for row in top_adj:
-            fn = escape(str(row.get("function", "")))
-            calls = row.get("calls", []) or []
-            calls_text = escape(", ".join(str(c) for c in calls)) if calls else "-"
-            parts.append(f'<tr><td><code>{fn}</code></td><td>{calls_text}</td></tr>')
-        parts.append('</table>')
 
     if cycles:
         top_cycles = cycles[:5]
@@ -617,8 +670,9 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
             else:
                 app_blocks.append(block)
 
-    # Application-logic functions first, then library (capped at 5)
-    evidence_blocks = app_blocks + lib_blocks[:5]
+    # Application-logic functions first, then library (capped at 3)
+    # Total capped at 10 to keep the report focused
+    evidence_blocks = app_blocks[:10] + lib_blocks[:max(0, 10 - len(app_blocks[:10]))]
 
     if not evidence_blocks:
         return '<div class="text-gray-500 italic">No suspicious API calls detected in decompiled code.</div>'
@@ -662,21 +716,14 @@ def build_report_html(state: Dict[str, Any]) -> str:
         "binary_info": _markdown_to_html(f"""| Property | Value |
 |----------|-------|
 | SHA256 | {program_hash} |
-| Architecture | {binary.get('architecture', 'unknown')} |
-| Type | ELF/PE (inferred) |
+| Architecture | {binary.get('architecture', 'unknown')} ({r2_binary.get('bits', '?')}-bit, {r2_binary.get('os', 'unknown')}) |
 | Image Base | {binary.get('image_base', 'unknown')} |
 | Entry Point | {_format_entry_points(binary.get('entry_points', ['unknown']))} |
 | Compiler | {_sanitize_compiler(binary.get('compiler', 'unknown'))} |
-| Ghidra Imports | {', '.join(binary.get('imports', [])) or 'N/A'} |
-| Ghidra Exports | {', '.join(binary.get('exports', [])) or 'N/A'} |
-| Functions (Ghidra) | {len(funcs.get('functions', []))} total ({len(state.get('decompilation_cache', {}))} decompiled) |
-| Functions (R2) | {len(r2_funcs.get('functions', []))} total ({len(state.get('r2_decompilation_cache', {}))} decompiled) |
-| R2 Architecture | {r2_binary.get('architecture', 'N/A')} ({r2_binary.get('bits', '?')}-bit) |
-| R2 OS | {r2_binary.get('os', 'N/A')} |
-| R2 Imports | {', '.join(r2_binary.get('imports', [])) or 'N/A'} |
-| R2 Exports | {', '.join(r2_binary.get('exports', [])) or 'N/A'} |
-| Strings (Ghidra) | {len(strings_data.get('strings', []))} extracted |
-| Strings (R2) | {len(r2_strings.get('strings', []))} extracted |"""),
+| Imports | {_format_import_export_list(binary.get('imports', []))} |
+| Exports | {len(binary.get('exports', []))} symbols |
+| Functions | Ghidra: {len(funcs.get('functions', []))} ({len(state.get('decompilation_cache', {}))} decompiled) · R2: {len(r2_funcs.get('functions', []))} ({len(state.get('r2_decompilation_cache', {}))} decompiled) |
+| Strings | Ghidra: {len(strings_data.get('strings', []))} · R2: {len(r2_strings.get('strings', []))} |"""),
         "technical_analysis": _markdown_to_html(_extract_section(summary_text, "Technical Analysis")),
         "functions_analysis": _markdown_to_html(_extract_section(summary_text, "Functions Analysis")),
         "how_it_works": _markdown_to_html(_extract_section(summary_text, "Operational Flow")),
@@ -968,8 +1015,8 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         <tr><td class="prop">Image Base</td><td class="mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
         <tr><td class="prop">Compiler</td><td>{escape(_sanitize_compiler(binary.get('compiler', 'unknown')))}</td></tr>
         <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">{escape(_format_entry_points(binary.get('entry_points', ['unknown'])))}</td></tr>
-        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])))}</td></tr>
-        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])))}</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(_format_import_export_list(binary.get('imports', [])))}</td></tr>
+        <tr><td class="prop">Exports</td><td>{len(binary.get('exports', []))} symbols</td></tr>
         <tr><td class="prop">Segments</td><td>{len(binary.get('segments', []))}</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
         <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
@@ -980,8 +1027,8 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         <tr><td class="prop">OS</td><td>{escape(str(binary.get('os', 'unknown')))}</td></tr>
         <tr><td class="prop">Endian</td><td>{escape(str(binary.get('endian', 'unknown')))}</td></tr>
         <tr><td class="prop">Stripped</td><td>{escape(str(binary.get('stripped', 'unknown')))}</td></tr>
-        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])))}</td></tr>
-        <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])))}</td></tr>
+        <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(_format_import_export_list(binary.get('imports', [])))}</td></tr>
+        <tr><td class="prop">Exports</td><td>{len(binary.get('exports', []))} symbols</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
         <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
 
@@ -1171,10 +1218,10 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append(f"Compiler:     {_sanitize_compiler(binary.get('compiler', 'unknown'))}")
         gh_imports = binary.get("imports", [])
         if gh_imports:
-            lines.append(f"Imports:      {', '.join(gh_imports)}")
+            lines.append(f"Imports:      {_format_import_export_list(gh_imports)}")
         gh_exports = binary.get("exports", [])
         if gh_exports:
-            lines.append(f"Exports:      {', '.join(gh_exports)}")
+            lines.append(f"Exports:      {len(gh_exports)} symbols")
         lines.append(f"Functions:    {len(funcs.get('functions', []))} ({len(decomp)} decompiled)")
         lines.append("")
 
@@ -1190,10 +1237,10 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append(f"Stripped:     {r2_binary.get('stripped', 'unknown')}")
         imports = r2_binary.get("imports", [])
         if imports:
-            lines.append(f"Imports:      {', '.join(imports)}")
+            lines.append(f"Imports:      {_format_import_export_list(imports)}")
         exports = r2_binary.get("exports", [])
         if exports:
-            lines.append(f"Exports:      {', '.join(exports)}")
+            lines.append(f"Exports:      {len(exports)} symbols")
         lines.append(f"Functions:    {len(r2_funcs.get('functions', []))} ({len(r2_decomp)} decompiled)")
         lines.append("")
 
@@ -1214,11 +1261,12 @@ def build_report_text(state: Dict[str, Any]) -> str:
         chains = analysis.get("chains", []) or []
         lines.append(f"{source}: nodes={stats.get('nodes', 0)}, edges={stats.get('edges', 0)}, entries={len(entries)}")
         if entries:
-            lines.append(f"  Entry points: {', '.join(entries[:10])}")
+            lines.append(f"  Entry points: {', '.join(entries[:5])}")
         if chains:
-            lines.append("  Attack chains:")
-            for chain in chains[:20]:
-                path = " -> ".join(chain.get("path", []))
+            deduped = _deduplicate_chains(chains)
+            lines.append(f"  Attack chains ({len(deduped)} unique of {len(chains)} total):")
+            for chain in deduped:
+                path = " -> ".join(str(p) for p in chain.get("path", []))
                 lines.append(f"    - [{chain.get('category', 'Unknown')}] {path}")
         else:
             lines.append("  Attack chains: none detected")
