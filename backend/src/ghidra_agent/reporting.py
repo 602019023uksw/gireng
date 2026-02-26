@@ -11,6 +11,35 @@ from ghidra_agent.ioc_extractor import IOCs, calculate_verdict, extract_iocs_fro
 
 logger = logging.getLogger(__name__)
 
+# Maximum number of entry points to display in the report
+_MAX_ENTRY_POINTS = 5
+
+# Regex to detect Java-style toString() output (e.g. "ghidra.program.database.ProgramCompilerSpec@33c6625c")
+_JAVA_TOSTRING_RE = re.compile(r'^[\w.]+@[0-9a-fA-F]+$')
+
+
+def _sanitize_compiler(raw: str) -> str:
+    """Clean up a compiler string, replacing Java toString leaks with the class's simple name."""
+    if not raw or raw == 'unknown':
+        return raw
+    s = str(raw)
+    if _JAVA_TOSTRING_RE.match(s):
+        # Extract just the simple class name from e.g. "ghidra.program.database.ProgramCompilerSpec@33c6625c"
+        class_part = s.split('@')[0].rsplit('.', 1)[-1]
+        return class_part
+    return s
+
+
+def _format_entry_points(entry_points: list, limit: int = _MAX_ENTRY_POINTS) -> str:
+    """Format entry points list, capping output and indicating overflow."""
+    if not entry_points:
+        return 'unknown'
+    shown = entry_points[:limit]
+    result = ', '.join(str(e) for e in shown)
+    if len(entry_points) > limit:
+        result += f' … (+{len(entry_points) - limit} more)'
+    return result
+
 
 def _extract_section(text: str, section_name: str) -> str:
     """Extract a section from markdown text using a robust split-based approach."""
@@ -477,6 +506,40 @@ _CONTEXT_APIS = {
 # Compiled word-boundary regex for each API
 _API_WORD_RE = {api: re.compile(r'\b' + re.escape(api) + r'\b', re.IGNORECASE) for api in (_HIGH_VALUE_APIS | _CONTEXT_APIS)}
 
+# APIs that are too generic to be interesting on their own — if a function
+# ONLY triggers these and nothing from _HIGH_VALUE_APIS, skip it.
+_GENERIC_ONLY_APIS = {"memcpy", "memset", "malloc", "free", "realloc", "strcmp", "strstr"}
+
+# Regex for OpenSSL / crypto-library internal strings that mark a function
+# as library code even when its name is an anonymous ``fcn.XXXXXXXX``.
+_OPENSSL_CONTENT_RE = re.compile(
+    r'OPENSSL_|dtls1_|ssl3_|ssl_|tls1_|SSL_|BIO_|EVP_|X509_|ASN1_|PEM_|RSA_|EC_|DH_|'
+    r'CRYPTO_|ENGINE_|RAND_|PKCS|HMAC_|SHA\d+_|AES_|DES_|ECDSA_|ECDH_|'
+    r'OpenSSL|openssl|libcrypto|libssl|BoringSSL|wolfSSL',
+)
+
+
+def _is_library_content(func_name: str, code: str, found_apis: list) -> bool:
+    """Detect library functions by *content* when the name is anonymous.
+
+    Returns True when:
+    - Code contains OpenSSL / crypto-library internal identifiers, OR
+    - The only matched APIs are from the generic-only set (memcpy, memset, …).
+    """
+    # Only apply to anonymous / unhelpful function names
+    if not re.match(r'^(?:fcn\.|sub_|FUN_)', func_name):
+        return False
+
+    # OpenSSL / crypto library internal strings in the code body
+    if _OPENSSL_CONTENT_RE.search(code):
+        return True
+
+    # Function only matched low-value generic APIs — skip it
+    if found_apis and all(api in _GENERIC_ONLY_APIS for api in found_apis):
+        return True
+
+    return False
+
 
 def _render_code_evidence(state: Dict[str, Any]) -> str:
     """Render code evidence section showing malicious/interesting code snippets.
@@ -510,6 +573,10 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
             found_apis = [api for api in api_set if _API_WORD_RE[api].search(code)]
             if not found_apis:
                 continue
+
+            # Content-based library detection for anonymous function names
+            if not is_lib and _is_library_content(func_name, code, found_apis):
+                is_lib = True
 
             # For library functions, only keep if genuinely high-value API found
             if is_lib:
@@ -598,8 +665,8 @@ def build_report_html(state: Dict[str, Any]) -> str:
 | Architecture | {binary.get('architecture', 'unknown')} |
 | Type | ELF/PE (inferred) |
 | Image Base | {binary.get('image_base', 'unknown')} |
-| Entry Point | {', '.join(binary.get('entry_points', ['unknown']))} |
-| Compiler | {binary.get('compiler', 'unknown')} |
+| Entry Point | {_format_entry_points(binary.get('entry_points', ['unknown']))} |
+| Compiler | {_sanitize_compiler(binary.get('compiler', 'unknown'))} |
 | Ghidra Imports | {', '.join(binary.get('imports', [])) or 'N/A'} |
 | Ghidra Exports | {', '.join(binary.get('exports', [])) or 'N/A'} |
 | Functions (Ghidra) | {len(funcs.get('functions', []))} total ({len(state.get('decompilation_cache', {}))} decompiled) |
@@ -899,8 +966,8 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         binary_rows = f"""
         <tr><td class="prop">Architecture</td><td>{escape(str(binary.get('architecture', 'unknown')))}</td></tr>
         <tr><td class="prop">Image Base</td><td class="mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
-        <tr><td class="prop">Compiler</td><td>{escape(str(binary.get('compiler', 'unknown')))}</td></tr>
-        <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('entry_points', ['unknown'])[:10]))}</td></tr>
+        <tr><td class="prop">Compiler</td><td>{escape(_sanitize_compiler(binary.get('compiler', 'unknown')))}</td></tr>
+        <tr><td class="prop">Entry Points</td><td class="mono" style="word-break:break-all">{escape(_format_entry_points(binary.get('entry_points', ['unknown'])))}</td></tr>
         <tr><td class="prop">Imports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('imports', [])))}</td></tr>
         <tr><td class="prop">Exports</td><td class="mono" style="word-break:break-all">{escape(', '.join(binary.get('exports', [])))}</td></tr>
         <tr><td class="prop">Segments</td><td>{len(binary.get('segments', []))}</td></tr>
@@ -1100,8 +1167,8 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append("-" * 70)
         lines.append(f"Architecture: {binary.get('architecture', 'unknown')}")
         lines.append(f"Image Base:   {binary.get('image_base', 'unknown')}")
-        lines.append(f"Entry Points: {', '.join(binary.get('entry_points', []))}")
-        lines.append(f"Compiler:     {binary.get('compiler', 'unknown')}")
+        lines.append(f"Entry Points: {_format_entry_points(binary.get('entry_points', []))}")
+        lines.append(f"Compiler:     {_sanitize_compiler(binary.get('compiler', 'unknown'))}")
         gh_imports = binary.get("imports", [])
         if gh_imports:
             lines.append(f"Imports:      {', '.join(gh_imports)}")

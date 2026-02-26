@@ -819,3 +819,96 @@ class TestChargenPrompts:
     def test_prompt_mentions_cross_reference(self):
         from ghidra_agent.prompts import SYSTEM_PROMPT
         assert "cross-reference" in SYSTEM_PROMPT.lower() or "cross reference" in SYSTEM_PROMPT.lower()
+
+
+# ── Reporting helpers: entry-point cap, compiler sanitization, code evidence ──
+
+
+class TestReportingHelpers:
+    """Test _sanitize_compiler, _format_entry_points, _is_library_content."""
+
+    def test_sanitize_compiler_strips_java_tostring(self):
+        from ghidra_agent.reporting import _sanitize_compiler
+        result = _sanitize_compiler("ghidra.program.database.ProgramCompilerSpec@33c6625c")
+        assert result == "ProgramCompilerSpec"
+        assert "@" not in result
+
+    def test_sanitize_compiler_preserves_normal_string(self):
+        from ghidra_agent.reporting import _sanitize_compiler
+        assert _sanitize_compiler("GCC (Ubuntu 9.4.0)") == "GCC (Ubuntu 9.4.0)"
+
+    def test_sanitize_compiler_unknown(self):
+        from ghidra_agent.reporting import _sanitize_compiler
+        assert _sanitize_compiler("unknown") == "unknown"
+
+    def test_format_entry_points_caps_at_limit(self):
+        from ghidra_agent.reporting import _format_entry_points
+        entries = [f"0x{i:04x}" for i in range(300)]
+        result = _format_entry_points(entries)
+        # Should only show 5 entries
+        assert result.count("0x") == 5
+        assert "+295 more" in result
+
+    def test_format_entry_points_small_list(self):
+        from ghidra_agent.reporting import _format_entry_points
+        result = _format_entry_points(["0x401000", "0x401010"])
+        assert result == "0x401000, 0x401010"
+        assert "more" not in result
+
+    def test_format_entry_points_empty(self):
+        from ghidra_agent.reporting import _format_entry_points
+        assert _format_entry_points([]) == "unknown"
+
+    def test_is_library_content_openssl(self):
+        from ghidra_agent.reporting import _is_library_content
+        code = "void fcn() { OPENSSL_ia32cap_P = 0; }"
+        assert _is_library_content("fcn.0043a460", code, ["memset"]) is True
+
+    def test_is_library_content_dtls(self):
+        from ghidra_agent.reporting import _is_library_content
+        code = "void fcn() { dtls1_retransmit_message(); }"
+        assert _is_library_content("fcn.004325a0", code, ["send"]) is True
+
+    def test_is_library_content_generic_only_apis(self):
+        from ghidra_agent.reporting import _is_library_content
+        code = "void fcn() { memcpy(dst, src, len); memset(buf, 0, 100); }"
+        assert _is_library_content("fcn.00454ff0", code, ["memcpy", "memset"]) is True
+
+    def test_is_library_content_real_app_function(self):
+        from ghidra_agent.reporting import _is_library_content
+        code = "void my_func() { system(\"/bin/sh\"); }"
+        assert _is_library_content("my_func", code, ["system"]) is False
+
+    def test_is_library_content_fcn_with_real_apis(self):
+        from ghidra_agent.reporting import _is_library_content
+        code = "void fcn() { socket(AF_INET, SOCK_STREAM, 0); connect(fd, &addr, sizeof(addr)); }"
+        assert _is_library_content("fcn.00401000", code, ["socket", "connect"]) is False
+
+
+class TestCamelCaseAlphanumeric:
+    """Test broadened _is_camelcase_identifier for alphanumeric crypto names."""
+
+    def test_ripemd160WithRSA_detected(self):
+        from ghidra_agent.ioc_extractor import _is_camelcase_identifier
+        assert _is_camelcase_identifier("ripemd160WithRSA") is True
+
+    def test_sha256WithRSAEncryption_detected(self):
+        from ghidra_agent.ioc_extractor import _is_camelcase_identifier
+        assert _is_camelcase_identifier("sha256WithRSAEncryption") is True
+
+    def test_pure_alpha_camelcase_still_works(self):
+        from ghidra_agent.ioc_extractor import _is_camelcase_identifier
+        assert _is_camelcase_identifier("subjectKeyIdentifier") is True
+
+    def test_hex_string_not_camelcase(self):
+        from ghidra_agent.ioc_extractor import _is_camelcase_identifier
+        assert _is_camelcase_identifier("33c6625cabcd") is False
+
+    def test_plain_word_not_camelcase(self):
+        from ghidra_agent.ioc_extractor import _is_camelcase_identifier
+        assert _is_camelcase_identifier("malware") is False
+
+    def test_ripemd_in_pki_substrings(self):
+        """ripemd160WithRSA should be caught by _PKI_SUBSTRINGS too."""
+        from ghidra_agent.ioc_extractor import _PKI_SUBSTRINGS
+        assert _PKI_SUBSTRINGS.search("ripemd160WithRSA") is not None

@@ -188,18 +188,25 @@ _PKI_SUBSTRINGS = re.compile(
     r'revocationReason|singleExtension|responseExtension|'
     r'generationQualifier|caseIgnoreIA5|nsCaRevocation|'
     r'businessCategory|policyMapping|basicOCSP|acceptableResponse|'
-    r'targetInformation|associatedDomain|lastModifiedTime'
+    r'targetInformation|associatedDomain|lastModifiedTime|'
+    r'ripemd|WithRSA|WithDSA|WithECDSA|WithSHA|Encryption|Signature'
     r')'
 )
 
 
 def _is_camelcase_identifier(s: str) -> bool:
-    """Return True if *s* looks like a code identifier (pure-alpha camelCase).
+    """Return True if *s* looks like a code identifier (camelCase).
 
-    Pure alphabetic camelCase compound names (like X.509/LDAP attribute names)
-    are almost never real mutex names.
+    CamelCase compound names (like X.509/LDAP attribute names, e.g.
+    ``ripemd160WithRSA``) are almost never real mutex names.  We accept
+    alphanumeric strings as long as they are predominantly alphabetic and
+    contain at least one lower→upper transition.
     """
-    if not s.isalpha():
+    if not s.isalnum():
+        return False
+    # Must be mostly letters (at least 70% alpha) to avoid hex/numeric IDs
+    alpha_count = sum(1 for c in s if c.isalpha())
+    if alpha_count < len(s) * 0.7:
         return False
     # Count word-boundary transitions (lower→upper)
     boundaries = sum(1 for i in range(1, len(s)) if s[i].isupper() and s[i - 1].islower())
