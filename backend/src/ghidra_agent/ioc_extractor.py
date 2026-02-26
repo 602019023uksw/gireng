@@ -103,6 +103,40 @@ EMAIL_PATTERN = re.compile(
     r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
 )
 
+# ---------------------------------------------------------------------------
+# Library / system noise filters — paths, domains, emails that belong to
+# statically-linked libraries (OpenSSL, zlib, etc.) or the OS, NOT malware.
+# ---------------------------------------------------------------------------
+
+# Domains that belong to libraries, not malware infrastructure
+_LIBRARY_DOMAINS = frozenset({
+    "openssl.org", "www.openssl.org",
+    "zlib.net", "www.zlib.net",
+    "gnu.org", "www.gnu.org",
+    "sourceware.org",
+})
+
+# URL substrings that mark library references
+_LIBRARY_URL_SUBSTRINGS = ("openssl.org", "zlib.net", "gnu.org", "sourceware.org")
+
+# Email domains that are library noise
+_LIBRARY_EMAIL_DOMAINS = ("openssl.org", "zlib.net", "gnu.org")
+
+# File paths that are standard OS devices or library internal paths
+_NOISE_UNIX_PATHS = re.compile(
+    r'^(?:'
+    r'/dev/(?:random|urandom|srandom|null|zero|tty|pts|ptmx|egd-pool)'
+    r'|/var/run/egd-pool'
+    r'|/etc/egd-pool'
+    r'|/etc/entropy'
+    r'|/usr/local/ssl(?:/|$)'     # OpenSSL install directory tree
+    r'|/usr/lib/ssl(?:/|$)'
+    r'|/etc/ssl(?:/|$)'
+    r'|/etc/pki(?:/|$)'
+    r')',
+    re.IGNORECASE,
+)
+
 # File path patterns
 UNIX_PATH_PATTERN = re.compile(
     r'/(?:bin|boot|dev|etc|home|lib|mnt|opt|proc|root|run|sbin|srv|sys|tmp|usr|var|data|opt)(?:/[^\s\x00-\x1F]+)+'
@@ -122,6 +156,54 @@ _LIBRARY_MUTEX_NOISE = re.compile(
     r'|(?:(?:data|text|rodata|bss|symtab|strtab|shstrtab|dynsym|dynstr|rela?\.)'           # ELF sections
     r'|(?:^[a-z]{2,6}(?:With|And)[A-Z]))'                                                 # camelCase OID-style
 )
+
+# X.509/PKI/LDAP/CMS/ASN.1 attribute-name substrings (case-insensitive).
+# If a camelCase candidate contains any of these, it's almost certainly an
+# OpenSSL OID long name, not a real mutex.
+_PKI_SUBSTRINGS = re.compile(
+    r'(?i)(?:'
+    r'certificate|keyUsage|keyIdentifier|policyIdentif|constraint|'
+    r'revocation|distributionPoint|authorityInfo|subjectInfo|'
+    r'subjectAlt|subjectDirect|subjectDomain|issuerDomain|'
+    r'issuingDistrib|encryptedContent|recipientEncrypt|unprotectedAttr|'
+    r'signedContent|originatorSignature|digestAlgorithm|'
+    r'encapContent|otherRevInfo|contentInfo|'
+    r'pilotAttribute|pilotObject|pilotOrgan|domainRelated|'
+    r'simpleSecurityObj|physicalDelivery|facsimileTelephone|'
+    r'internationalISDN|registeredAddress|preferredDelivery|'
+    r'presentationAddress|crossCertificate|enhancedSearchGuide|'
+    r'protocolInformation|supportedAlgorithm|deltaRevocation|'
+    r'anyExtendedKey|jurisdictionLocal|jurisdictionCountry|'
+    r'jurisdictionState|cessationOfOp|privilegeWithdrawn|'
+    r'affiliationChanged|holdInstruction|privateKeyUsage|'
+    r'organizationalStatus|mailPreference|documentPublish|'
+    r'documentIdentif|documentLocation|singleLevelQuality|'
+    r'subtreeMinimum|subtreeMaximum|organizationName|'
+    r'organizationalUnit|stateOrProvince|unstructuredName|'
+    r'unstructuredAddress|challengePassword|extendedCertificate|'
+    r'homePostalAddress|homeTelephone|mobileTelephone|pagerTelephone|'
+    r'friendlyCountry|x500Unique|msSmartcard|inhibitAnyPolicy|'
+    r'inhibitPolicyMapping|requireExplicitPolicy|'
+    r'permittedSubtree|excludedSubtree|pcPathLength|'
+    r'revocationReason|singleExtension|responseExtension|'
+    r'generationQualifier|caseIgnoreIA5|nsCaRevocation|'
+    r'businessCategory|policyMapping|basicOCSP|acceptableResponse|'
+    r'targetInformation|associatedDomain|lastModifiedTime'
+    r')'
+)
+
+
+def _is_camelcase_identifier(s: str) -> bool:
+    """Return True if *s* looks like a code identifier (pure-alpha camelCase).
+
+    Pure alphabetic camelCase compound names (like X.509/LDAP attribute names)
+    are almost never real mutex names.
+    """
+    if not s.isalpha():
+        return False
+    # Count word-boundary transitions (lower→upper)
+    boundaries = sum(1 for i in range(1, len(s)) if s[i].isupper() and s[i - 1].islower())
+    return boundaries >= 1
 
 
 # Windows Registry patterns
@@ -190,22 +272,28 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
                 seen_ips.add(ip)
                 iocs.ips.append(ip)
 
-        # Extract URLs
+        # Extract URLs — filter library references
         for url in URL_PATTERN.findall(value):
             if url not in seen_urls:
-                seen_urls.add(url)
-                iocs.urls.append(url)
+                url_lower = url.lower()
+                if not any(lib in url_lower for lib in _LIBRARY_URL_SUBSTRINGS):
+                    seen_urls.add(url)
+                    iocs.urls.append(url)
 
         # Extract domains (but not IPs) — validate TLD against IANA set
+        # Filter out library domains
         for m in _DOMAIN_CANDIDATE_PATTERN.finditer(value):
             domain = m.group(0)
-            if domain not in seen_domains and not IP_PATTERN.match(domain) and _is_valid_domain(domain):
+            if (domain not in seen_domains
+                    and not IP_PATTERN.match(domain)
+                    and _is_valid_domain(domain)
+                    and domain.lower() not in _LIBRARY_DOMAINS):
                 seen_domains.add(domain)
                 iocs.domains.append(domain)
 
-        # Extract file paths
+        # Extract file paths — filter standard OS/library paths
         for path in UNIX_PATH_PATTERN.findall(value):
-            if path not in seen_paths and len(path) > 3:
+            if path not in seen_paths and len(path) > 3 and not _NOISE_UNIX_PATHS.match(path):
                 seen_paths.add(path)
                 iocs.file_paths.append(path)
 
@@ -215,11 +303,12 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
                 seen_paths.add(path)
                 iocs.file_paths.append(path)
 
-        # Extract emails
+        # Extract emails — filter library email addresses
         for email in EMAIL_PATTERN.findall(value):
             if email not in seen_emails:
-                seen_emails.add(email)
-                iocs.emails.append(email)
+                if not any(email.lower().endswith('@' + d) for d in _LIBRARY_EMAIL_DOMAINS):
+                    seen_emails.add(email)
+                    iocs.emails.append(email)
 
         # Extract registry keys
         for reg in REGISTRY_PATTERN.findall(value):
@@ -231,7 +320,10 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
         # Require mixed case or special patterns to reduce false positives
         # Filter out library identifiers (OpenSSL OIDs, ELF symbol names, etc.)
         if len(value) >= 16 and value.isalnum() and not value.isdigit() and not value.islower() and not value.isupper():
-            if value not in seen_mutexes and not _LIBRARY_MUTEX_NOISE.search(value):
+            if (value not in seen_mutexes
+                    and not _LIBRARY_MUTEX_NOISE.search(value)
+                    and not _PKI_SUBSTRINGS.search(value)
+                    and not _is_camelcase_identifier(value)):
                 seen_mutexes.add(value)
                 iocs.mutexes.append(value)
 
@@ -474,17 +566,18 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
             return "Clean", "clean", indicators, min(score, 9)
         elif llm_verdict == 'Suspicious':
             indicators.append("LLM analysis: suspicious")
-            return "Suspicious", "suspicious", indicators, max(score, 40)
+            return "Suspicious", "suspicious", indicators, max(min(score, 100), 40)
         elif llm_verdict == 'Malware':
             indicators.append("LLM analysis: confirmed malicious")
-            return "Malware", "malicious", indicators, max(score, 80)
+            return "Malware", "malicious", indicators, max(min(score, 100), 80)
 
     # Fallback: IOC-based heuristic when LLM verdict is unavailable
-    if score >= 80:
-        return "Malware", "malicious", indicators, score
-    elif score >= 40:
-        return "Suspicious", "suspicious", indicators, score
-    elif score >= 10:
-        return "Suspicious", "suspicious", indicators, score
+    capped = min(score, 100)
+    if capped >= 80:
+        return "Malware", "malicious", indicators, capped
+    elif capped >= 40:
+        return "Suspicious", "suspicious", indicators, capped
+    elif capped >= 10:
+        return "Suspicious", "suspicious", indicators, capped
     else:
-        return "Clean", "clean", indicators, score
+        return "Clean", "clean", indicators, capped
