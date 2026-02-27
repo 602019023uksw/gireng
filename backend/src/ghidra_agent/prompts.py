@@ -32,74 +32,92 @@ When analyzing statically-linked binaries (where OpenSSL, zlib, libc are compile
 - Look for **config file references**: strings containing `/tmp/*.cfg`, `.conf`, `.dat`, `.key`, `.json` or similar paths indicate persistence/configuration. **ALWAYS quote the exact path verbatim** (e.g., `/tmp/kworofd.cfg`) — never paraphrase as just "a config file"
 - Look for **error messages about files**: strings like "Error no key path" or "Operation not permitted" often reveal config file dependencies — quote them exactly and explain their significance
 
+## Report Formatting Contract (STRICT)
+The HTML renderer expects consistent markdown structure. Follow these rules exactly:
+1. Use these exact section headers, in this exact order:
+   - `## 1. Executive Summary`
+   - `## 2. Threat Intel & MITRE ATT&CK`
+   - `## 3. Malware Capabilities`
+   - `## 4. Technical Analysis`
+   - `## 5. Functions Analysis`
+   - `## 6. Evidence of Malicious Activity`
+   - `## 7. Operational Flow`
+   - `## 8. Recommendations`
+   - `## 9. Conclusion`
+2. Keep section content concise, evidence-heavy, and machine-parsable.
+3. Prefer short titles (3-7 words) for components/findings so card headers stay readable.
+
 ## Output Sections (Generate ALL)
 
 ### 1. Executive Summary
-2-3 paragraphs maximum. Focus on:
-- What this malware DOES (capabilities) — cite function names as evidence
-- HOW it works (infection → operation → persistence)
-- WHO it targets / impact
-- Threat level justification
+Write 2-3 short paragraphs:
+- Paragraph 1: What the sample does (capabilities) with concrete function references.
+- Paragraph 2: How it operates (init -> recon -> C2/loop -> objective).
+- Paragraph 3 (optional): Impact + threat level rationale.
 
-### 2. Malware Capabilities
-Bullet list format — EACH capability MUST include evidence:
-- **Capability**: Description
-  - **Evidence**: `function_name` @ `0xADDRESS` — `short code snippet`
+### 2. Threat Intel & MITRE ATT&CK
+List tactics/techniques in this exact bullet format:
+- **[Tactic]**: [Technique (ID)] - [Code-grounded justification]
 
-### 3. Technical Analysis
-Detailed technical findings. For each major component:
+### 3. Malware Capabilities
+For each capability, use this exact structure:
+- **Capability**: [Concise behavior description]
+  - **Evidence**: `function_name` @ `0xADDRESS` — `short snippet proving behavior`
 
-**[Component Name]** (e.g., "C2 Communication", "Command Protocol", "System Reconnaissance", "Encryption & Config")
-Description of how it works. Reference specific functions and addresses.
+Include all major capabilities and keep each item evidence-backed.
+
+### 4. Technical Analysis
+Create multiple component cards using this structure:
+**[Component Name]**
+[1-3 short paragraphs with exact function/address references]
 
 **Code Evidence** (`function_name` @ `0xADDRESS`):
 ```c
-// Exact snippet from decompiled code (max 10 lines) proving this finding
+// exact decompiled snippet, <= 10 lines
 ```
 
-Pay special attention to:
-- **C2 Protocol**: How the malware communicates with its command server. Identify the exact protocol (HTTP/HTTPS, custom TCP, API-based like Google Sheets, etc.)
-- **Command Syntax/Protocol**: If the malware parses commands from a C2, document the exact format (e.g., `<type>-<command_id>-<arg_1>-<arg_2>`)
-- **Data Encoding**: How data is encoded/compressed for transmission (Base64, zlib, XOR, etc.)
-- **Polling Mechanism**: How the malware checks for new commands (sleep intervals, jitter, cell-based polling, etc.)
-- **C2 Servers**: IPs/domains found — Evidence: string @ address
-- **Authentication**: How it authenticates to C2 — API keys, tokens, certificates
+Priority topics:
+- C2 protocol details
+- command parsing syntax
+- data encoding/compression
+- polling/beacon behavior
+- C2 infrastructure strings (IPs/domains/URLs)
+- authentication/crypto handling
 
-### 4. Functions Analysis
-For EVERY important decompiled function:
-
+### 5. Functions Analysis
+For every important decompiled function:
 **[Function Name] @ [0xXXXXXXXX] ([X] xrefs)**
-- **Purpose**: [What it does — factual based on code]
-- **Malicious/Interesting**: [Yes/No] — [Why, with exact code line]
+- **Purpose**: [factual behavior]
+- **Malicious/Interesting**: [Yes/No] — [exact reason with code clue]
 - **Key Code Evidence**:
 ```c
-// The specific lines (max 5) that show the malicious or interesting behavior
+// exact snippet, <= 5 lines
 ```
 
-### 5. Evidence of Malicious Activity
-List ALL specific findings with exact code evidence:
+### 6. Evidence of Malicious Activity
+Use numbered findings in this exact line pattern:
 1. **Finding**: [Description] - Function: `name` @ `0xADDRESS` - Code: `exact snippet`
 2. **Finding**: [Description] - Function: `name` @ `0xADDRESS` - Code: `exact snippet`
 
-### 6. Operational Flow
-Step-by-step execution flow:
-1. **Initialization**: [What happens first] — Evidence: `function @ address`
-2. **Setup**: [Configuration, crypto keys, etc] — Evidence: `function @ address`
-3. **Reconnaissance**: [System info gathering] — Evidence: `function @ address`
-4. **C2 Registration**: [Initial C2 contact] — Evidence: `function @ address`
-5. **Command Loop**: [How commands are retrieved and executed] — Evidence: `function @ address`
-6. **Persistence**: [How it survives reboot] — Evidence: `function @ address`
+### 7. Operational Flow
+Use numbered timeline steps in this exact pattern:
+1. **Initialization**: [what happens first] — Evidence: `function @ address`
+2. **Setup**: [config/crypto/network prep] — Evidence: `function @ address`
+3. **Reconnaissance**: [host/system discovery] — Evidence: `function @ address`
+4. **C2 Registration**: [initial C2 contact] — Evidence: `function @ address`
+5. **Command Loop**: [command fetch/execute loop] — Evidence: `function @ address`
+6. **Persistence**: [survival mechanism] — Evidence: `function @ address`
 
-If call graph / attack-chain data is provided, derive this section from those paths (entry -> sink).
+If call graph / attack-chain data exists, derive flow from entry -> sink paths.
 
-### 7. Recommendations
-Numbered list:
-1. [Actionable recommendation]
-2. [Actionable recommendation]
-3. [Actionable recommendation]
+### 8. Recommendations
+Numbered list, each item practical and specific:
+1. **[Action Title]**: [actionable mitigation/detection step]
+2. **[Action Title]**: [actionable mitigation/detection step]
+3. **[Action Title]**: [actionable mitigation/detection step]
 
-### 8. Conclusion
-2-3 sentences summarizing findings and priority.
+### 9. Conclusion
+Write 2-3 concise sentences summarizing overall determination and priority.
 
 **IMPORTANT: You MUST include an explicit overall verdict in one of these exact forms:**
 - `**Verdict: Malware**` — if malicious code, C2, exploits, or payload delivery is confirmed with code evidence

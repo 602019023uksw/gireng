@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Malware Analysis Report - chargen-2</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    },
+                    colors: {
+                        primary: '#0f2937',
+                        accent: '#dc2626',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @media print {
+            @page { size: A4; margin: 0; }
+            html, body {
+                background: #060B14 !important;
+                color: #e2e8f0 !important;
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            body { padding: 10mm; }
+            .no-print { display: none !important; }
+            .page-break { page-break-before: always; }
+            * {
+                -webkit-print-color-adjust: exact !important;
+                print-color-adjust: exact !important;
+            }
+            .capability-card, .tech-card, .func-card, .evidence-card, .rec-card, section, .function-box {
+                page-break-inside: avoid;
+                break-inside: avoid;
+            }
+        }
+        .code-block { background: #1e1e1e; border-radius: 0.5rem; position: relative; overflow: hidden; }
+        .code-content { padding: 1rem; overflow-x: auto; font-family: 'JetBrains Mono', monospace; font-size: 0.875rem; line-height: 1.5rem; color: #d4d4d4; }
+        .code-keyword { color: #569cd6; } .code-string { color: #ce9178; } .code-function { color: #dcdcaa; }
+        .code-comment { color: #6a9955; font-style: italic; } .code-number { color: #b5cea8; }
+        .code-operator { color: #d4d4d4; } .code-variable { color: #9cdcfe; }
+        .section-header-accent { position: relative; padding-left: 1rem; }
+        .section-header-accent::before { content: ''; position: absolute; left: 0; top: 0.25rem; bottom: 0.25rem; width: 4px; background: #dc2626; border-radius: 2px; }
+        table.data-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+        table.data-table th { background: #f3f4f6; color: #374151; font-weight: 600; text-align: left; padding: 0.75rem 1rem; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 2px solid #e5e7eb; }
+        .dark table.data-table th { background: #1f2937; color: #d1d5db; border-bottom-color: #374151; }
+        table.data-table td { padding: 0.75rem 1rem; border-bottom: 1px solid #e5e7eb; font-size: 0.875rem; font-family: 'JetBrains Mono', monospace; }
+        .dark table.data-table td { border-bottom-color: #374151; color: #e5e7eb; }
+        .flow-container { display: flex; align-items: center; gap: 0.5rem; overflow-x: auto; padding: 1rem 0; }
+        .flow-item { flex-shrink: 0; background: white; border: 2px solid #e5e7eb; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #374151; white-space: nowrap; }
+        .dark .flow-item { background: #1f2937; border-color: #374151; color: #e5e7eb; }
+        .flow-item.active { background: #dc2626; color: white; border-color: #dc2626; }
+        .flow-arrow { color: #9ca3af; font-size: 1.25rem; flex-shrink: 0; }
+        .function-box { border: 2px solid #e5e7eb; transition: all 0.2s; }
+        .function-box:hover { border-color: #dc2626; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.15); }
+        .dark .function-box { border-color: #374151; }
+        .dark .function-box:hover { border-color: #dc2626; box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3); }
+        .evidence-compact { border-left: 3px solid #dc2626; transition: all 0.2s; }
+        .evidence-compact:hover { background-color: #f9fafb; padding-left: 1.25rem; }
+        .dark .evidence-compact:hover { background-color: #1f2937; }
+        /* Card component styles */
+        .capability-card { transition: all 0.25s ease; }
+        .tech-card { transition: all 0.25s ease; }
+        .func-card { transition: all 0.25s ease; }
+        .evidence-card { transition: all 0.25s ease; }
+        .evidence-card:hover { transform: translateX(4px); }
+        .rec-card { transition: all 0.3s; border: 1px solid #e5e7eb; }
+        .rec-card:hover { transform: translateY(-2px); box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); border-color: #dc2626; }
+        .dark .rec-card { border-color: #374151; }
+        .dark .rec-card:hover { border-color: #dc2626; }
+        .tlp-banner { background: repeating-linear-gradient(45deg, #f59e0b, #f59e0b 10px, #d97706 10px, #d97706 20px); color: white; text-shadow: 0 1px 2px rgba(0,0,0,0.3); font-weight: bold; padding: 0.25rem 0.75rem; font-size: 0.75rem; letter-spacing: 0.05em; text-transform: uppercase; display: inline-flex; align-items: center; gap: 0.5rem; }
+        .risk-box { background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%); color: white; position: relative; overflow: hidden; }
+        .risk-box::before { content: ''; position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.05) 10px, rgba(255,255,255,0.05) 20px);
+            animation: slide 20s linear infinite; }
+        @keyframes slide { 0% { transform: translateX(0); } 100% { transform: translateX(40px); } }
+        /* markdown-content overrides for Tailwind context */
+        .md-content p { margin-bottom: 0.75rem; line-height: 1.7; }
+        .md-content ul { list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+        .md-content ol { list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.75rem; }
+        .md-content li { margin-bottom: 0.375rem; }
+        .md-content pre { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; padding: 1rem; overflow-x: auto; font-size: 0.8rem; margin: 1rem 0; color: #e2e8f0; }
+        .md-content code { font-family: 'JetBrains Mono', monospace; background: #f1f5f9; padding: 0.125rem 0.375rem; font-size: 0.85em; color: #dc2626; border-radius: 0.25rem; }
+        .md-content pre code { color: #e2e8f0; background: none; padding: 0; }
+        .md-content h3 { font-size: 1.125rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.75rem; }
+        .md-content h4 { font-size: 1rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+        .md-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.875rem; }
+        .md-content th { background: #f1f5f9; font-weight: 700; text-transform: uppercase; font-size: 0.7rem; padding: 0.5rem 0.75rem; text-align: left; border-bottom: 2px solid #cbd5e1; }
+        .md-content td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #e2e8f0; }
+        .dark .md-content code { background: #1e293b; color: #f87171; }
+        .dark .md-content th { background: #1e293b; border-bottom-color: #475569; }
+        .dark .md-content td { border-bottom-color: #334155; }
+    </style>
+</head>
+<body class="bg-[#060B14] text-slate-200 font-sans" style="background-image: linear-gradient(rgba(19,30,54,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(19,30,54,0.3) 1px, transparent 1px); background-size: 30px 30px;">
+
+    <!-- Floating Tools -->
+    <div class="fixed bottom-6 right-6 z-50 flex flex-col gap-3 no-print">
+        <button onclick="toggleDarkMode()" class="bg-[#0B1324] text-slate-700 dark:text-slate-200 p-3 rounded-full shadow-lg border border-[#131e36] hover:scale-110 transition-transform">
+            <i class="fas fa-moon dark:hidden"></i>
+            <i class="fas fa-sun hidden dark:block"></i>
+        </button>
+        <button onclick="window.print()" class="bg-red-600 text-white p-3 rounded-full shadow-lg hover:bg-red-700 hover:scale-110 transition-all">
+            <i class="fas fa-print"></i>
+        </button>
+    </div>
+
+    <!-- Navigation Sidebar -->
+    <nav class="fixed left-0 top-0 h-full w-72 bg-[#0B1324] border-r border-[#131e36] overflow-y-auto z-40 transform -translate-x-full lg:translate-x-0 transition-transform no-print shadow-xl">
+        <div class="p-6 border-b border-slate-200 dark:border-slate-800">
+            <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Malware Analysis</div>
+            <div class="font-mono text-lg font-bold text-white truncate">chargen-2</div>
+            <div class="text-xs text-slate-500 mt-1">SHA256: 961ac6...4a38d</div>
+        </div>
+        <div class="p-4 space-y-1 text-sm">
+            <a href="#executive-summary" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Executive Summary</a>
+            <a href="#mitre-attack" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00ff41] transition-all"><i class="fas fa-spider w-5 text-center mr-2"></i> Threat Intel</a>
+            <a href="#capabilities" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Malware Capabilities</a>
+            <a href="#binary-info" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Binary Information</a>
+            <a href="#technical-analysis" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Technical Analysis</a>
+            <a href="#functions-analysis" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Functions Analysis</a>
+            <a href="#evidence" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Evidence</a>
+            <a href="#code-evidence" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Code Evidence</a>
+            <a href="#operational-flow" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Operational Flow</a>
+            <a href="#call-graph" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Call Graph</a>
+            <a href="#iocs" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">IOCs</a>
+            <a href="#recommendations" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Recommendations</a>
+            <a href="#conclusion" class="block px-3 py-2 rounded text-slate-400 hover:text-white hover:bg-[#131e36] hover:shadow-[inset_2px_0_0_#00f0ff] transition-all">Conclusion</a>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <div class="lg:ml-72 min-h-screen">
+        <div class="max-w-6xl mx-auto p-4 lg:p-8 space-y-8">
+            <div class="bg-[#060B14] rounded-xl shadow-[0_0_30px_rgba(0,240,255,0.05)] border border-[#131e36] overflow-hidden">
+
+                <!-- Header -->
+                <header class="bg-[#060B14] border-b border-[#131e36] p-8">
+                    <div class="flex flex-col lg:flex-row justify-between gap-6">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-3 mb-3">
+                                <span class="px-2 py-1 bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-300 text-xs font-bold rounded-full border border-red-200 dark:border-red-800">CRITICAL</span>
+                                <span class="px-2 py-1 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-full">ELF32</span>
+                                <span class="tlp-banner rounded"><i class="fas fa-lock"></i> TLP:AMBER</span>
+                            </div>
+                            <h1 class="text-4xl font-bold text-white mb-2 tracking-tight">Reverse Engineering Report</h1>
+                            <p class="text-xl text-slate-600 dark:text-slate-400 font-mono">Sample: <span class="text-white dark:text-slate-100 font-bold">chargen-2</span></p>
+                        </div>
+                        <div class="lg:text-right space-y-2">
+                            <div class="text-sm font-bold text-white text-lg">Cyber Security Division</div>
+                            <div class="text-sm text-slate-600 dark:text-slate-400">Incident Response Team</div>
+                            <div class="font-mono text-xs text-slate-500 dark:text-slate-500 mt-2 space-y-1">
+                                <div>Analysis ID: <span class="text-slate-700 dark:text-slate-300">873130c2</span></div>
+                                <div>Generated: <span class="text-slate-700 dark:text-slate-300">2026-02-26 17:22 UTC</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </header>
+
+                <!-- Risk Banner -->
+                <div class="risk-box p-6 text-center relative">
+                    <div class="relative z-10 flex items-center justify-center gap-3">
+                        <i class="fas fa-skull-crossbones text-3xl opacity-80"></i>
+                        <div class="text-3xl font-bold uppercase tracking-widest">Critical</div>
+                    </div>
+                </div>
+
+                <div class="p-8 space-y-12">
+
+                    <!-- 1. Executive Summary -->
+                    <section id="executive-summary" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">1. Executive Summary</h2>
+                        <div class="md-content text-slate-700 dark:text-slate-300 leading-relaxed space-y-4 text-base">
+                            <p class="mb-3">The analyzed binary <code>961ac6942c41c959be471bd7eea6e708f3222a8a607b51d59063d5c58c54a38d</code> is a Linux x86 ELF malware identified as a Remote Access Trojan (RAT) with integrated proxy and port-forwarding capabilities. The malware utilizes statically-linked C++ libraries, evidenced by mangled class names such as <code>cclient</code>, <code>cmy_socks_mgr</code> (SOCKS proxy), and <code>cport_fwd_mgr</code> (port forwarding). It establishes communication with a Command and Control (C2) server using a custom binary protocol over TCP. The sample implements extensive cryptographic primitives including RSA (with PEM parsing supporting DES and AES encryption), MD5, SHA-1, and SHA-256 to secure communications and handle keys. It performs system reconnaissance by reading sensitive files like <code>/etc/passwd</code> and <code>/proc/cpuinfo</code>.</p>
+
+<strong>Verdict: Malware</strong>
+                        </div>
+                    </section>
+
+                    
+                    <!-- MITRE ATT&CK -->
+                    <section id="mitre-attack" class="scroll-mt-20"><h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00ff41] pl-3 uppercase tracking-wider flex items-center gap-3"><i class="fas fa-spider text-[#00ff41]"></i> Threat Intel &amp; MITRE ATT&amp;CK</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><div class="bg-[#0B1324] border border-[#131e36] p-4 rounded-xl hover:shadow-[0_0_15px_rgba(0,255,65,0.2)] hover:border-[#00ff41] transition-all duration-300 group"><div class="flex items-center gap-3 mb-2"><div class="w-2 h-2 rounded-full bg-[#00ff41] shadow-[0_0_5px_#00ff41] group-hover:animate-pulse"></div><div class="text-[#00ff41] font-mono text-xs uppercase tracking-widest">Command and Control</div></div><h4 class="font-bold text-white text-sm mb-1">Application Layer Protocol (Custom Binary Protocol)</h4><p class="text-slate-400 text-xs leading-relaxed">The malware implements a custom packet handler in `FUN_08065bd0` that checks for specific header bytes (e.g., `0x05`) to interpret commands.</p></div>
+<div class="bg-[#0B1324] border border-[#131e36] p-4 rounded-xl hover:shadow-[0_0_15px_rgba(0,255,65,0.2)] hover:border-[#00ff41] transition-all duration-300 group"><div class="flex items-center gap-3 mb-2"><div class="w-2 h-2 rounded-full bg-[#00ff41] shadow-[0_0_5px_#00ff41] group-hover:animate-pulse"></div><div class="text-[#00ff41] font-mono text-xs uppercase tracking-widest">Defense Evasion</div></div><h4 class="font-bold text-white text-sm mb-1">Encrypted Channel (RSA/AES)</h4><p class="text-slate-400 text-xs leading-relaxed">`FUN_0807fc50` parses PEM headers for `Proc-Type: 4,ENCRYPTED` and `DEK-Info` to decrypt keys using DES-CBC, DES-EDE3-CBC, or AES-CBC.</p></div>
+<div class="bg-[#0B1324] border border-[#131e36] p-4 rounded-xl hover:shadow-[0_0_15px_rgba(0,255,65,0.2)] hover:border-[#00ff41] transition-all duration-300 group"><div class="flex items-center gap-3 mb-2"><div class="w-2 h-2 rounded-full bg-[#00ff41] shadow-[0_0_5px_#00ff41] group-hover:animate-pulse"></div><div class="text-[#00ff41] font-mono text-xs uppercase tracking-widest">Discovery</div></div><h4 class="font-bold text-white text-sm mb-1">System Information Discovery</h4><p class="text-slate-400 text-xs leading-relaxed">The binary contains strings referencing `/proc/cpuinfo`, `/proc/stat`, `/etc/passwd`, and `/etc/resolv.conf` for gathering host details.</p></div>
+<div class="bg-[#0B1324] border border-[#131e36] p-4 rounded-xl hover:shadow-[0_0_15px_rgba(0,255,65,0.2)] hover:border-[#00ff41] transition-all duration-300 group"><div class="flex items-center gap-3 mb-2"><div class="w-2 h-2 rounded-full bg-[#00ff41] shadow-[0_0_5px_#00ff41] group-hover:animate-pulse"></div><div class="text-[#00ff41] font-mono text-xs uppercase tracking-widest">Command and Control</div></div><h4 class="font-bold text-white text-sm mb-1">Proxy (SOCKS)</h4><p class="text-slate-400 text-xs leading-relaxed">Strings and class names (`cmy_socks_mgr`) indicate the presence of a SOCKS proxy functionality for tunneling traffic.</p></div>
+<div class="bg-[#0B1324] border border-[#131e36] p-4 rounded-xl hover:shadow-[0_0_15px_rgba(0,255,65,0.2)] hover:border-[#00ff41] transition-all duration-300 group"><div class="flex items-center gap-3 mb-2"><div class="w-2 h-2 rounded-full bg-[#00ff41] shadow-[0_0_5px_#00ff41] group-hover:animate-pulse"></div><div class="text-[#00ff41] font-mono text-xs uppercase tracking-widest">Command and Control</div></div><h4 class="font-bold text-white text-sm mb-1">Remote File Copy</h4><p class="text-slate-400 text-xs leading-relaxed">Strings like `cfile_mgr` and file operation logic in `FUN_08053aa0` suggest remote file management capabilities.</p></div></div></section>
+
+                    <!-- 2. Malware Capabilities -->
+                    <section id="capabilities" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">2. Malware Capabilities</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-red-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-red-500/10 text-red-400 flex items-center justify-center text-sm border border-red-500/20 group-hover:bg-red-500/20 transition-colors"><i class="fas fa-server"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Capability</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">Custom C2 Protocol Implementation</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-blue-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-blue-500/10 text-blue-400 flex items-center justify-center text-sm border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors"><i class="fas fa-network-wired"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Evidence</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">`FUN_08065bd0` @ `0x08065bd0` — `if ((((local_41c[0] == &#x27;\x05&#x27;) &amp;&amp; (uVar3 != 1)) &amp;&amp; (uVar8 = (uint)(byte)local_41c[1], 2 &lt; uVar3))`</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-purple-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-purple-500/10 text-purple-400 flex items-center justify-center text-sm border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors"><i class="fas fa-terminal"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Capability</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">Encrypted RSA Key Parsing (PEM Format)</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-orange-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-orange-500/10 text-orange-400 flex items-center justify-center text-sm border border-orange-500/20 group-hover:bg-orange-500/20 transition-colors"><i class="fas fa-eye"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Evidence</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">`FUN_0807fc50` @ `0x0807fc50` — `iVar5 = FUN_080ac0df(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);`</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-green-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-green-500/10 text-green-400 flex items-center justify-center text-sm border border-green-500/20 group-hover:bg-green-500/20 transition-colors"><i class="fas fa-key"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Capability</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">Network Connection &amp; DNS Resolution</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-pink-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-pink-500/10 text-pink-400 flex items-center justify-center text-sm border border-pink-500/20 group-hover:bg-pink-500/20 transition-colors"><i class="fas fa-bug"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Evidence</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">`FUN_080b40cf` @ `0x080b40cf` — `iVar8 = FUN_080b489e(&amp;local_14c,puVar4,0x200);` (Lookup/Connect logic)</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-cyan-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-cyan-500/10 text-cyan-400 flex items-center justify-center text-sm border border-cyan-500/20 group-hover:bg-cyan-500/20 transition-colors"><i class="fas fa-bolt"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Capability</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">System Reconnaissance (File Reading)</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-yellow-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-yellow-500/10 text-yellow-400 flex items-center justify-center text-sm border border-yellow-500/20 group-hover:bg-yellow-500/20 transition-colors"><i class="fas fa-shield-virus"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Evidence</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">Strings List @ N/A — `/etc/passwd`, `/proc/cpuinfo`, `/proc/stat`</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-red-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-red-500/10 text-red-400 flex items-center justify-center text-sm border border-red-500/20 group-hover:bg-red-500/20 transition-colors"><i class="fas fa-server"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Capability</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">SOCKS Proxy &amp; Port Forwarding</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-blue-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-blue-500/10 text-blue-400 flex items-center justify-center text-sm border border-blue-500/20 group-hover:bg-blue-500/20 transition-colors"><i class="fas fa-network-wired"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Evidence</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">Strings List @ N/A — `13cmy_socks_mgr`, `13cport_fwd_mgr`</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-purple-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-purple-500/10 text-purple-400 flex items-center justify-center text-sm border border-purple-500/20 group-hover:bg-purple-500/20 transition-colors"><i class="fas fa-terminal"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Capability</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">Cryptographic Hashing (MD5, SHA-1, SHA-256)</p></div></div></div>
+<div class="capability-card bg-[#0B1324] rounded-lg border border-[#131e36] p-4 hover:shadow-[0_0_10px_rgba(0,240,255,0.1)] hover:border-orange-500/50 transition-all duration-300 group break-inside-avoid shadow-lg"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded shrink-0 bg-orange-500/10 text-orange-400 flex items-center justify-center text-sm border border-orange-500/20 group-hover:bg-orange-500/20 transition-colors"><i class="fas fa-eye"></i></div><div class="flex-1 min-w-0"><h4 class="font-bold text-slate-200 text-[14px] leading-tight">Evidence</h4><p class="text-[13px] text-slate-400 mt-1 leading-snug">`FUN_080738d0` @ `0x080738d0` — `uVar4 = *(int *)(param_1 + 8) + -0x28955b88 + ((uVar3 ^ uVar2) &amp; uVar1 ^ uVar3) + local_6c;` (MD5 transform)</p></div></div></div></div>
+                    </section>
+
+                    <!-- 3. Binary Information -->
+                    <section id="binary-info" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">3. Binary Information</h2>
+                        <div class="overflow-hidden rounded-lg border border-[#131e36]">
+                            <table class="data-table">
+                                <tbody>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400 w-1/4">SHA256</td>
+                                        <td class="text-xs break-all">961ac6942c41c959be471bd7eea6e708f3222a8a607b51d59063d5c58c54a38d</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Architecture</td>
+                                        <td>x86 (32-bit)</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Format</td>
+                                        <td>ELF - linux</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Image Base</td>
+                                        <td class="font-mono">08048000</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Entry Points</td>
+                                        <td class="font-mono text-xs">08048ec9</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Compiler</td>
+                                        <td class="text-xs">ProgramCompilerSpec</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Imports</td>
+                                        <td class="text-xs">N/A</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Exports</td>
+                                        <td>1 symbols</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Functions</td>
+                                        <td>Ghidra: 2537 (40&nbsp;decompiled) &middot; R2: 1577 (40&nbsp;decompiled)</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Strings</td>
+                                        <td>Ghidra: 592 &middot; R2: 767 extracted</td></tr></tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- 4. Technical Analysis -->
+                    <section id="technical-analysis" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">4. Technical Analysis</h2>
+                        <div class="space-y-4"><div class="tech-card bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] hover:border-blue-400 dark:hover:border-blue-600 transition-all duration-200"><div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]"><div class="w-7 h-7 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-500 dark:text-blue-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-satellite-dish"></i></div><h3 class="font-bold text-white text-sm">C2 Communication Protocol</h3></div><div class="p-5 space-y-2"><p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">The malware communicates using a custom binary protocol. The main traffic handling loop is located in <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08065bd0</code>. It receives data into a buffer and checks the first byte to determine the packet type. A header byte of <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x05</code> triggers specific processing logic.</p>
+<p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">(<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08065bd0</code> @ <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x08065bd0</code>):</p>
+<div class="mt-3 bg-slate-900 rounded-lg overflow-hidden"><div class="px-3 py-1.5 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-400 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>if ((((local_41c[0] == &#x27;\x05&#x27;) &amp;&amp; (uVar3 != 1)) &amp;&amp;
+    (uVar8 = (uint)(byte)local_41c[1], 2 &lt; uVar3)) &amp;&amp; 
+    (uVar8 = (uint)(byte)local_41c[1], 2 &lt; uVar3)) {
+</code></pre></div></div></div>
+<div class="tech-card bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] hover:border-purple-400 dark:hover:border-purple-600 transition-all duration-200"><div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]"><div class="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-500 dark:text-purple-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-code"></i></div><h3 class="font-bold text-white text-sm">Encryption &amp; Key Management</h3></div><div class="p-5 space-y-2"><p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">The malware parses RSA keys in PEM format. Function <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_0807fc50</code> is responsible for parsing the PEM headers. It specifically looks for encryption headers like <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">Proc-Type: 4,ENCRYPTED</code> and <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">DEK-Info</code> to determine if the key is encrypted and which algorithm (DES, 3DES, AES) and IV to use. This indicates the malware can handle encrypted private keys, likely to protect its own C2 authentication credentials or to parse certificates provided by the server.</p>
+<p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">(<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_0807fc50</code> @ <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x0807fc50</code>):</p>
+<div class="mt-3 bg-slate-900 rounded-lg overflow-hidden"><div class="px-3 py-1.5 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-400 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>iVar5 = FUN_080ac0df(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);
+iVar7 = FUN_080ac0df(pcVar11,&quot;DEK-Info: DES-CBC,&quot;,0x12);
+</code></pre></div></div></div>
+<div class="tech-card bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] hover:border-red-400 dark:hover:border-red-600 transition-all duration-200"><div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]"><div class="w-7 h-7 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-500 dark:text-red-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-lock"></i></div><h3 class="font-bold text-white text-sm">Initialization &amp; Connection</h3></div><div class="p-5 space-y-2"><p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">The entry point <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">entry</code> calls <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_080b0a88</code> (which likely invokes <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">main</code>). The binary initializes C++ runtime objects (evident by <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">NSt6thread</code> and <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">std::string</code> strings). To connect to the C2, <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_080b40cf</code> is used. This function takes a hostname as an argument, performs a resolution (lookup), and establishes a TCP socket connection.</p>
+<p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">(<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_080b40cf</code> @ <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x080b40cf</code>):</p>
+<div class="mt-3 bg-slate-900 rounded-lg overflow-hidden"><div class="px-3 py-1.5 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-400 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>puVar4 = (undefined4 *)FUN_080ad21d(0x200);
+uVar5 = FUN_080abf15(param_1);
+iVar8 = FUN_080b489e(&amp;local_14c,puVar4,0x200);
+iVar6 = FUN_080acdaf(iVar6,&amp;local_960,0x10);
+</code></pre></div></div></div>
+<div class="tech-card bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] hover:border-green-400 dark:hover:border-green-600 transition-all duration-200"><div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]"><div class="w-7 h-7 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-500 dark:text-green-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-terminal"></i></div><h3 class="font-bold text-white text-sm">Command Handling</h3></div><div class="p-5 space-y-2"><p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed"><code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08053aa0</code> acts as a command dispatcher based on packet type.</p>
+<div class="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400"><span class="text-slate-400 mt-0.5">&bull;</span><span><strong>Type 1</strong>: Sets a specific data buffer (<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">DAT_080b538d</code>).</span></div>
+<div class="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400"><span class="text-slate-400 mt-0.5">&bull;</span><span><strong>Type 3</strong>: File system interaction (checks for directory traversal <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">.</code> and <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">..</code>).</span></div>
+<div class="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400"><span class="text-slate-400 mt-0.5">&bull;</span><span><strong>Type 6</strong>: Establishes a connection (checks for socket type <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">&#x27;\x02&#x27;</code> which is <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">SOCK_STREAM</code>).</span></div>
+<p class="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">(<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08053aa0</code> @ <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x08053aa0</code>):</p>
+<div class="mt-3 bg-slate-900 rounded-lg overflow-hidden"><div class="px-3 py-1.5 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-400 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>switch(uVar9) {
+case 6:
+    if ((char)param_2[4] != &#x27;\x02&#x27;) {
+        return 1;
+    }
+</code></pre></div></div></div></div>
+                    </section>
+
+                    <!-- 5. Functions Analysis -->
+                    <section id="functions-analysis" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">5. Functions Analysis</h2>
+                        <div class="space-y-4"><div class="func-card bg-[#0B1324] rounded-xl border-2 border-red-300 dark:border-red-700 overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200"><div class="px-5 py-3 bg-[#060B14] border-b border-[#131e36] flex flex-wrap items-center gap-2"><i class="fas fa-cube text-xs text-slate-400"></i><span class="font-bold text-white text-sm font-mono">[FUN_08065bd0] @ [0x08065bd0]</span><span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 uppercase">Malicious</span></div><div class="p-5 space-y-2"><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span><span class="text-slate-700 dark:text-slate-300">Main network traffic reception and processing loop. Handles incoming packets from the C2 server.</span></div><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span><span class="text-slate-700 dark:text-slate-300">Yes - Contains the protocol parser that identifies command packets.</span></div><div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700"><div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>uVar3 = FUN_080ace3f(local_950,local_41c,0x400,0);
+if ((0 &lt; (int)uVar3) &amp;&amp; (*(int *)(local_92c + 0x4c) == 0)) {
+  if (local_41c[0] == &#x27;\x05&#x27;) {
+    iVar6 = FUN_08064970(local_92c,local_950,local_41c,uVar3,local_928,local_964,1);
+</code></pre></div></div></div>
+<div class="func-card bg-[#0B1324] rounded-xl border-2 border-red-300 dark:border-red-700 overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200"><div class="px-5 py-3 bg-[#060B14] border-b border-[#131e36] flex flex-wrap items-center gap-2"><i class="fas fa-cube text-xs text-slate-400"></i><span class="font-bold text-white text-sm font-mono">[FUN_0807fc50] @ [0x0807fc50]</span><span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 uppercase">Malicious</span></div><div class="p-5 space-y-2"><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span><span class="text-slate-700 dark:text-slate-300">Parses PEM (Privacy-Enhanced Mail) formatted key buffers to extract encryption metadata.</span></div><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span><span class="text-slate-700 dark:text-slate-300">Yes - Indicates capability to handle encrypted private keys (DES/AES) for C2 authentication.</span></div><div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700"><div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>iVar5 = FUN_080ac0df(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);
+iVar7 = FUN_080ac0df(pcVar11,&quot;DEK-Info: DES-CBC,&quot;,0x12);
+</code></pre></div></div></div>
+<div class="func-card bg-[#0B1324] rounded-xl border-2 border-red-300 dark:border-red-700 overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200"><div class="px-5 py-3 bg-[#060B14] border-b border-[#131e36] flex flex-wrap items-center gap-2"><i class="fas fa-cube text-xs text-slate-400"></i><span class="font-bold text-white text-sm font-mono">[FUN_080b40cf] @ [0x080b40cf]</span><span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 uppercase">Malicious</span></div><div class="p-5 space-y-2"><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span><span class="text-slate-700 dark:text-slate-300">Resolves a hostname and initiates a TCP connection to the target.</span></div><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span><span class="text-slate-700 dark:text-slate-300">Yes - Used to establish the C2 channel.</span></div><div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700"><div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>iVar8 = FUN_080b489e(&amp;local_14c,puVar4,0x200);
+iVar6 = FUN_080acdaf(iVar6,&amp;local_960,0x10);
+if (iVar7 == 0) {
+    FUN_080acf29(local_950,&amp;local_728,8,0);
+</code></pre></div></div></div>
+<div class="func-card bg-[#0B1324] rounded-xl border-2 border-red-300 dark:border-red-700 overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200"><div class="px-5 py-3 bg-[#060B14] border-b border-[#131e36] flex flex-wrap items-center gap-2"><i class="fas fa-cube text-xs text-slate-400"></i><span class="font-bold text-white text-sm font-mono">[FUN_08053aa0] @ [0x08053aa0]</span><span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 uppercase">Malicious</span></div><div class="p-5 space-y-2"><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span><span class="text-slate-700 dark:text-slate-300">Dispatcher for different command types received over the network.</span></div><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span><span class="text-slate-700 dark:text-slate-300">Yes - Handles various commands including socket creation and file operations.</span></div><div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700"><div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>switch(uVar9) {
+case 6:
+    if ((char)param_2[4] != &#x27;\x02&#x27;) {
+        return 1;
+    }
+</code></pre></div></div></div>
+<div class="func-card bg-[#0B1324] rounded-xl border-2 border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200"><div class="px-5 py-3 bg-[#060B14] border-b border-[#131e36] flex flex-wrap items-center gap-2"><i class="fas fa-cube text-xs text-slate-400"></i><span class="font-bold text-white text-sm font-mono">[FUN_0807a270] @ [0x0807a270]</span><span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 uppercase">Clean</span></div><div class="p-5 space-y-2"><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span><span class="text-slate-700 dark:text-slate-300">SHA-1 Hash implementation.</span></div><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span><span class="text-slate-700 dark:text-slate-300">No - Standard cryptographic routine.</span></div><div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700"><div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>uVar19 = *(int *)(param_1 + 0x18) + 0x5a827999 + (uVar8 &gt;&gt; 0x1b | uVar8 &lt;&lt; 5) +
+           ((uVar11 ^ uVar10) &amp; uVar9 ^ uVar11) + uVar20;
+</code></pre></div></div></div>
+<div class="func-card bg-[#0B1324] rounded-xl border-2 border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200"><div class="px-5 py-3 bg-[#060B14] border-b border-[#131e36] flex flex-wrap items-center gap-2"><i class="fas fa-cube text-xs text-slate-400"></i><span class="font-bold text-white text-sm font-mono">[FUN_080738d0] @ [0x080738d0]</span><span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 uppercase">Clean</span></div><div class="p-5 space-y-2"><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span><span class="text-slate-700 dark:text-slate-300">MD5 Hash implementation.</span></div><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span><span class="text-slate-700 dark:text-slate-300">No - Standard cryptographic routine.</span></div><div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700"><div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>uVar4 = *(int *)(param_1 + 8) + -0x28955b88 + ((uVar3 ^ uVar2) &amp; uVar1 ^ uVar3) + local_6c;
+</code></pre></div></div></div>
+<div class="func-card bg-[#0B1324] rounded-xl border-2 border-red-300 dark:border-red-700 overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200"><div class="px-5 py-3 bg-[#060B14] border-b border-[#131e36] flex flex-wrap items-center gap-2"><i class="fas fa-cube text-xs text-slate-400"></i><span class="font-bold text-white text-sm font-mono">[entry] @ [0x08048ec9]</span><span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 uppercase">Malicious</span></div><div class="p-5 space-y-2"><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Purpose</span><span class="text-slate-700 dark:text-slate-300">Program entry point.</span></div><div class="flex items-start gap-2 text-sm"><span class="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase w-16 flex-shrink-0 mt-0.5">Status</span><span class="text-slate-700 dark:text-slate-300">Yes - Starts the malware execution flow.</span></div><div class="mt-3 bg-slate-900 rounded-lg overflow-hidden border border-slate-700"><div class="px-3 py-1 bg-slate-800 border-b border-slate-700 text-[10px] text-slate-500 font-mono uppercase tracking-wider">c</div><pre class="p-3 text-xs text-slate-300 font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap"><code>FUN_080b0a88(FUN_08048d00,param_2,&amp;stack0x00000004,&amp;LAB_080480b4,&amp;LAB_080b4e64,param_1,auStack_4);
+do {
+} while( true );
+</code></pre></div></div></div></div>
+                    </section>
+
+                    <!-- 6. Evidence -->
+                    <section id="evidence" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">6. Evidence of Malicious Activity</h2>
+                        <div class="space-y-3"><div class="evidence-card bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-xl p-4 hover:shadow-md transition-all duration-200"><div class="flex items-start gap-3"><div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-red-500 ring-2 ring-white dark:ring-slate-900 shadow-sm"></div></div><div class="flex-1 min-w-0"><div class="font-semibold text-white text-sm">Encrypted C2 Communication Support</div><div class="mt-2 bg-slate-50 dark:bg-slate-900/50 rounded p-2.5 border border-[#131e36]"><div class="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed"><code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_0807fc50</code> @ <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x0807fc50</code> - Code: <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">iVar5 = FUN_080ac0df(pcVar11,&quot;Proc-Type: 4,ENCRYPTED&quot;,0x16);</code></div></div></div><span class="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">#1</span></div></div>
+<div class="evidence-card bg-orange-50 dark:bg-orange-900/10 border border-orange-200 dark:border-orange-800 rounded-xl p-4 hover:shadow-md transition-all duration-200"><div class="flex items-start gap-3"><div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-orange-500 ring-2 ring-white dark:ring-slate-900 shadow-sm"></div></div><div class="flex-1 min-w-0"><div class="font-semibold text-white text-sm">Custom Binary Protocol Header Check</div><div class="mt-2 bg-slate-50 dark:bg-slate-900/50 rounded p-2.5 border border-[#131e36]"><div class="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed"><code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08065bd0</code> @ <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x08065bd0</code> - Code: <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">if (local_41c[0] == &#x27;\x05&#x27;)</code></div></div></div><span class="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">#2</span></div></div>
+<div class="evidence-card bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 rounded-xl p-4 hover:shadow-md transition-all duration-200"><div class="flex items-start gap-3"><div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-yellow-500 ring-2 ring-white dark:ring-slate-900 shadow-sm"></div></div><div class="flex-1 min-w-0"><div class="font-semibold text-white text-sm">SOCKS Proxy Implementation</div><div class="mt-2 bg-slate-50 dark:bg-slate-900/50 rounded p-2.5 border border-[#131e36]"><div class="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed">N/A (Strings) - Code: <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">13cmy_socks_mgr</code></div></div></div><span class="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">#3</span></div></div>
+<div class="evidence-card bg-blue-50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-xl p-4 hover:shadow-md transition-all duration-200"><div class="flex items-start gap-3"><div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-blue-500 ring-2 ring-white dark:ring-slate-900 shadow-sm"></div></div><div class="flex-1 min-w-0"><div class="font-semibold text-white text-sm">System Reconnaissance Strings</div><div class="mt-2 bg-slate-50 dark:bg-slate-900/50 rounded p-2.5 border border-[#131e36]"><div class="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed">N/A (Strings) - Code: <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">/etc/passwd</code>, <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">/proc/cpuinfo</code>, <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">/proc/stat</code></div></div></div><span class="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">#4</span></div></div>
+<div class="evidence-card bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800 rounded-xl p-4 hover:shadow-md transition-all duration-200"><div class="flex items-start gap-3"><div class="flex-shrink-0 mt-1"><div class="w-3 h-3 rounded-full bg-purple-500 ring-2 ring-white dark:ring-slate-900 shadow-sm"></div></div><div class="flex-1 min-w-0"><div class="font-semibold text-white text-sm">Port Forwarding Implementation</div><div class="mt-2 bg-slate-50 dark:bg-slate-900/50 rounded p-2.5 border border-[#131e36]"><div class="text-xs text-slate-600 dark:text-slate-400 font-mono leading-relaxed">N/A (Strings) - Code: <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">13cport_fwd_mgr</code></div></div></div><span class="flex-shrink-0 text-[10px] font-bold text-slate-400 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">#5</span></div></div></div>
+                    </section>
+
+                    <!-- 6b. Code Evidence -->
+                    <section id="code-evidence" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">6b. Code Evidence (Suspicious API Calls)</h2>
+                        <p class="text-sm text-slate-500 dark:text-slate-400 mb-4 italic">Exact code locations where suspicious API calls were found in decompiled functions.</p>
+                        <div class="bg-slate-900 rounded-lg overflow-hidden mb-4"><div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700"><span class="text-xs text-slate-400 font-mono">[Ghidra] FUN_0807fc50 @ 0807fc50</span><span class="text-xs text-yellow-400 font-mono">aes</span></div><div class="p-4 overflow-x-auto"><pre class="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-wrap"><code>    if ((iVar5 &lt; 0xe) || (iVar7 = FUN_080ac0df(pcVar11,&quot;DEK-Info: AES-&quot;,0xe), iVar7 != 0)) {
+      iVar5 = FUN_080ac0df(pcVar11,&quot;DEK-Info: AES-128-CBC,&quot;,0x16);
+        iVar5 = FUN_080ac0df(pcVar11,&quot;DEK-Info: AES-192-CBC,&quot;,0x16);
+          iVar5 = FUN_080ac0df(pcVar11,&quot;DEK-Info: AES-256-CBC,&quot;,0x16);</code></pre></div></div>
+<div class="bg-slate-900 rounded-lg overflow-hidden mb-4"><div class="flex items-center justify-between px-4 py-2 bg-slate-800 border-b border-slate-700"><span class="text-xs text-slate-400 font-mono">[Radare2] fcn.0807fc50 @ 0x807fc50</span><span class="text-xs text-yellow-400 font-mono">aes</span></div><div class="p-4 overflow-x-auto"><pre class="font-mono text-xs text-slate-300 leading-relaxed whitespace-pre-wrap"><code>        if ((iVar5 &lt; 0xe) || (iVar7 = fcn.080ac0df(pcVar11,&quot;DEK-Info: AES-&quot;,0xe), iVar7 != 0)) {
+            iVar5 = fcn.080ac0df(pcVar11,&quot;DEK-Info: AES-128-CBC,&quot;,0x16);
+                iVar5 = fcn.080ac0df(pcVar11,&quot;DEK-Info: AES-192-CBC,&quot;,0x16);
+                    iVar5 = fcn.080ac0df(pcVar11,&quot;DEK-Info: AES-256-CBC,&quot;,0x16);</code></pre></div></div>
+                    </section>
+
+                    <!-- 7. Operational Flow -->
+                    <section id="operational-flow" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">7. Operational Flow</h2>
+                        <div class="space-y-6"><div class="relative pl-12"><div class="absolute left-[18px] top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div><div class="absolute left-0 top-0 w-9 h-9 rounded-full bg-red-100 dark:bg-red-900/30 border-2 border-red-400 dark:border-red-600 flex items-center justify-center text-xs font-bold text-red-600 dark:text-red-400 z-10">1</div><div class="bg-[#0B1324] rounded-xl border border-[#131e36] p-4 hover:shadow-md hover:border-red-300 dark:hover:border-red-700 transition-all duration-200"><h4 class="font-bold text-white text-sm">Initialization</h4><p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">The binary starts at <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">entry</code>, which invokes the main logic wrapper. C++ static constructors are initialized (threading, strings).</p></div></div>
+<div class="relative pl-12"><div class="absolute left-[18px] top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div><div class="absolute left-0 top-0 w-9 h-9 rounded-full bg-orange-100 dark:bg-orange-900/30 border-2 border-orange-400 dark:border-orange-600 flex items-center justify-center text-xs font-bold text-orange-600 dark:text-orange-400 z-10">2</div><div class="bg-[#0B1324] rounded-xl border border-[#131e36] p-4 hover:shadow-md hover:border-orange-300 dark:hover:border-orange-700 transition-all duration-200"><h4 class="font-bold text-white text-sm">Setup</h4><p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">The malware allocates memory and sets up internal structures.</p></div></div>
+<div class="relative pl-12"><div class="absolute left-[18px] top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div><div class="absolute left-0 top-0 w-9 h-9 rounded-full bg-yellow-100 dark:bg-yellow-900/30 border-2 border-yellow-400 dark:border-yellow-600 flex items-center justify-center text-xs font-bold text-yellow-600 dark:text-yellow-400 z-10">3</div><div class="bg-[#0B1324] rounded-xl border border-[#131e36] p-4 hover:shadow-md hover:border-yellow-300 dark:hover:border-yellow-700 transition-all duration-200"><h4 class="font-bold text-white text-sm">Reconnaissance</h4><p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">While explicit function calls aren&#x27;t fully visible in the decompiled snippets, the presence of strings like <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">/etc/passwd</code> and <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">/proc/stat</code> strongly suggests a phase of gathering system info for C2 reporting.</p></div></div>
+<div class="relative pl-12"><div class="absolute left-[18px] top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div><div class="absolute left-0 top-0 w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 border-2 border-blue-400 dark:border-blue-600 flex items-center justify-center text-xs font-bold text-blue-600 dark:text-blue-400 z-10">4</div><div class="bg-[#0B1324] rounded-xl border border-[#131e36] p-4 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all duration-200"><h4 class="font-bold text-white text-sm">C2 Registration/Connection</h4><p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed"><code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_080b40cf</code> is called to resolve a hostname (likely hardcoded elsewhere) and establish a TCP connection.</p></div></div>
+<div class="relative pl-12"><div class="absolute left-[18px] top-10 bottom-0 w-0.5 bg-slate-200 dark:bg-slate-700"></div><div class="absolute left-0 top-0 w-9 h-9 rounded-full bg-purple-100 dark:bg-purple-900/30 border-2 border-purple-400 dark:border-purple-600 flex items-center justify-center text-xs font-bold text-purple-600 dark:text-purple-400 z-10">5</div><div class="bg-[#0B1324] rounded-xl border border-[#131e36] p-4 hover:shadow-md hover:border-purple-300 dark:hover:border-purple-700 transition-all duration-200"><h4 class="font-bold text-white text-sm">Command Loop</h4><p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed"><code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08065bd0</code> enters a <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">while</code> loop calling <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">recv</code> (<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_080ace3f</code>). It checks for a header byte <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">0x05</code> and dispatches to <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08064970</code> or <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">FUN_08053aa0</code> based on the packet type.</p></div></div>
+<div class="relative pl-12"><div class="absolute left-0 top-0 w-9 h-9 rounded-full bg-green-100 dark:bg-green-900/30 border-2 border-green-400 dark:border-green-600 flex items-center justify-center text-xs font-bold text-green-600 dark:text-green-400 z-10">6</div><div class="bg-[#0B1324] rounded-xl border border-[#131e36] p-4 hover:shadow-md hover:border-green-300 dark:hover:border-green-700 transition-all duration-200"><h4 class="font-bold text-white text-sm">Persistence</h4><p class="text-sm text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">The main loop in <code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">entry</code> is infinite (<code class="bg-slate-100 dark:bg-slate-800 text-red-600 dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">while(true)</code>), ensuring the process stays alive and maintains the connection.</p></div></div></div>
+                    </section>
+
+                    <!-- 8. Call Graph -->
+                    <section id="call-graph" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">8. Call Graph &amp; Attack Chains</h2>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6"><div class="bg-[#0B1324] rounded-lg p-6 shadow-sm border border-[#131e36]"><h3 class="font-bold text-white mb-4 flex items-center gap-2"><i class="fas fa-project-diagram text-purple-500"></i> Ghidra Analysis</h3><div class="grid grid-cols-3 gap-4 mb-4 text-center"><div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded"><div class="text-xl font-bold">2526</div><div class="text-xs text-slate-500">Nodes</div></div><div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded"><div class="text-xl font-bold">6452</div><div class="text-xs text-slate-500">Edges</div></div><div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded"><div class="text-xl font-bold">0</div><div class="text-xs text-slate-500">Chains</div></div></div><p class="text-sm text-slate-500 italic">No sink-reaching attack chains detected.</p></div><div class="bg-[#0B1324] rounded-lg p-6 shadow-sm border border-[#131e36]"><h3 class="font-bold text-white mb-4 flex items-center gap-2"><i class="fas fa-project-diagram text-blue-500"></i> Radare2 Analysis</h3><div class="grid grid-cols-3 gap-4 mb-4 text-center"><div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded"><div class="text-xl font-bold">1503</div><div class="text-xs text-slate-500">Nodes</div></div><div class="bg-slate-50 dark:bg-slate-700/50 p-3 rounded"><div class="text-xl font-bold">4568</div><div class="text-xs text-slate-500">Edges</div></div><div class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 rounded"><div class="text-xl font-bold text-red-600">3</div><div class="text-xs text-slate-500">Chains</div></div></div><div class="space-y-1 text-xs font-mono"><div class="bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 p-2 rounded">[Network] main → fcn.080514b0 → method.std::_Sp_counted_ptr_inplace_std::thread::_Impl_std::_Bind_simple_void___cclient___void______std::allocator_std::thread::_Impl_std::_Bind_simple_void___cclient___void___________gnu_cxx::_Lock_policy_2_.virtual_16</div>
+<div class="bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 p-2 rounded">[Network] main → fcn.080514b0 → fcn.08050ee0 → fcn.0805f6e0 → method.std::_Sp_counted_ptr_inplace_std::thread::_Impl_std::_Bind_simple_void___csession___void______std::allocator_std::thread::_Impl_std::_Bind_simple_void___csession___void___________gnu_cxx::_Lock_policy_2_.virtual_16</div>
+<div class="bg-slate-50 dark:bg-slate-700/50 text-slate-600 dark:text-slate-400 p-2 rounded">[Network] main → fcn.080514b0 → fcn.08050ff0 → fcn.0805f6e0 → method.std::_Sp_counted_ptr_inplace_std::thread::_Impl_std::_Bind_simple_void___csession___void______std::allocator_std::thread::_Impl_std::_Bind_simple_void___csession___void___________gnu_cxx::_Lock_policy_2_.virtual_16</div></div></div></div>
+                    </section>
+
+                    <!-- 9. IOCs -->
+                    <section id="iocs" class="scroll-mt-20 page-break">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">9. Indicators of Compromise (IOCs)</h2>
+                        <div class="bg-[#0B1324] rounded-lg shadow-sm border border-[#131e36] overflow-hidden">
+                            <table class="w-full text-left">
+                                <tbody class="divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+                                    <tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">IP/Domain</td><td class="px-6 py-3 font-mono text-xs break-all">8.8.8.8</td><td class="w-10 no-print"><button onclick="copyToClipboard('8.8.8.8')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/proc/sys/kernel/version</td><td class="w-10 no-print"><button onclick="copyToClipboard('/proc/sys/kernel/version')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/proc/self/maps</td><td class="w-10 no-print"><button onclick="copyToClipboard('/proc/self/maps')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/bin/sh</td><td class="w-10 no-print"><button onclick="copyToClipboard('/bin/sh')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/proc/mounts</td><td class="w-10 no-print"><button onclick="copyToClipboard('/proc/mounts')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/etc/fstab</td><td class="w-10 no-print"><button onclick="copyToClipboard('/etc/fstab')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/dev/shm/sem.</td><td class="w-10 no-print"><button onclick="copyToClipboard('/dev/shm/sem.')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/dev/shm</td><td class="w-10 no-print"><button onclick="copyToClipboard('/dev/shm')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/etc/TZ</td><td class="w-10 no-print"><button onclick="copyToClipboard('/etc/TZ')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/etc/localtime</td><td class="w-10 no-print"><button onclick="copyToClipboard('/etc/localtime')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/etc/passwd</td><td class="w-10 no-print"><button onclick="copyToClipboard('/etc/passwd')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/usr/bin</td><td class="w-10 no-print"><button onclick="copyToClipboard('/usr/bin')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/proc/stat</td><td class="w-10 no-print"><button onclick="copyToClipboard('/proc/stat')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/proc/cpuinfo</td><td class="w-10 no-print"><button onclick="copyToClipboard('/proc/cpuinfo')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/sys/devices/system/cpu</td><td class="w-10 no-print"><button onclick="copyToClipboard('/sys/devices/system/cpu')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/etc/resolv.conf</td><td class="w-10 no-print"><button onclick="copyToClipboard('/etc/resolv.conf')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+<tr class="hover:bg-slate-50 dark:hover:bg-slate-800/50 group"><td class="px-6 py-3 font-semibold text-slate-600 dark:text-slate-400 w-1/4">File Path</td><td class="px-6 py-3 font-mono text-xs break-all">/etc/hosts</td><td class="w-10 no-print"><button onclick="copyToClipboard('/etc/hosts')" class="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-600 px-3"><i class="fas fa-copy"></i></button></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+
+                    <!-- 10. Recommendations -->
+                    <section id="recommendations" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">10. Recommendations</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-4"><div class="rec-card bg-[#0B1324] p-5 rounded-lg shadow-sm"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center flex-shrink-0"><i class="fas fa-shield-alt"></i></div><div><h4 class="font-bold text-white mb-1 text-sm">Recommendation 1</h4><p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">Block network traffic to/from the identified C2 infrastructure (IP `8.8.8.8` is found in strings, though it is a public DNS server, it might be used as a fallback or hardcoded placeholder; other IPs may be dynamically resolved).</p></div></div></div>
+<div class="rec-card bg-[#0B1324] p-5 rounded-lg shadow-sm"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded-lg bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 flex items-center justify-center flex-shrink-0"><i class="fas fa-search"></i></div><div><h4 class="font-bold text-white mb-1 text-sm">Recommendation 2</h4><p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">Monitor network traffic for the specific custom protocol signature (packets starting with byte `0x05`).</p></div></div></div>
+<div class="rec-card bg-[#0B1324] p-5 rounded-lg shadow-sm"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 flex items-center justify-center flex-shrink-0"><i class="fas fa-ban"></i></div><div><h4 class="font-bold text-white mb-1 text-sm">Recommendation 3</h4><p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">Investigate any processes reading `/etc/passwd` or `/proc` entries that are not standard system utilities.</p></div></div></div>
+<div class="rec-card bg-[#0B1324] p-5 rounded-lg shadow-sm"><div class="flex items-start gap-3"><div class="w-8 h-8 rounded-lg bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 flex items-center justify-center flex-shrink-0"><i class="fas fa-file-invoice"></i></div><div><h4 class="font-bold text-white mb-1 text-sm">Recommendation 4</h4><p class="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">Disable or restrict execution of unknown binaries in `/tmp` and user-writable directories.</p></div></div></div></div>
+                    </section>
+
+                    <!-- 11. Conclusion -->
+                    <section id="conclusion" class="scroll-mt-20">
+                        <h2 class="text-2xl font-display font-bold text-white mb-6 border-l-4 border-[#00f0ff] pl-3 uppercase tracking-wider">11. Conclusion</h2>
+                        <div class="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/10 border-2 border-red-200 dark:border-red-800/50 rounded-lg p-6">
+                            <div class="flex items-start gap-4">
+                                <div class="hidden md:flex w-12 h-12 bg-red-100 dark:bg-red-800/50 rounded-full items-center justify-center flex-shrink-0">
+                                    <i class="fas fa-exclamation-triangle text-red-600 dark:text-red-400 text-xl"></i>
+                                </div>
+                                <div>
+                                    <h3 class="text-lg font-bold text-red-900 dark:text-red-100 mb-2">Verdict: Malware</h3>
+                                    <div class="text-red-800 dark:text-red-200 leading-relaxed text-sm mb-3 md-content">
+                                        <p class="mb-3">The binary is a fully-featured Linux Remote Access Trojan (RAT) designed with C2 communication, proxy/VPN tunneling (SOCKS and Port Forwarding), and reconnaissance capabilities. It uses robust cryptography to secure its communications and keys. The presence of strings like <code>cmy_socks_mgr</code> and <code>cport_fwd_mgr</code> explicitly labels its functionality, leaving little doubt about its malicious intent.</p>
+
+<strong>Verdict: Malware</strong>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                </div>
+
+                <!-- Footer -->
+                <footer class="bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 p-6 mt-12">
+                    <div class="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                        <div class="flex items-center gap-2">
+                            <i class="fas fa-lock"></i>
+                            <span>Confidential &amp; Proprietary &mdash; Do Not Distribute Without Authorization</span>
+                        </div>
+                        <div class="font-mono text-xs">ID: 873130c2</div>
+                    </div>
+                </footer>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Dark mode
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+        function toggleDarkMode() {
+            if (document.documentElement.classList.contains('dark')) {
+                document.documentElement.classList.remove('dark');
+                localStorage.theme = 'light';
+            } else {
+                document.documentElement.classList.add('dark');
+                localStorage.theme = 'dark';
+            }
+        }
+        // Copy to clipboard
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                const toast = document.createElement('div');
+                toast.className = 'fixed bottom-24 right-6 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg z-50 text-sm flex items-center gap-2 animate-bounce';
+                toast.innerHTML = '<i class="fas fa-check text-green-400"></i> Copied';
+                document.body.appendChild(toast);
+                setTimeout(() => toast.remove(), 2000);
+            });
+        }
+        // Smooth scroll
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        });
+        // Intersection observer for nav highlight
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    document.querySelectorAll('nav a').forEach(link => {
+                        link.classList.remove('bg-slate-200', 'dark:bg-slate-700', 'text-red-600');
+                        if (link.getAttribute('href') === '#' + entry.target.id) {
+                            link.classList.add('bg-slate-200', 'dark:bg-slate-700', 'text-red-600');
+                        }
+                    });
+                }
+            });
+        }, { root: null, rootMargin: '-20% 0px -80% 0px', threshold: 0 });
+        document.querySelectorAll('section[id]').forEach(section => { observer.observe(section); });
+    </script>
+</body>
+</html>
