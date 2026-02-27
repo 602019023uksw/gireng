@@ -57,11 +57,18 @@ query_response.json
 # ── Sample binaries (large files — see sample-binary/README) ──
 sample-binary/
 
+# ── Sample / generated reports ──
+sample-report/
+
+# ── One-off migration / scratch scripts ──
+update_*.py
+
 # ── Test / coverage artifacts ──
 .coverage
 htmlcov/
 .pytest_cache/
 .mypy_cache/
+.ruff_cache/
 
 # ── Logs ──
 *.log
