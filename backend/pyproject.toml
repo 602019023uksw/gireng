@@ -19,7 +19,8 @@ dependencies = [
   "zhipuai>=2.0.0",
   "langchain-community>=0.0.32",
   "asyncpg>=0.29.0",
-  "langfuse>=2.0.0,<3.0.0"
+  "langfuse>=2.0.0,<3.0.0",
+  "playwright>=1.40.0"
 ]
 
 [build-system]

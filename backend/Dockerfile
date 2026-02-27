@@ -13,6 +13,9 @@ COPY backend/ghidra_scripts /app/ghidra_scripts
 RUN pip install --no-cache-dir -U pip setuptools \
   && pip install --no-cache-dir .
 
+# Install Playwright Chromium for PDF export
+RUN playwright install --with-deps chromium
+
 ENV PYTHONPATH=/app/src
 
 CMD ["uvicorn", "ghidra_agent.api.main:app", "--host", "0.0.0.0", "--port", "8080"]

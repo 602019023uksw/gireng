@@ -482,6 +482,7 @@ function App() {
           activeTab={rightPanelTab}
           activeCodeFileId={activeCodeFileId}
           activeReport={activeReport}
+          programHash={sessionRef.current?.hash ?? null}
           onTabChange={setRightPanelTab}
           onCodeFileChange={setActiveCodeFileId}
           onReportSelect={handleReportSelect}

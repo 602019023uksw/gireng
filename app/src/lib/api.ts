@@ -116,6 +116,11 @@ export function getExportTextUrl(hash: string): string {
   return `${API_BASE}/api/analysis/${hash}/export/text`;
 }
 
+// Export report as PDF — returns the URL to download
+export function getExportPdfUrl(hash: string): string {
+  return `${API_BASE}/api/analysis/${hash}/export/pdf`;
+}
+
 export async function getAnalyzers(hash: string) {
   const res = await fetch(`${API_BASE}/api/analysis/${hash}/analyzers`);
   if (!res.ok) return [];

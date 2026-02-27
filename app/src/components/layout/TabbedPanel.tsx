@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, LayoutGrid, FileCode, FileText, FileCheck } from 'lucide-react';
+import { X, LayoutGrid, FileCode, FileText, FileCheck, Download, ChevronDown } from 'lucide-react';
 import type { FileNode, Analysis, Report, CodeFile } from '@/types';
 import { TagCloud } from '@/components/analysis/TagCloud';
-import { ChevronRight, ChevronDown, FolderOpen } from 'lucide-react';
+import { ChevronRight, FolderOpen } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { MarkdownContent } from '@/components/common/MarkdownContent';
+import { getExportHtmlUrl, getExportTextUrl, getExportPdfUrl } from '@/lib/api';
 
 interface TabbedPanelProps {
   files: FileNode[];
@@ -15,6 +16,7 @@ interface TabbedPanelProps {
   activeTab: 'resources' | 'code' | 'report';
   activeCodeFileId?: string;
   activeReport?: Report | null;
+  programHash?: string | null;
   onTabChange: (tab: 'resources' | 'code' | 'report') => void;
   onCodeFileChange: (fileId: string) => void;
   onReportSelect?: (reportId: string) => void;
@@ -144,6 +146,69 @@ function Section({ title, icon: Icon, count, children, defaultExpanded = true }:
   );
 }
 
+function ExportDropdown({ hash }: { hash: string }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const items = [
+    { label: 'HTML Report', url: getExportHtmlUrl(hash) },
+    { label: 'Text Report', url: getExportTextUrl(hash) },
+    { label: 'PDF Report', url: getExportPdfUrl(hash) },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150"
+        style={{
+          background: 'rgba(59, 130, 246, 0.15)',
+          color: 'rgb(147, 197, 253)',
+          border: '1px solid rgba(59, 130, 246, 0.3)',
+        }}
+        title="Export report"
+      >
+        <Download className="w-3.5 h-3.5" />
+        Export
+        <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div
+          className="absolute right-0 mt-1 z-50 rounded-lg shadow-xl overflow-hidden min-w-[160px]"
+          style={{
+            background: 'rgba(15, 20, 35, 0.95)',
+            border: '1px solid rgba(100, 120, 180, 0.25)',
+            backdropFilter: 'blur(12px)',
+          }}
+        >
+          {items.map((item) => (
+            <a
+              key={item.label}
+              href={item.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-2 px-4 py-2.5 text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors duration-150"
+            >
+              <Download className="w-3.5 h-3.5" />
+              {item.label}
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function TabbedPanel({
   files,
   analyses,
@@ -152,6 +217,7 @@ export function TabbedPanel({
   activeTab,
   activeCodeFileId,
   activeReport,
+  programHash,
   onTabChange,
   onCodeFileChange,
   onReportSelect,
@@ -285,9 +351,12 @@ export function TabbedPanel({
         return (
           <div className="flex flex-col h-full">
             <div className="flex-1 overflow-y-auto scrollbar-dark p-4">
-              <h3 className="text-lg font-semibold text-text-primary mb-4">
-                {activeReport?.name || 'Analysis Report'}
-              </h3>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-text-primary">
+                  {activeReport?.name || 'Analysis Report'}
+                </h3>
+                {programHash && <ExportDropdown hash={programHash} />}
+              </div>
               {activeReport?.content ? (
                 <MarkdownContent content={activeReport.content} compact />
               ) : (

@@ -1575,17 +1575,108 @@ def build_report_html(state: Dict[str, Any]) -> str:
             print-color-adjust: exact;
         }}
         @media print {{
-            @page {{ size: A4; margin: 8mm; }}
+            @page {{ size: A4; margin: 6mm 8mm; }}
             html, body {{
                 background: #0b1325 !important;
                 color: #e2e8f0 !important;
+                font-size: 9pt !important;
+                min-height: 0 !important;
             }}
             .no-print {{ display: none !important; }}
-            .page-break {{ page-break-before: always; }}
-            .capability-card, .tech-card, .func-card, .evidence-card, .rec-card, section, .function-box {{
+            .page-break {{ /* page-break disabled for compact PDF */ }}
+            /* Only avoid breaks inside small cards, NOT entire sections */
+            .capability-card, .tech-card, .func-card, .evidence-card, .rec-card, .function-box {{
                 page-break-inside: avoid;
                 break-inside: avoid;
             }}
+            /* Allow sections to break across pages freely */
+            section, .section-card {{
+                page-break-inside: auto !important;
+                break-inside: auto !important;
+            }}
+            /* Hide sidebar & hamburger */
+            #report-nav, .hamburger-btn {{ display: none !important; }}
+            /* Remove sidebar margin & min-height */
+            .lg\\:ml-72 {{ margin-left: 0 !important; min-height: 0 !important; }}
+            .min-h-screen {{ min-height: 0 !important; }}
+            .lg\\:p-6 {{ padding: 0.35rem !important; }}
+            /* Remove shell decoration in print */
+            .report-shell {{
+                border: none !important;
+                box-shadow: none !important;
+                border-radius: 0 !important;
+                background: transparent !important;
+            }}
+            /* Compact hero */
+            .hero-panel {{ padding: 0.8rem 1rem !important; }}
+            .hero-panel h1 {{ font-size: 1.25rem !important; line-height: 1.2; margin-bottom: 0.25rem !important; }}
+            .hero-panel p {{ font-size: 0.65rem !important; margin-bottom: 0.15rem !important; }}
+            .hero-panel .badge-chip {{ font-size: 0.55rem !important; padding: 0.1rem 0.4rem !important; }}
+            /* Compact stat cards */
+            .stat-card {{ padding: 0.35rem 0.5rem !important; }}
+            .stat-card .text-xl {{ font-size: 0.85rem !important; }}
+            .stat-card .text-xs, .stat-card .text-\\[11px\\] {{ font-size: 0.5rem !important; }}
+            /* Section cards — minimal padding */
+            .section-card {{
+                padding: 0.65rem 0.8rem !important;
+                margin-bottom: 0.35rem !important;
+                border-radius: 0.4rem !important;
+            }}
+            .section-headline {{ font-size: 0.8rem !important; margin-top: 0 !important; }}
+            .section-eyebrow {{ font-size: 0.5rem !important; }}
+            .section-subtitle {{ font-size: 0.6rem !important; margin-top: 0.1rem !important; }}
+            .section-icon {{ width: 1.3rem !important; height: 1.3rem !important; font-size: 0.6rem !important; }}
+            .section-title-wrap {{ margin-bottom: 0.4rem !important; gap: 0.5rem !important; }}
+            .section-body {{ font-size: 0.7rem !important; }}
+            /* Tables */
+            table.data-table th {{ font-size: 0.5rem !important; padding: 0.25rem 0.4rem !important; }}
+            table.data-table td {{ font-size: 0.6rem !important; padding: 0.25rem 0.4rem !important; }}
+            /* Function boxes */
+            .function-box {{ padding: 0.45rem !important; margin-bottom: 0.3rem !important; }}
+            .function-box .text-sm {{ font-size: 0.6rem !important; }}
+            .function-box .font-mono {{ font-size: 0.55rem !important; }}
+            /* Flow */
+            .flow-item {{ padding: 0.3rem 0.6rem !important; font-size: 0.55rem !important; }}
+            .flow-arrow {{ font-size: 0.75rem !important; }}
+            /* Verdict */
+            .text-2xl {{ font-size: 0.9rem !important; }}
+            .text-lg {{ font-size: 0.75rem !important; }}
+            .text-sm {{ font-size: 0.65rem !important; }}
+            .text-xs {{ font-size: 0.55rem !important; }}
+            /* Evidence cards */
+            .evidence-compact {{ padding: 0.35rem 0.5rem !important; font-size: 0.6rem !important; margin-bottom: 0.25rem !important; }}
+            .evidence-card {{ padding: 0.4rem 0.6rem !important; margin-bottom: 0.25rem !important; }}
+            /* Code blocks */
+            pre, code {{ font-size: 0.55rem !important; line-height: 1.3 !important; }}
+            pre {{ padding: 0.4rem !important; margin: 0.25rem 0 !important; }}
+            /* Spacing — aggressive compaction */
+            .space-y-8 > :not(:first-child) {{ margin-top: 0.5rem !important; }}
+            .space-y-6 > :not(:first-child) {{ margin-top: 0.4rem !important; }}
+            .space-y-4 > :not(:first-child) {{ margin-top: 0.3rem !important; }}
+            .space-y-3 > :not(:first-child) {{ margin-top: 0.2rem !important; }}
+            .gap-6 {{ gap: 0.35rem !important; }}
+            .gap-4 {{ gap: 0.3rem !important; }}
+            .gap-3 {{ gap: 0.2rem !important; }}
+            .gap-2 {{ gap: 0.15rem !important; }}
+            .mb-4 {{ margin-bottom: 0.25rem !important; }}
+            .mb-3 {{ margin-bottom: 0.2rem !important; }}
+            .mb-2 {{ margin-bottom: 0.15rem !important; }}
+            .mt-4 {{ margin-top: 0.25rem !important; }}
+            .py-4 {{ padding-top: 0.25rem !important; padding-bottom: 0.25rem !important; }}
+            .p-4, .p-6, .p-8 {{ padding: 0.4rem !important; }}
+            .px-4 {{ padding-left: 0.4rem !important; padding-right: 0.4rem !important; }}
+            .max-w-6xl {{ max-width: 100% !important; }}
+            /* Grid — keep multi-column */
+            .grid.lg\\:grid-cols-5 {{ grid-template-columns: repeat(5, 1fr) !important; }}
+            .grid.lg\\:grid-cols-3 {{ grid-template-columns: repeat(3, 1fr) !important; }}
+            .grid.lg\\:grid-cols-2 {{ grid-template-columns: repeat(2, 1fr) !important; }}
+            .grid.lg\\:grid-cols-\\[1fr_260px\\] {{ grid-template-columns: 1fr 180px !important; }}
+            /* Floating buttons */
+            .fixed.bottom-6 {{ display: none !important; }}
+            /* Background grid */
+            .report-bg-grid {{ display: none !important; }}
+            /* Remove rounded corners on main wrapper for continuous flow */
+            .rounded-xl {{ border-radius: 0.3rem !important; }}
         }}
         .report-shell {{
             background: linear-gradient(180deg, rgba(10, 20, 43, 0.95), rgba(7, 14, 31, 0.92));
@@ -1797,7 +1888,10 @@ def build_report_html(state: Dict[str, Any]) -> str:
     <div class="report-bg-grid"></div>
 
     <!-- Floating Tools -->
-    <div class="fixed bottom-6 right-6 z-50 no-print">
+    <div class="fixed bottom-6 right-6 z-50 no-print flex flex-col gap-2">
+        <button onclick="exportPDF()" class="w-11 h-11 rounded-full text-white bg-gradient-to-br from-red-500 to-pink-600 border border-red-200/25 shadow-xl hover:scale-105 transition-transform" title="Download PDF" id="pdf-btn">
+            <i class="fas fa-file-pdf"></i>
+        </button>
         <button onclick="window.print()" class="w-11 h-11 rounded-full text-white bg-gradient-to-br from-cyan-500 to-blue-600 border border-cyan-200/25 shadow-xl hover:scale-105 transition-transform" title="Print report">
             <i class="fas fa-print"></i>
         </button>
@@ -1933,7 +2027,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                     {('<section id="mitre-attack" class="scroll-mt-20 section-card"><div class="section-title-wrap"><div class="section-icon"><i class="fas fa-spider"></i></div><div><p class="section-eyebrow">02 · Threat Context</p><h2 class="section-headline">Threat Intel &amp; MITRE ATT&amp;CK</h2><p class="section-subtitle">Mapped tactics and techniques linked to concrete static-analysis artifacts.</p></div></div><div class="section-body">' + mitre_html + '</div></section>') if mitre_html else ''}
 
                     <!-- 2. Malware Capabilities -->
-                    <section id="capabilities" class="scroll-mt-20 page-break section-card">
+                    <section id="capabilities" class="scroll-mt-20 section-card">
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-bolt"></i></div>
                             <div>
@@ -1966,7 +2060,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                     </section>
 
                     <!-- 4. Technical Analysis -->
-                    <section id="technical-analysis" class="scroll-mt-20 page-break section-card">
+                    <section id="technical-analysis" class="scroll-mt-20 section-card">
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-microscope"></i></div>
                             <div>
@@ -2019,7 +2113,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                     </section>
 
                     <!-- 7. Operational Flow -->
-                    <section id="operational-flow" class="scroll-mt-20 page-break section-card">
+                    <section id="operational-flow" class="scroll-mt-20 section-card">
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-route"></i></div>
                             <div>
@@ -2045,7 +2139,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                     </section>
 
                     <!-- 9. IOCs -->
-                    <section id="iocs" class="scroll-mt-20 page-break section-card">
+                    <section id="iocs" class="scroll-mt-20 section-card">
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-network-wired"></i></div>
                             <div>
@@ -2125,6 +2219,34 @@ def build_report_html(state: Dict[str, Any]) -> str:
     </div>
 
     <script>
+        // Export PDF via backend API
+        function exportPDF() {{
+            const btn = document.getElementById('pdf-btn');
+            const origHTML = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+            // Build PDF URL – use embedded API base for file:// contexts
+            const EMBEDDED_API_BASE = 'http://localhost:8080';
+            const loc = window.location;
+            const isLocal = loc.protocol === 'file:';
+            const origin = isLocal ? EMBEDDED_API_BASE : loc.origin;
+            let pdfUrl = '';
+            const sessMatch = !isLocal && loc.pathname.match(/\\/session\\/([^\\/]+)/);
+            const hashMatch = !isLocal && loc.pathname.match(/\\/analysis\\/([^\\/]+)/);
+            if (sessMatch) {{
+                pdfUrl = origin + '/export/session/' + sessMatch[1] + '/pdf';
+            }} else if (hashMatch) {{
+                pdfUrl = origin + '/api/analysis/' + hashMatch[1] + '/export/pdf';
+            }} else {{
+                const hashEl = document.querySelector('[data-hash]');
+                const hash = hashEl ? hashEl.dataset.hash : '{escape(program_hash)}';
+                pdfUrl = origin + '/api/analysis/' + hash + '/export/pdf';
+            }}
+            // Use window.open for direct download (avoids CORS issues on file://)
+            window.open(pdfUrl, '_blank');
+            btn.innerHTML = origHTML;
+            btn.disabled = false;
+        }}
         // Copy to clipboard
         function copyToClipboard(text) {{
             navigator.clipboard.writeText(text).then(() => {{
@@ -2372,6 +2494,43 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
 </body>
 </html>'''
     return html
+
+
+async def build_report_pdf(state: Dict[str, Any]) -> bytes:
+    """Render the HTML report to an A4 PDF using Playwright headless Chromium.
+
+    Returns the raw PDF bytes.  The layout matches the HTML report exactly
+    because we render the same HTML in a real browser engine.
+    """
+    from playwright.async_api import async_playwright  # lazy import
+
+    html = build_report_html(state)
+
+    async with async_playwright() as pw:
+        browser = await pw.chromium.launch(headless=True)
+        # Use a wide viewport so the desktop layout renders properly
+        # before being scaled down to A4 by the PDF engine.
+        page = await browser.new_page(viewport={"width": 1280, "height": 900})
+
+        # Load the full HTML (with CDN assets) and wait for fonts/scripts
+        await page.set_content(html, wait_until="networkidle")
+
+        # Small delay to ensure Tailwind JIT + fonts finish
+        await page.wait_for_timeout(2000)
+
+        # Trigger print media so @media print rules apply
+        await page.emulate_media(media="print")
+
+        pdf_bytes = await page.pdf(
+            format="A4",
+            print_background=True,
+            margin={"top": "6mm", "right": "5mm", "bottom": "6mm", "left": "5mm"},
+            prefer_css_page_size=False,
+            scale=0.65,
+        )
+        await browser.close()
+
+    return pdf_bytes
 
 
 def build_report_text(state: Dict[str, Any]) -> str:

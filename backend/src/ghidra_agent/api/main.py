@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 
 from ghidra_agent import database as db
 from ghidra_agent.config import settings
@@ -22,7 +22,7 @@ from ghidra_agent.models import (
     StatusResponse,
     WriteModeRequest,
 )
-from ghidra_agent.reporting import build_agent_report_html, build_report_html, build_report_text
+from ghidra_agent.reporting import build_agent_report_html, build_report_html, build_report_pdf, build_report_text
 from ghidra_agent.sessions import run_graph, store
 from ghidra_agent.ui_adapter import (
     build_analyzer_response,
@@ -659,6 +659,44 @@ async def export_session_text(session_id: str) -> PlainTextResponse:
         })
     except KeyError:
         return PlainTextResponse("Session not found", status_code=404)
+
+
+@app.get("/api/analysis/{program_hash}/export/pdf")
+async def export_pdf(program_hash: str) -> Response:
+    """Export analysis report as A4 PDF."""
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return PlainTextResponse("Report not found", status_code=404)
+    try:
+        pdf_bytes = await build_report_pdf(state)
+    except Exception as e:
+        logger.error("PDF generation failed: %s", e)
+        return PlainTextResponse(f"PDF generation failed: {e}", status_code=500)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.pdf"'},
+    )
+
+
+@app.get("/export/session/{session_id}/pdf")
+async def export_session_pdf(session_id: str) -> Response:
+    """Export session report as A4 PDF (convenience endpoint)."""
+    try:
+        state = store.get_session(session_id)
+    except KeyError:
+        return PlainTextResponse("Session not found", status_code=404)
+    try:
+        pdf_bytes = await build_report_pdf(state)
+    except Exception as e:
+        logger.error("PDF generation failed: %s", e)
+        return PlainTextResponse(f"PDF generation failed: {e}", status_code=500)
+    program_hash = state.get("program_hash", "unknown")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="report_{program_hash[:16]}.pdf"'},
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion';
-import { CheckCircle2, FileText, ChevronRight } from 'lucide-react';
+import { CheckCircle2, FileText, ChevronRight, Download, FileCode, FileType } from 'lucide-react';
+import { getExportHtmlUrl, getExportPdfUrl } from '@/lib/api';
 
 interface AnalysisCompletedCardProps {
   fileHash: string;
@@ -15,6 +16,7 @@ export function AnalysisCompletedCard({
   onViewMore,
 }: AnalysisCompletedCardProps) {
   const progressPercent = (progress / maxProgress) * 100;
+  const shortHash = fileHash ? `${fileHash.slice(0, 16)}…${fileHash.slice(-8)}` : '';
 
   return (
     <motion.div
@@ -55,25 +57,17 @@ export function AnalysisCompletedCard({
 
       {/* Content */}
       <div className="p-4 space-y-3">
-        {/* File info */}
+        {/* File hash */}
         <div className="flex items-start gap-3">
-          <FileText className="w-5 h-5 text-text-secondary mt-0.5" />
+          <FileText className="w-5 h-5 text-text-secondary mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm text-text-secondary">File:</p>
-            <p className="text-sm text-text-primary font-mono truncate">{fileHash}</p>
-          </div>
-        </div>
-
-        <div className="flex items-start gap-3">
-          <div className="w-5" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-text-secondary">Hash:</p>
-            <p className="text-sm text-text-primary font-mono truncate">{fileHash}</p>
+            <p className="text-xs text-text-muted mb-0.5">SHA-256</p>
+            <p className="text-sm text-text-primary font-mono truncate" title={fileHash}>{shortHash}</p>
           </div>
         </div>
 
         {/* Progress */}
-        <div className="pt-2">
+        <div>
           <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
             <span>Analyzers Progress</span>
             <span>{progress}/{maxProgress}</span>
@@ -91,6 +85,44 @@ export function AnalysisCompletedCard({
             />
           </div>
         </div>
+
+        {/* Export buttons */}
+        {fileHash && (
+          <div className="flex items-center gap-2 pt-1">
+            <span className="text-xs text-text-muted mr-1">
+              <Download className="w-3.5 h-3.5 inline -mt-0.5 mr-1" />
+              Export:
+            </span>
+            <a
+              href={getExportHtmlUrl(fileHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 hover:brightness-125"
+              style={{
+                background: 'rgba(59, 130, 246, 0.12)',
+                color: 'rgb(147, 197, 253)',
+                border: '1px solid rgba(59, 130, 246, 0.25)',
+              }}
+            >
+              <FileCode className="w-3.5 h-3.5" />
+              HTML
+            </a>
+            <a
+              href={getExportPdfUrl(fileHash)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 hover:brightness-125"
+              style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: 'rgb(252, 165, 165)',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+              }}
+            >
+              <FileType className="w-3.5 h-3.5" />
+              PDF
+            </a>
+          </div>
+        )}
       </div>
     </motion.div>
   );
