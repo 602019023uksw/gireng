@@ -1,713 +1,773 @@
-# gireng - Backend Integration Guide
+# Backend Integration Guide
 
-## Overview
-
-This is a React-based cybersecurity analysis platform template. This guide explains all data structures, API endpoints needed, and how to integrate with your backend.
+Complete reference for integrating the gireng frontend with the backend API. This guide covers all data types, API endpoints, component mapping, and real-time communication.
 
 ---
 
 ## Table of Contents
 
-1. [Project Structure](#project-structure)
-2. [Data Types](#data-types)
-3. [Pages & Components](#pages--components)
-4. [API Endpoints Required](#api-endpoints-required)
-5. [State Management](#state-management)
+1. [Architecture Overview](#architecture-overview)
+2. [API Configuration](#api-configuration)
+3. [Data Types](#data-types)
+4. [API Client Functions](#api-client-functions)
+5. [API Endpoints](#api-endpoints)
 6. [WebSocket Integration](#websocket-integration)
+7. [Component–Endpoint Mapping](#componentendpoint-mapping)
+8. [Application Flow](#application-flow)
+9. [State Management](#state-management)
+10. [Component Inventory](#component-inventory)
+11. [Environment Variables](#environment-variables)
 
 ---
 
-## Project Structure
+## Architecture Overview
+
+The frontend is a state-driven single-page application (no router) built with React 19 + TypeScript. It communicates with the FastAPI backend through REST endpoints and WebSocket streaming.
 
 ```
-src/
-├── components/
-│   ├── analysis/          # Analysis view components
-│   │   ├── AnalysisHeader.tsx
-│   │   ├── AnalysisSection.tsx
-│   │   ├── AnalysisTabs.tsx
-│   │   ├── AnalyzerList.tsx
-│   │   └── AnalyzerDetail.tsx
-│   ├── chat/              # Chat interface components
-│   │   ├── ChatInput.tsx
-│   │   ├── ChatInterface.tsx
-│   │   ├── CodeBlock.tsx
-│   │   ├── MessageBubble.tsx
-│   │   ├── ModelSelector.tsx
-│   │   ├── QuickActionChips.tsx
-│   │   ├── ToolCallCard.tsx
-│   │   └── WelcomeScreen.tsx
-│   ├── code/              # Code viewer components
-│   │   └── CodeViewer.tsx
-│   ├── data/              # Data display components
-│   │   └── DataTable.tsx
-│   ├── layout/            # Layout components
-│   │   ├── MainLayout.tsx
-│   │   ├── ResizablePanel.tsx
-│   │   ├── Sidebar.tsx
-│   │   └── TabbedPanel.tsx
-│   ├── modals/            # Modal components
-│   │   └── ShareModal.tsx
-│   └── report/            # Report viewer components
-│       └── ReportViewer.tsx
-├── data/                  # Data layer (replace with API calls)
-│   └── mockData.ts
-├── types/                 # TypeScript type definitions
-│   └── index.ts
-├── App.tsx               # Main application component
-└── index.css             # Global styles
+┌─────────────────────────────────────────────────────┐
+│  Frontend (React 19 / Vite 7 / TypeScript 5.9)      │
+│                                                      │
+│  src/lib/api.ts  ←→  Backend (FastAPI :8080)         │
+│     REST   : POST /analyze, GET /status, POST /query │
+│     WS     : /stream/{session_id}                    │
+│     Export : /api/analysis/{hash}/export/{format}     │
+│     History: /api/history/*                           │
+│     Search : /api/query/*, /api/binary/*              │
+└─────────────────────────────────────────────────────┘
+```
+
+### Layout Structure
+
+```
+<MainLayout>
+  ├─ <Sidebar>               Left: new chat, session history/restore
+  ├─ <header>                 Top: back button, model selector, panel toggle
+  ├─ Main content area        AnimatePresence switching between views
+  │   ├─ WelcomeScreen        File upload, quick actions, model selector
+  │   ├─ ChatInterface        Message list + input, drag-and-drop upload
+  │   └─ Analysis view
+  │       ├─ AnalysisHeader
+  │       ├─ AnalysisTabs     overview | analyzers | callgraph
+  │       ├─ Overview          SimilarFiles table + AnalysisSummary (MarkdownContent)
+  │       ├─ Analyzers         AnalyzerList
+  │       └─ CallGraph         CallGraphView
+  └─ <ResizablePanel>        Right: TabbedPanel with resources/code/report tabs
+```
+
+---
+
+## API Configuration
+
+All API communication flows through `src/lib/api.ts`.
+
+```typescript
+// Base URLs (from environment or defaults)
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const WS_BASE  = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/stream';
 ```
 
 ---
 
 ## Data Types
 
+All types are defined in `src/types/index.ts`.
+
 ### 1. Message
 
-Chat message structure for the conversation.
+Chat message between user and AI agent.
 
 ```typescript
 interface Message {
-  id: string;                    // Unique message ID (UUID)
-  content: string;               // Message content (Markdown supported)
-  isUser: boolean;               // true = user message, false = AI response
-  timestamp: Date;               // Message timestamp
-  toolCalls?: ToolCall[];        // Optional: Tool calls made by AI
-  codeBlocks?: CodeBlock[];      // Optional: Code blocks in message
-  showAnalysisCompleted?: boolean; // Optional: Show analysis completion card
+  id: string;
+  content: string;
+  isUser: boolean;
+  timestamp: Date;
+  toolCalls?: ToolCall[];
+  codeBlocks?: CodeBlock[];
+  showAnalysisCompleted?: boolean;
+  analysisHash?: string;
+  analyzerCount?: number;
+  analyzerTotal?: number;
+  agentId?: string;
+  agentName?: string;
 }
 ```
-
-**Backend Response Example:**
-```json
-{
-  "id": "msg-123",
-  "content": "Analysis complete. Found 3 threats.",
-  "isUser": false,
-  "timestamp": "2026-01-28T10:30:00Z",
-  "toolCalls": [
-    {
-      "id": "tool-1",
-      "name": "virustotal_scan",
-      "status": "completed",
-      "progress": 7,
-      "maxProgress": 7
-    }
-  ]
-}
-```
-
----
 
 ### 2. ToolCall
 
-Represents a tool/agent call made during analysis.
+Tool invocation status during analysis (Ghidra scripts, Radare2 commands).
 
 ```typescript
 interface ToolCall {
-  id: string;                    // Tool call ID
-  name: string;                  // Tool name (displayed in UI)
+  id: string;
+  name: string;                  // e.g. "list_functions", "decompile_function"
   status: 'pending' | 'running' | 'completed' | 'failed';
-  result?: any;                  // Tool result data
-  progress?: number;             // Current progress
-  maxProgress?: number;          // Total progress steps
+  result?: string;
+  progress?: number;
+  maxProgress?: number;
 }
 ```
-
----
 
 ### 3. CodeBlock
 
-Code snippet displayed in chat.
+Code snippet embedded in a message.
 
 ```typescript
 interface CodeBlock {
-  id: string;                    // Block ID
-  language: string;              // Programming language (python, c, javascript, etc.)
-  filename?: string;             // Optional filename
-  code: string;                  // Code content
+  id: string;
+  language: string;              // Syntax highlighting language
+  filename?: string;
+  code: string;
 }
 ```
-
----
 
 ### 4. AnalysisResult
 
-Overall analysis result header information.
+Top-level analysis outcome for a binary.
 
 ```typescript
 interface AnalysisResult {
-  hash: string;                  // File hash (SHA256)
-  size: string;                  // File size (e.g., "49.34 KB")
-  type: string;                  // File type (e.g., "ELF", "PE", "PDF")
-  status: string;                // Analysis status (e.g., "COMPLETED")
-  duration: string;              // Analysis duration (e.g., "2m 32s")
-  started: string;               // Start timestamp
-  completed: string;             // Completion timestamp
-  verdict: string;               // Final verdict ("Malware", "Clean", "Suspicious")
-  threatScore: number;           // Threat score (0-6)
-  maxScore: number;              // Maximum possible score (6)
-  tags: string[];                // Array of threat tags
+  hash: string;
+  size: number;
+  type: string;
+  status: string;
+  duration: number;
+  started: string;
+  completed: string;
+  verdict: string;
+  threatScore: number;
+  maxScore: number;
+  tags: string[];
 }
 ```
-
-**Backend Response Example:**
-```json
-{
-  "hash": "abc123...",
-  "size": "49.34 KB",
-  "type": "ELF",
-  "status": "COMPLETED",
-  "duration": "2m 32s",
-  "started": "2026-01-28T10:30:00Z",
-  "completed": "2026-01-28T10:32:32Z",
-  "verdict": "Malware",
-  "threatScore": 3,
-  "maxScore": 6,
-  "tags": ["malware", "trojan", "backdoor", "linux"]
-}
-```
-
----
 
 ### 5. Analyzer
 
-Individual analyzer/agent that processed the file.
+Individual analyzer result (Ghidra or Radare2).
 
 ```typescript
 interface Analyzer {
-  id: string;                    // Analyzer ID (ghidra, radare)
-  name: string;                  // Display name
-  source: string;                // Source system
-  sourceUrl: string;             // Source URL
+  id: string;
+  name: string;
+  source: string;
+  sourceUrl: string;
   verdict: 'Clean' | 'Malware' | 'Suspicious' | 'Not_extracted';
-  details?: AnalyzerDetails;     // Detailed analysis results
+  details?: AnalyzerDetails;
 }
 ```
-
-**Supported Analyzers (Template configured for):**
-- `ghidra` - Ghidra Reverse Engineer Agent
-- `radare` - Radare Reverse Engineer Agent
-
-**Backend Response Example:**
-```json
-{
-  "id": "ghidra",
-  "name": "Ghidra Reverse Engineer Agent",
-  "source": "gireng",
-  "sourceUrl": "https://github.com/danilchristianto/gireng",
-  "verdict": "Malware",
-  "details": {
-    "executiveSummary": "Analysis found malicious PAM module...",
-    "staticAnalysis": "Detailed static analysis...",
-    "behavioralAnalysis": "Behavior observed...",
-    "iocs": "Indicators of compromise...",
-    "conclusion": "Final assessment...",
-    "executionLogs": ["Log entry 1", "Log entry 2"]
-  }
-}
-```
-
----
 
 ### 6. AnalyzerDetails
 
-Detailed analysis from an analyzer.
+Detailed findings from an analyzer.
 
 ```typescript
 interface AnalyzerDetails {
-  executiveSummary: string;      // Executive summary
-  staticAnalysis: string;        // Static analysis findings
-  behavioralAnalysis: string;    // Behavioral analysis
-  iocs: string;                  // Indicators of compromise
-  conclusion: string;            // Conclusion
-  executionLogs: string[];       // Execution log entries
+  executiveSummary: string;
+  staticAnalysis: string;
+  behavioralAnalysis: string;
+  iocs: string;
+  conclusion: string;
+  executionLogs: string[];
 }
 ```
 
----
+### 7. Agent
 
-### 7. Model
+AI agent configuration for specialized analysis tasks.
 
-AI model available for chat.
+```typescript
+interface Agent {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  prompt: string;
+  capabilities: string[];
+  exampleQueries: string[];
+}
+```
+
+### 8. AgentMention
+
+Reference to an agent within a message.
+
+```typescript
+interface AgentMention {
+  agentId: string;
+  agentName: string;
+  startIndex: number;
+  endIndex: number;
+}
+```
+
+### 9. Model
+
+Available LLM model.
 
 ```typescript
 interface Model {
-  id: string;                    // Model ID
-  name: string;                  // Display name
+  id: string;
+  name: string;
   icon: 'sparkle' | 'circle' | 'split';
   type: 'gemini' | 'gpt' | 'other';
-  isSelected?: boolean;          // Currently selected
+  isSelected?: boolean;
 }
 ```
 
-**Backend Response Example:**
-```json
-[
-  {
-    "id": "gemini-2.5-pro",
-    "name": "Gemini 2.5 Pro",
-    "icon": "sparkle",
-    "type": "gemini",
-    "isSelected": true
-  },
-  {
-    "id": "claude-3-opus",
-    "name": "Claude 3 Opus",
-    "icon": "circle",
-    "type": "other"
-  }
-]
-```
-
----
-
-### 8. Chat
-
-Chat session/history item.
+### 10. Other Types
 
 ```typescript
 interface Chat {
-  id: string;                    // Chat ID
-  title: string;                 // Chat title
-  timestamp: Date;               // Last activity timestamp
-  isActive?: boolean;            // Currently active chat
+  id: string;
+  title: string;
+  timestamp: Date;
+  isActive?: boolean;
 }
-```
 
----
-
-### 9. FileNode
-
-File tree structure for analyzed files.
-
-```typescript
 interface FileNode {
-  id: string;                    // Node ID
-  name: string;                  // Filename
+  id: string;
+  name: string;
   type: 'file' | 'folder' | 'code';
-  children?: FileNode[];         // Child nodes (for folders)
+  children?: FileNode[];
 }
-```
 
-**Backend Response Example:**
-```json
-{
-  "id": "root",
-  "name": "abc123...",
-  "type": "folder",
-  "children": [
-    {
-      "id": "file1",
-      "name": "decompiled.c",
-      "type": "code"
-    }
-  ]
-}
-```
-
----
-
-### 10. CodeFile
-
-Decompiled/extracted code file content.
-
-```typescript
 interface CodeFile {
-  id: string;                    // File ID
-  name: string;                  // Filename
-  language: string;              // Language for syntax highlighting
-  content: string;               // File content
+  id: string;
+  name: string;
+  language: string;
+  content: string;
 }
-```
 
----
-
-### 11. SimilarFile
-
-Similar files found during analysis.
-
-```typescript
 interface SimilarFile {
-  id: string;                    // File ID
-  hash: string;                  // SHA256 hash
-  labels: string[];              // Threat labels
+  id: string;
+  hash: string;
+  labels: string[];
 }
-```
 
-**Backend Response Example:**
-```json
-[
-  {
-    "id": "sim1",
-    "hash": "4aa28808483191c4247e97be2a73ae22a7fe54193e892aae23d7ca3280854df7",
-    "labels": ["SSHDoor", "PamBack"]
-  }
-]
-```
-
----
-
-### 12. Analysis
-
-Analysis summary for the resources panel.
-
-```typescript
 interface Analysis {
-  id: string;                    // Analysis ID
-  hash: string;                  // Full hash
-  shortHash: string;             // Truncated hash for display
-  tags: string[];                // Tags to display
-  extraTagCount: number;         // Number of additional tags
-  verdict: string;               // Verdict
+  id: string;
+  hash: string;
+  shortHash: string;
+  tags: string[];
+  extraTagCount: number;
+  verdict: string;
   status: 'completed' | 'running' | 'pending';
 }
-```
 
----
-
-### 13. Report
-
-Generated report metadata.
-
-```typescript
 interface Report {
-  id: string;                    // Report ID
-  name: string;                  // Report filename
-  timestamp: number;             // Unix timestamp
+  id: string;
+  name: string;
+  timestamp: number;
+  content?: string;
 }
-```
 
----
-
-### 14. QuickAction
-
-Quick action chips on welcome screen.
-
-```typescript
 interface QuickAction {
-  id: string;                    // Action ID
-  label: string;                 // Display label
+  id: string;
+  label: string;
   icon: string;                  // Lucide icon name
 }
+
+interface NavItem {
+  id: string;
+  icon: string;
+  label: string;
+  isActive?: boolean;
+  hasNotification?: boolean;
+}
 ```
 
-**Default Quick Actions:**
-- CVEs Chart (BarChart3)
-- Deobfuscate (Code2)
-- Create Workflows (Workflow)
-- APT Threat Report (Shield)
-- Hash Research (Hash)
+### API-Specific Types (defined in `api.ts`)
 
----
+```typescript
+interface UploadResponse {
+  session_id: string;
+}
 
-## Pages & Components
+interface StatusResponse {
+  session_id: string;
+  status: string;
+  state: any;
+}
 
-### 1. Welcome Screen (`/welcome`)
+interface QueryResponse {
+  ok: boolean;
+  answer?: string;
+  error?: string;
+}
 
-**Purpose:** Initial landing page when no chat is active.
+interface CallGraphRaw {
+  ok?: boolean;
+  nodes: any[];
+  edges: any[];
+  entry_points: string[];
+}
 
-**Data Required:**
-- User name
-- Available models list
-- Quick actions
+interface CallGraphAnalysis {
+  ok?: boolean;
+  entries: any[];
+  adjacency: AdjacencyRow[];
+  chains: AttackChain[];
+  cycles: any[];
+  stats?: any;
+}
 
-**API Endpoints:**
-```
-GET /api/models              # Fetch available AI models
-```
+interface AttackChain {
+  category: string;
+  sink: string;
+  path: string[];
+  description?: string;
+}
 
----
+interface AnalyzerRawResults {
+  analyzer: string;
+  binary?: any;
+  functions?: any;
+  strings?: any;
+  call_graph?: CallGraphRaw;
+  call_graph_analysis?: CallGraphAnalysis;
+  decompiled?: any;
+}
 
-### 2. Chat Interface (`/chat`)
+interface HistoryItem {
+  id: string;
+  program_hash: string;
+  binary_path: string;
+  status: string;
+  verdict: string;
+  threat_score: number;
+  summary: string;
+  started_at: string;
+  completed_at: string;
+  duration_seconds: number;
+  created_at: string;
+  updated_at: string;
+}
 
-**Purpose:** Main chat conversation with AI.
-
-**Data Required:**
-- Messages array
-- Current model ID
-- Input placeholder text
-
-**API Endpoints:**
-```
-POST /query                   # Send message to the agent for a session
-GET  /status/:session_id      # Poll session state
-WS   /stream/:session_id      # Live analysis progress events
-```
-
-**WebSocket Events:**
-```
-message:received          # New message received
-message:typing            # AI is typing
-analysis:progress         # Analysis progress update
-analysis:completed        # Analysis completed
-```
-
----
-
-### 3. Analysis View (`/analysis`)
-
-**Purpose:** Detailed analysis results view.
-
-**Data Required:**
-- Analysis result header
-- List of analyzers
-- Similar files
-- Analysis sections content
-
-**API Endpoints:**
-```
-GET /api/analysis/:hash              # Get analysis summary
-GET /api/analysis/:hash/analyzers    # Get all analyzer results
-GET /api/analysis/:hash/similar      # Get similar files
-```
-
----
-
-### 4. Analyzer Detail View
-
-**Purpose:** Detailed view for a specific analyzer (Ghidra/Radare).
-
-**Data Required:**
-- Analyzer details object
-
-**API Endpoints:**
-```
-GET /api/analysis/:hash/analyzers/:analyzerId   # Get specific analyzer details
-```
-
----
-
-### 5. Code Viewer (Right Panel Tab)
-
-**Purpose:** Display decompiled/extracted code files.
-
-**Data Required:**
-- File tree structure
-- Code file content
-
-**API Endpoints:**
-```
-GET /api/analysis/:hash/files          # Get file tree
-GET /api/analysis/:hash/files/:fileId  # Get file content
+interface HistoryListResponse {
+  items: HistoryItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
 ```
 
 ---
 
-### 6. Report Viewer (Right Panel Tab)
+## API Client Functions
 
-**Purpose:** Display generated analysis reports.
+All functions are in `src/lib/api.ts`:
 
-**Data Required:**
-- Report list
-- Report content (Markdown)
-
-**API Endpoints:**
-```
-GET /api/analysis/:hash/reports        # Get report list
-GET /api/analysis/:hash/reports/:id    # Get report content
-```
+| Function | Method | Endpoint | Description |
+|----------|--------|----------|-------------|
+| `uploadBinary(file)` | POST | `/analyze/upload` | Upload binary for analysis |
+| `analyzePath(binaryPath)` | POST | `/analyze` | Analyze binary by server path |
+| `getStatus(sessionId)` | GET | `/status/{id}` | Get session status and state |
+| `sendQuery(sessionId, query)` | POST | `/query` | Follow-up question on session |
+| `getAnalysis(hash)` | GET | `/api/analysis/{hash}` | Analysis metadata |
+| `getAnalyzers(hash)` | GET | `/api/analysis/{hash}/analyzers` | Analyzer results list |
+| `getFiles(hash)` | GET | `/api/analysis/{hash}/files` | File tree |
+| `getFileContent(hash, fileId)` | GET | `/api/analysis/{hash}/files/{id}` | File code content |
+| `getReports(hash)` | GET | `/api/analysis/{hash}/reports` | Report list |
+| `getReportContent(hash, reportId)` | GET | `/api/analysis/{hash}/reports/{id}` | Report content |
+| `getGhidraResults(hash)` | GET | `/api/analysis/{hash}/results/ghidra` | Raw Ghidra results |
+| `getRadare2Results(hash)` | GET | `/api/analysis/{hash}/results/radare2` | Raw Radare2 results |
+| `getExportHtmlUrl(hash)` | — | `/api/analysis/{hash}/export/html` | HTML export URL |
+| `getExportTextUrl(hash)` | — | `/api/analysis/{hash}/export/text` | Text export URL |
+| `getExportPdfUrl(hash)` | — | `/api/analysis/{hash}/export/pdf` | PDF export URL |
+| `getModels()` | GET | `/api/models` | Available LLM models |
+| `getHistory(limit, offset, status, search)` | GET | `/api/history` | List past analyses |
+| `getHistoryItem(sessionId)` | GET | `/api/history/{id}` | Single history record |
+| `restoreSession(sessionId)` | POST | `/api/history/{id}/restore` | Restore into memory |
+| `deleteHistoryItem(sessionId)` | DELETE | `/api/history/{id}` | Delete analysis |
+| `connectStream(sessionId, onEvent)` | WS | `/stream/{id}` | Real-time event stream |
+| `pollStatus(sessionId, onUpdate, interval, maxPolls)` | — | Polling wrapper | Poll `getStatus` in loop |
 
 ---
 
-## API Endpoints Required
+## API Endpoints
 
-### Session & Query
-```
-POST /analyze                  # Start analysis using server-side binary path
-POST /analyze/upload           # Upload binary and start analysis
-GET  /status/:session_id       # Poll session state/progress
-POST /query                    # Ask a question about an existing session
-```
+### Core Operations
 
-### Analysis (By Program Hash)
-```
-GET    /api/analysis/:hash                # Get analysis status
-GET    /api/analysis/:hash/analyzers      # Get analyzer results
-GET    /api/analysis/:hash/analyzers/:id  # Get specific analyzer
-GET    /api/analysis/:hash/files          # Get analyzed files
-GET    /api/analysis/:hash/files/:fileId  # Get file content
-GET    /api/analysis/:hash/reports        # Get reports
-GET    /api/analysis/:hash/reports/:id    # Get report content
-GET    /api/analysis/:hash/similar        # Get similar files
-GET    /api/analysis/:hash/results/ghidra # Raw Ghidra results
-GET    /api/analysis/:hash/results/radare2# Raw Radare2 results
-GET    /api/analysis/:hash/export/html    # Export HTML report
-GET    /api/analysis/:hash/export/text    # Export text report
-```
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Health check, returns session count |
+| POST | `/analyze` | Start analysis by server-side binary path |
+| POST | `/analyze/upload` | Upload binary file (multipart) |
+| GET | `/status/{session_id}` | Session status and full state |
+| POST | `/query` | Follow-up natural-language query |
+| POST | `/write_mode` | Toggle write mode for a session |
+| POST | `/write_mode/confirm` | Confirm/approve write mode action |
+| WS | `/stream/{session_id}` | WebSocket for real-time events |
+
+### Analysis Data (by program hash)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/analysis/{hash}` | Analysis metadata |
+| GET | `/api/analysis/{hash}/analyzers` | Analyzer list (Ghidra + Radare2) |
+| GET | `/api/analysis/{hash}/analyzers/{id}` | Single analyzer detail |
+| GET | `/api/analysis/{hash}/files` | File tree |
+| GET | `/api/analysis/{hash}/files/{file_id}` | File content |
+| GET | `/api/analysis/{hash}/reports` | Report list |
+| GET | `/api/analysis/{hash}/reports/{id}` | Report content |
+| GET | `/api/analysis/{hash}/similar` | Similar files |
+| GET | `/api/analysis/{hash}/results/ghidra` | Raw Ghidra results |
+| GET | `/api/analysis/{hash}/results/radare2` | Raw Radare2 results |
+
+### Report Export (by program hash)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/analysis/{hash}/export/html` | HTML report (dark-themed, standalone) |
+| GET | `/api/analysis/{hash}/export/text` | Plain-text report |
+| GET | `/api/analysis/{hash}/export/pdf` | PDF report (white template, Playwright) |
+
+### Report Export (by session ID)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/export/session/{id}/html` | HTML report by session |
+| GET | `/export/session/{id}/agent/{agent}` | Per-agent HTML report |
+| GET | `/export/session/{id}/text` | Text report by session |
+| GET | `/export/session/{id}/pdf` | PDF report by session |
 
 ### History
-```
-GET    /api/history                        # List persisted analyses
-GET    /api/history/:session_id            # Get analysis summary
-GET    /api/history/:session_id/qa         # Get Q&A history
-POST   /api/history/:session_id/restore    # Restore session to memory
-DELETE /api/history/:session_id            # Delete analysis
-```
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/history` | List analyses (`limit`, `offset`, `status`, `search`) |
+| GET | `/api/history/{session_id}` | Single analysis summary |
+| GET | `/api/history/{session_id}/qa` | Q&A history for session |
+| POST | `/api/history/{session_id}/restore` | Restore session into memory |
+| DELETE | `/api/history/{session_id}` | Delete analysis record |
+
+### Cross-Binary Search
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/query/functions` | Search functions across binaries (`name`, `analyzer`, `limit`) |
+| GET | `/api/query/strings` | Full-text string search (`pattern`, `limit`) |
+| GET | `/api/query/iocs` | Search IOCs (`ioc_type`, `value`, `limit`) |
+
+### Per-Binary Data
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/binary/{hash}/functions` | Functions for a binary |
+| GET | `/api/binary/{hash}/decompilations` | Decompiled functions |
+| GET | `/api/binary/{hash}/iocs` | IOCs for a binary |
+| GET | `/api/binary/{hash}/attack-chains` | Attack chains |
 
 ### Models
-```
-GET /api/models                # Get available AI models
-```
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/models` | Available LLM models |
+
+**Total: 38 endpoints**
 
 ---
 
 ## WebSocket Integration
 
 ### Connection
-```javascript
-const ws = new WebSocket('wss://your-api.com/ws');
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    type: 'auth',
-    token: 'your-jwt-token'
-  }));
-};
+
+```typescript
+import { connectStream } from '@/lib/api';
+
+connectStream(sessionId, (event) => {
+  switch (event.type) {
+    case 'analysis:progress':
+      // { status, step, progress }
+      break;
+    case 'analysis:completed':
+      // Analysis finished — fetch full results
+      break;
+    case 'analysis:error':
+      // { error }
+      break;
+    case 'message:typing':
+      // Agent is processing
+      break;
+  }
+});
 ```
 
-### Events to Handle
+### Event Types
 
-**Server → Client:**
-```javascript
-// Message received
-{
-  type: 'message',
-  chatId: 'chat-123',
-  message: Message
-}
+| Event | Direction | Payload | Description |
+|-------|-----------|---------|-------------|
+| `analysis:progress` | Server → Client | `{ status, step, progress }` | Step-by-step analysis updates |
+| `analysis:completed` | Server → Client | — | Analysis finished |
+| `analysis:error` | Server → Client | `{ error }` | Analysis failed |
+| `message:typing` | Server → Client | — | Agent started processing |
 
-// Analysis progress
-{
-  type: 'analysis:progress',
-  hash: 'abc123...',
-  analyzer: 'ghidra',
-  progress: 50,
-  maxProgress: 100
-}
+---
 
-// Analysis completed
-{
-  type: 'analysis:completed',
-  hash: 'abc123...',
-  result: AnalysisResult
-}
+## Component–Endpoint Mapping
 
-// Tool call update
-{
-  type: 'tool:call',
-  chatId: 'chat-123',
-  toolCall: ToolCall
-}
+### WelcomeScreen
+
+| Data Needed | API Call |
+|-------------|----------|
+| Available models | `getModels()` |
+| File upload | `uploadBinary(file)` → `pollStatus()` |
+| Path analysis | `analyzePath(path)` → `pollStatus()` |
+
+### ChatInterface
+
+| Data Needed | API Call |
+|-------------|----------|
+| Send message | `sendQuery(sessionId, query)` |
+| Analysis progress | `connectStream(sessionId, onEvent)` |
+| Agent mention | Resolved client-side from agent definitions |
+
+### Analysis View (Overview Tab)
+
+| Data Needed | API Call |
+|-------------|----------|
+| Analysis header | `getAnalysis(hash)` |
+| Analyzer list | `getAnalyzers(hash)` |
+| Similar files | Included in analysis state |
+| Summary content | From `getGhidraResults(hash)` / `getRadare2Results(hash)` |
+
+### Analysis View (Analyzers Tab)
+
+| Data Needed | API Call |
+|-------------|----------|
+| Analyzer details | `getAnalyzers(hash)` (includes details) |
+| Ghidra raw data | `getGhidraResults(hash)` |
+| Radare2 raw data | `getRadare2Results(hash)` |
+
+### Analysis View (Call Graph Tab)
+
+| Data Needed | API Call |
+|-------------|----------|
+| Graph nodes/edges | `getGhidraResults(hash)` → `call_graph` field |
+| Graph analysis | `getGhidraResults(hash)` → `call_graph_analysis` field |
+| Attack chains | `getGhidraResults(hash)` → `call_graph_analysis.chains` |
+
+### Right Panel — Code Tab
+
+| Data Needed | API Call |
+|-------------|----------|
+| File tree | `getFiles(hash)` |
+| File content | `getFileContent(hash, fileId)` |
+
+### Right Panel — Report Tab
+
+| Data Needed | API Call |
+|-------------|----------|
+| Report list | `getReports(hash)` |
+| Report content | `getReportContent(hash, reportId)` |
+| Export HTML | `getExportHtmlUrl(hash)` (opens in new tab) |
+| Export PDF | `getExportPdfUrl(hash)` (opens in new tab) |
+| Export text | `getExportTextUrl(hash)` (opens in new tab) |
+
+### Sidebar
+
+| Data Needed | API Call |
+|-------------|----------|
+| Session history | `getHistory(limit, offset)` |
+| Restore session | `restoreSession(sessionId)` |
+| Delete session | `deleteHistoryItem(sessionId)` |
+
+---
+
+## Application Flow
+
+### 1. Binary Upload → Analysis
+
+```
+User drops/selects file
+  → uploadBinary(file)
+  → Receives { session_id }
+  → connectStream(session_id) for real-time events
+  → pollStatus(session_id) as fallback
+  → On "analysis:completed" or status === "completed":
+       fetchAnalysisData(hash)  (parallel fetch of all data)
+  → Switch to analysis view
 ```
 
-**Client → Server:**
-```javascript
-// Send message
-{
-  type: 'message:send',
-  chatId: 'chat-123',
-  content: 'Analyze this file'
-}
+### 2. Follow-up Query
 
-// Subscribe to analysis
-{
-  type: 'analysis:subscribe',
-  hash: 'abc123...'
-}
+```
+User types question in chat
+  → sendQuery(session_id, query)
+  → Receives { ok, answer }
+  → Append message to messages array
+  → Refresh side panel data if needed
+```
+
+### 3. Session Restore
+
+```
+User clicks session in sidebar
+  → restoreSession(session_id)
+  → Set session reference { id, hash }
+  → fetchAnalysisData(hash)
+  → Switch to analysis view
+```
+
+### 4. Report Export
+
+```
+User clicks export button or types report command
+  → Regex detects report intent in chat
+  → Opens getExportHtmlUrl(hash) / getExportPdfUrl(hash) in new tab
+  → Backend generates standalone HTML/PDF and serves it
+```
+
+### 5. Data Fetch (fetchAnalysisData)
+
+All fetched in parallel after analysis completes:
+
+```typescript
+// Parallel data fetch
+const [analysis, analyzers, files, reports, ghidraResults, radare2Results] =
+  await Promise.all([
+    getAnalysis(hash),
+    getAnalyzers(hash),
+    getFiles(hash),
+    getReports(hash),
+    getGhidraResults(hash),
+    getRadare2Results(hash),
+  ]);
 ```
 
 ---
 
 ## State Management
 
-### Recommended: Zustand or Redux
+The application manages state directly in `App.tsx` using React hooks:
 
 ```typescript
-// store/chatStore.ts
-import { create } from 'zustand';
+// View state
+viewState: 'welcome' | 'chat' | 'analysis'
 
-interface ChatState {
-  messages: Message[];
-  currentChatId: string | null;
-  selectedModel: Model;
-  isLoading: boolean;
-  
-  // Actions
-  sendMessage: (content: string) => Promise<void>;
-  loadMessages: (chatId: string) => Promise<void>;
-  setModel: (model: Model) => void;
-}
+// Session
+sessionRef: { id: string; hash: string }
 
-export const useChatStore = create<ChatState>((set, get) => ({
-  messages: [],
-  currentChatId: null,
-  selectedModel: defaultModel,
-  isLoading: false,
-  
-  sendMessage: async (content: string) => {
-    set({ isLoading: true });
-    const response = await fetch('/query', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        session_id: get().currentChatId,
-        query: content,
-      })
-    });
-    const payload = await response.json();
-    const message = payload.answer;
-    set(state => ({ 
-      messages: [...state.messages, message],
-      isLoading: false 
-    }));
-  },
-  
-  loadMessages: async (chatId: string) => {
-    const response = await fetch('/api/history/' + chatId + '/qa');
-    const messages = await response.json();
-    set({ messages, currentChatId: chatId });
-  },
-  
-  setModel: (model: Model) => set({ selectedModel: model })
-}));
+// Chat
+messages: Message[]
+selectedModelId: string
+
+// Analysis data
+currentAnalysis: AnalysisResult | null
+analyzers: Analyzer[]
+fileTree: FileNode[]
+codeFiles: CodeFile[]
+reports: Report[]
+analyses: Analysis[]
+activeReport: Report | null
+
+// Call graph
+callGraphPanels: any[]
+
+// UI state
+activeTab: 'overview' | 'analyzers' | 'callgraph'
+rightPanelOpen: boolean
+rightPanelTab: 'resources' | 'code' | 'report'
+rightPanelWidth: number
 ```
+
+---
+
+## Component Inventory
+
+### Layout (5 components)
+
+| Component | Purpose |
+|-----------|---------|
+| `MainLayout` | Root layout wrapper |
+| `Sidebar` | Left panel: new chat, session history |
+| `ResizablePanel` | Draggable right panel |
+| `TabbedPanel` | Tabbed container (resources, code, report) |
+| `ResourcesPanel` | Resources tab content |
+
+### Chat (11 components)
+
+| Component | Purpose |
+|-----------|---------|
+| `ChatInterface` | Main chat conversation UI |
+| `ChatInput` | Message input with file upload |
+| `MessageBubble` | Individual message display |
+| `WelcomeScreen` | Landing page with upload |
+| `ModelSelector` | LLM model picker dropdown |
+| `AgentPicker` | Agent selection in chat input |
+| `AgentSelector` | Agent configuration panel |
+| `AnalysisCompletedCard` | Inline card when analysis finishes |
+| `ToolCallCard` | Tool invocation status card |
+| `CodeBlock` | Syntax-highlighted code in messages |
+| `QuickActionChips` | Quick action buttons on welcome |
+
+### Analysis (9 components)
+
+| Component | Purpose |
+|-----------|---------|
+| `AnalysisHeader` | Hash, verdict, threat score |
+| `AnalysisTabs` | Tab switcher (overview/analyzers/callgraph) |
+| `AnalysisSection` | Collapsible content section |
+| `AnalyzerList` | List of analyzers |
+| `AnalyzerItem` | Individual analyzer card |
+| `CallGraphView` | Interactive call graph visualization |
+| `CircularProgress` | Circular progress indicator |
+| `StatusBadge` | Status indicator badge |
+| `TagCloud` | Tag display component |
+
+### Code (1 component)
+
+| Component | Purpose |
+|-----------|---------|
+| `CodeViewer` | Decompiled code file viewer |
+
+### Common (1 component)
+
+| Component | Purpose |
+|-----------|---------|
+| `MarkdownContent` | Markdown rendering with syntax highlighting |
+
+### Data (1 component)
+
+| Component | Purpose |
+|-----------|---------|
+| `DataTable` | Generic data table |
+
+### Modals (1 component)
+
+| Component | Purpose |
+|-----------|---------|
+| `ShareModal` | Share/export dialog |
+
+### UI Primitives (~50 shadcn/ui components)
+
+Reusable primitives in `components/ui/`: accordion, alert, badge, button, card, dialog, drawer, dropdown-menu, input, progress, scroll-area, select, separator, sheet, sidebar, skeleton, spinner, table, tabs, textarea, toggle, tooltip, and more.
 
 ---
 
 ## Environment Variables
 
 ```bash
-# .env
-VITE_API_BASE_URL=https://api.yourdomain.com
-VITE_WS_URL=wss://api.yourdomain.com/ws
-VITE_APP_NAME=gireng
+# .env (frontend)
+VITE_API_BASE_URL=http://localhost:8080    # Backend API base URL
+VITE_WS_URL=ws://localhost:8080/stream     # WebSocket base URL
 ```
-
----
-
-## Integration Checklist
-
-- [ ] Set up API base URL in environment variables
-- [ ] Implement authentication (JWT tokens)
-- [ ] Create API client (axios/fetch wrapper)
-- [ ] Implement WebSocket connection
-- [ ] Replace mock data with API calls
-- [ ] Add loading states
-- [ ] Add error handling
-- [ ] Implement file upload for analysis
-- [ ] Set up SSE for streaming responses
-- [ ] Test all analyzer integrations (Ghidra, Radare)
 
 ---
 
 ## Notes
 
-1. **Analyzers:** Template is configured for Ghidra and Radare only. Remove other analyzers from backend responses.
+1. **Analyzers**: The system supports two analyzers — Ghidra and Radare2. Both run in dedicated Docker containers and communicate through the backend agent.
 
-2. **File Upload:** Add file upload component to chat input for malware submission.
+2. **File Upload**: Drag-and-drop or click-to-upload in both the WelcomeScreen and ChatInterface. Files go to `/analyze/upload` as multipart form data.
 
-3. **Streaming:** Use Server-Sent Events (SSE) or WebSocket for streaming AI responses.
+3. **Streaming**: Real-time analysis progress uses WebSocket (`/stream/{session_id}`). The `pollStatus()` function serves as a fallback when WebSocket is unavailable.
 
-4. **Progress:** Analysis progress should be pushed via WebSocket for real-time updates.
+4. **Report Export**: Three formats available — HTML (dark-themed standalone), PDF (white professional template via Playwright/Chromium), and plain text. Export URLs open in a new browser tab.
 
-5. **Security:** All file hashes and analysis results should be validated on backend.
+5. **History & Persistence**: Completed analyses are persisted to PostgreSQL. The sidebar lists past sessions via `/api/history`, and any session can be restored into memory.
+
+6. **Call Graph**: Interactive graph visualization using raw call graph data from Ghidra. Includes attack chain detection, cycle analysis, and function adjacency data.
+
+7. **Cross-Binary Search**: The `/api/query/*` and `/api/binary/*` endpoints enable searching across all analyzed binaries for functions, strings, IOCs, and attack chains.

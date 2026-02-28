@@ -2,12 +2,12 @@
 
 ## Overview
 
-gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reverse engineering platform that analyses binaries using **two parallel reverse-engineering backends** — **Ghidra** and **Radare2** — then synthesises their findings via an LLM to produce a comprehensive malware report.
+gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reverse engineering platform that analyses binaries using **two parallel reverse-engineering backends** — **Ghidra** and **Radare2** — then synthesises their findings via an LLM to produce a comprehensive malware report with MITRE ATT&CK mapping, IOC extraction, call graph analysis, and professional PDF/HTML/text export.
 
 ```
 ┌──────────────┐    HTTP / WS     ┌──────────────────────────────┐
 │  Frontend UI │ ◄──────────────► │  FastAPI Agent  (port 8080)  │
-│  Vite :4173  │                  │  api/main.py                 │
+│  Vite :4173  │                  │  api/main.py  (38 endpoints) │
 └──────────────┘                  └──────────────┬───────────────┘
                                                  │
                                     ┌────────────┴────────────┐
@@ -39,6 +39,12 @@ gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reve
         │  ghidra_headless      │     /data/shared       │  radare2               │
         │  PyGhidra + scripts   │                        │  r2 + r2ghidra/r2dec   │
         └───────────────────────┘                        └────────────────────────┘
+                                                                  │
+                                                         ┌───────┴───────┐
+                                                         │  PostgreSQL   │
+                                                         │  (persistence │
+                                                         │   + Langfuse) │
+                                                         └───────────────┘
 ```
 
 ---
@@ -47,10 +53,12 @@ gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reve
 
 | Service | Image | Purpose | Port |
 |---------|-------|---------|------|
-| `ghidra` | `${RUNNER_IMAGE}` (gireng-runner) | Headless Ghidra with PyGhidra. Runs analysis scripts via `docker exec`. | internal |
-| `radare2` | `radare/radare2:latest` | Headless Radare2. Runs r2 commands via `docker exec`. | internal |
-| `agent` | Built from `backend/Dockerfile` | FastAPI backend. Orchestrates both tools, calls LLM, serves API. | **8080** |
-| `ui` | Built from `app/Dockerfile.ui` | Vite/React frontend. | **4173** |
+| `ghidra` | `danilid/ireng-runner:2.0.1` (configurable via `$RUNNER_IMAGE`) | Headless Ghidra with PyGhidra. Runs analysis scripts via `docker exec`. | internal |
+| `radare2` | `radare/radare2:latest` | Headless Radare2 with r2ghidra/r2dec plugins. Runs r2 commands via `docker exec`. | internal |
+| `agent` | Built from `backend/Dockerfile` | FastAPI backend + Playwright/Chromium for PDF. Orchestrates both tools, calls LLM, serves API. | **8080** |
+| `ui` | Built from `app/Dockerfile.ui` | React 19 + Vite frontend. | **4173** |
+| `postgres` | `postgres:16-alpine` | PostgreSQL for analysis history + Langfuse data. | internal |
+| `langfuse` | `langfuse/langfuse:2` | LLM observability and tracing dashboard. | **3100** |
 
 All containers share a Docker volume `ghidra_shared` mounted at `/data/shared`. Binaries are placed here on upload so both Ghidra and R2 can access them.
 
@@ -70,6 +78,7 @@ Client → POST /analyze/upload → Agent
     → init AgentState
   → asyncio.create_task(run_graph(state))
   → return { session_id }
+  → persist to PostgreSQL (database.py / storage.py)
 ```
 
 ### 2. Analysis Pipeline (LangGraph)
@@ -95,8 +104,8 @@ The core dual-agent stage. Runs both toolchains **concurrently** via `asyncio.ga
 
 ```python
 ghidra_result, _ = await asyncio.gather(
-    _ghidra_discovery(state),   # Ghidra: analyze → functions → strings → auto-decompile
-    _safe_r2(state),            # R2:     analyze → functions → strings → auto-decompile
+    _ghidra_discovery(state),   # Ghidra: analyze → functions → strings → auto-decompile → call graph
+    _safe_r2(state),            # R2:     analyze → functions → strings → auto-decompile → call graph
 )
 ```
 
@@ -110,7 +119,19 @@ Each pipeline writes to **separate state fields** to avoid race conditions:
 **R2 failure does not block Ghidra.** The `_safe_r2` wrapper catches all exceptions and logs them; the pipeline continues with Ghidra-only results.
 
 #### Auto-decompilation
-Both pipelines automatically decompile the **top 15 functions** ranked by cross-reference count + code size, plus the entry-point function. This ensures the LLM has substantial code context without manual intervention.
+Both pipelines automatically decompile the **top 15 functions** ranked by the function priority scorer (cross-reference count + code size + API call detection + suspicious string references), plus the entry-point function.
+
+#### Call Graph Analysis
+Both Ghidra and R2 build call graphs. The `call_graph_analyzer.py` module traces attack chains from entry points (`main`, `_start`, `entry0`) to suspicious sinks:
+
+- **Execution**: `system`, `popen`, `execve`, `dlopen`, ...
+- **Network**: `socket`, `connect`, `send`, `recv`, ...
+- **File I/O**: `fopen`, `fwrite`, `unlink`, ...
+- **Crypto**: `encrypt`, `decrypt`, ...
+- **Recon**: `gethostname`, `uname`, `getenv`, ...
+- **Timing**: `sleep`, `usleep`, ...
+
+Max chain depth: 10, max chains: 80.
 
 #### `focus_analysis`
 If the user query targets a specific function or address, this stage decompiles/disassembles it. Falls back through: decompilation → disassembly.
@@ -121,21 +142,43 @@ Finds cross-references to/from the target address using both tools.
 #### `synthesize`
 Builds a massive context block from **both** Ghidra and R2 results:
 - Architecture, binary metadata from both tools
-- Merged function lists
+- Merged function lists with priority scores
 - All decompiled code (Ghidra + R2)
 - Strings and IOCs
 - Cross-reference data
+- Call graph attack chains
 
-Sends the context + `SYSTEM_PROMPT` to the LLM, which produces a structured 11-section malware report.
+Sends the context + `SYSTEM_PROMPT` to the LLM, which produces a structured malware report with MITRE ATT&CK mapping.
 
-### 3. Results & Reporting
+### 3. Results, Reporting & Export
 
 ```
-Client → GET /status/{session_id}           → full state
-Client → GET /api/analysis/{hash}/analyzers → [{ghidra}, {radare2}]
-Client → GET /api/analysis/{hash}/reports   → HTML malware report
-Client → WS /stream/{session_id}            → real-time events
+Client → GET /status/{session_id}                     → full state
+Client → GET /api/analysis/{hash}/analyzers            → [{ghidra}, {radare2}]
+Client → GET /api/analysis/{hash}/reports              → HTML malware report
+Client → GET /api/analysis/{hash}/export/html           → downloadable HTML
+Client → GET /api/analysis/{hash}/export/pdf            → A4 PDF (Playwright)
+Client → GET /api/analysis/{hash}/export/text           → plain text report
+Client → WS  /stream/{session_id}                      → real-time events
 ```
+
+#### Report Generation (reporting.py)
+
+| Function | Output |
+|----------|--------|
+| `build_report_html(state)` | Interactive dark-themed HTML with MITRE cards, code evidence, call graphs, operational flow |
+| `build_agent_report_html(state, agent)` | Per-agent (Ghidra or R2) focused HTML report |
+| `build_report_pdf(state)` | Professional white-background A4 PDF via dedicated `_build_pdf_html()` template + Playwright/Chromium |
+| `build_report_text(state)` | Plain text report |
+
+The PDF template is a completely separate light-mode HTML document with inline CSS (no Tailwind CDN, no JavaScript) optimised for deterministic A4 rendering with 13 numbered sections.
+
+### 4. Persistence & History
+
+Completed analyses are persisted to PostgreSQL via `database.py` and `storage.py`. The history API supports:
+- Paginated listing with verdict/hash filtering
+- Session restore (reload into memory for follow-up queries)
+- Cross-binary search (functions, strings, IOCs)
 
 ---
 
@@ -145,12 +188,21 @@ Client → WS /stream/{session_id}            → real-time events
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **State** | `state.py` | `AgentState` TypedDict — all analysis data, dual R2/Ghidra fields |
+| **State** | `state.py` | `AgentState` TypedDict — 20 fields including dual R2/Ghidra state |
 | **Graph** | `graph.py` | LangGraph StateGraph — pipeline orchestration, parallel discovery |
 | **LLM** | `llm.py` | LiteLLM `acompletion` wrapper for LLM calls |
 | **Prompts** | `prompts.py` | System prompt (dual-agent aware), focused analysis prompt |
 | **Sessions** | `sessions.py` | In-memory session store, `run_graph()` entry point |
 | **Config** | `config.py` | Pydantic `Settings` — all env vars for Ghidra, R2, LLM |
+
+### Analysis Modules
+
+| Module | File | Responsibility |
+|--------|------|----------------|
+| **Call Graph Analyzer** | `call_graph_analyzer.py` | Build attack chains from function-call edges to suspicious sinks (209 lines) |
+| **Function Priority** | `function_priority.py` | Rank functions by composite score: xrefs, size, API calls, suspicious strings (345 lines) |
+| **IOC Extractor** | `ioc_extractor.py` | Regex-based extraction of IPs, URLs, domains, hashes, file paths, emails, registry keys, mutexes, crypto materials. Verdict calculation (591 lines) |
+| **IANA TLDs** | `iana_tlds.py` | Valid TLD set for domain validation |
 
 ### Ghidra Integration
 
@@ -158,7 +210,7 @@ Client → WS /stream/{session_id}            → real-time events
 |--------|------|----------------|
 | **Tools** | `tools.py` | `@tool` functions — `analyze_binary_structure`, `list_functions`, `decompile_function`, `find_strings`, `find_xrefs`, `disassemble_at`, `search_bytes`, `get_function_graph`, `rename_symbol`, `add_comment` |
 | **Runner** | `ghidra/runner.py` | `GhidraHeadlessRunner` — `docker exec` into `ghidra_headless` container, runs PyGhidra scripts, JSON I/O, retry logic |
-| **Scripts** | `ghidra_scripts/*.py` | Python scripts executed inside Ghidra's PyGhidra env |
+| **Scripts** | `ghidra_scripts/*.py` | 11 Python scripts executed inside Ghidra's PyGhidra env |
 
 Execution pattern:
 ```
@@ -186,22 +238,26 @@ R2 decompilation uses a fallback chain: `pdg` (r2ghidra) → `pdd` (r2dec) → `
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **API** | `api/main.py` | FastAPI app — REST endpoints + WebSocket streaming |
+| **API** | `api/main.py` | FastAPI app — 38 REST endpoints + WebSocket streaming |
 | **UI Adapter** | `ui_adapter.py` | Builds structured JSON for `/analyzers` — dual-analyzer details, file tree, reports |
-| **Reporting** | `reporting.py` | Markdown→HTML report generator, section splitting, professional CSS |
-| **IOC Extractor** | `ioc_extractor.py` | Regex-based extraction of IPs, URLs, domains, hashes, file paths from analysis results |
+| **Reporting** | `reporting.py` | HTML, PDF (Playwright/Chromium), text report generation. Dedicated light-mode PDF template |
+| **IOC Extractor** | `ioc_extractor.py` | Multi-type IOC extraction with verdict calculation |
 | **Models** | `models.py` | Pydantic request/response schemas for all endpoints |
+| **Database** | `database.py` | PostgreSQL async connection pool, analysis persistence |
+| **Storage** | `storage.py` | Higher-level storage operations for analysis history |
+| **Langfuse** | `langfuse_tracing.py` | LLM call tracing integration |
 
 ### Frontend
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **Ghidra Agent** | `agents/ghidra-agent.ts` | Agent definition, capabilities list, agent registry |
+| **Ghidra Agent** | `agents/ghidra-agent.ts` | Agent definition, capabilities list |
 | **Radare Agent** | `agents/radare-agent.ts` | R2 agent definition with R2-specific capabilities |
+| **API Client** | `lib/api.ts` | REST API client with export URL builders |
 
 ---
 
-## API Endpoints
+## API Endpoints (38 total)
 
 ### Session Management
 
@@ -220,14 +276,50 @@ R2 decompilation uses a fallback chain: `pdg` (r2ghidra) → `pdd` (r2dec) → `
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/api/analysis/{hash}` | Analysis status |
-| `GET` | `/api/analysis/{hash}/analyzers` | List analyzers — returns `[ghidra, radare2]` when R2 data exists |
-| `GET` | `/api/analysis/{hash}/analyzers/{id}` | Analyzer details (accepts `ghidra` or `radare2`) |
+| `GET` | `/api/analysis/{hash}/analyzers` | List analyzers (Ghidra + R2) |
+| `GET` | `/api/analysis/{hash}/analyzers/{id}` | Analyzer details |
 | `GET` | `/api/analysis/{hash}/files` | Decompiled file tree |
 | `GET` | `/api/analysis/{hash}/files/{id}` | Decompiled function code |
 | `GET` | `/api/analysis/{hash}/reports` | Report list |
 | `GET` | `/api/analysis/{hash}/reports/{id}` | Report HTML content |
-| `GET` | `/api/analysis/{hash}/export/html` | Export full report as HTML |
+| `GET` | `/api/analysis/{hash}/similar` | Similar files |
+| `GET` | `/api/analysis/{hash}/results/ghidra` | Raw Ghidra results |
+| `GET` | `/api/analysis/{hash}/results/radare2` | Raw Radare2 results |
+
+### Export
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/analysis/{hash}/export/html` | Export report as HTML |
 | `GET` | `/api/analysis/{hash}/export/text` | Export report as plain text |
+| `GET` | `/api/analysis/{hash}/export/pdf` | Export report as A4 PDF |
+| `GET` | `/export/session/{session_id}/html` | Export session HTML (convenience) |
+| `GET` | `/export/session/{session_id}/text` | Export session text (convenience) |
+| `GET` | `/export/session/{session_id}/pdf` | Export session PDF (convenience) |
+| `GET` | `/export/session/{session_id}/agent/{agent}` | Export per-agent report |
+
+### Analysis History & Cross-Binary Search
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/history` | List past analyses (paginated, filterable) |
+| `GET` | `/api/history/{session_id}` | Single past analysis summary |
+| `GET` | `/api/history/{session_id}/qa` | Q&A history for session |
+| `POST` | `/api/history/{session_id}/restore` | Restore past session into memory |
+| `DELETE` | `/api/history/{session_id}` | Delete past analysis |
+| `GET` | `/api/query/functions` | Search functions across all binaries |
+| `GET` | `/api/query/strings` | Full-text search strings |
+| `GET` | `/api/query/iocs` | Search IOCs across all binaries |
+| `GET` | `/api/binary/{hash}/functions` | Functions for a specific binary |
+| `GET` | `/api/binary/{hash}/decompilations` | Decompiled functions for a binary |
+| `GET` | `/api/binary/{hash}/iocs` | IOCs for a specific binary |
+| `GET` | `/api/binary/{hash}/attack-chains` | Attack chains for a binary |
+
+### Utility
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Service health check |
 | `GET` | `/api/models` | Available LLM models |
 
 ### WebSocket Events
@@ -276,6 +368,54 @@ R2 decompilation uses a fallback chain: `pdg` (r2ghidra) → `pdd` (r2dec) → `
 
 ---
 
+## State Schema
+
+The `AgentState` is a Python `TypedDict` with 20 fields that flows through every pipeline node:
+
+```
+AgentState
+├── session_id: str
+├── binary_path: str
+├── program_hash: str              (SHA-256)
+├── user_query: str
+├── intent: str                    (reconnaissance|vulnerability|malware|protocol)
+├── status: str                    (initialized|completed|error)
+├── current_step: str
+├── progress: int                  (0-100)
+│
+├── current_function: Optional[str]
+├── current_address: Optional[str]
+│
+├── analysis_results: Dict         ◄── Ghidra findings
+│   ├── binary: {...}              (arch, compiler, entry points, segments)
+│   ├── functions: {...}           (name, address, size, xrefs)
+│   ├── strings: {...}             (value, address, section)
+│   ├── focus: {...}               (targeted decompilation)
+│   ├── xrefs: {...}               (cross-references)
+│   └── call_graph_analysis: {...} (nodes, edges, attack chains)
+│
+├── decompilation_cache: Dict[str, str]   ◄── Ghidra decompiled C code
+│
+├── r2_analysis_results: Dict      ◄── Radare2 findings (same structure)
+│   ├── binary: {...}              (arch, bits, os, imports, sections)
+│   ├── functions: {...}
+│   ├── strings: {...}
+│   ├── focus: {...}
+│   ├── xrefs: {...}
+│   └── call_graph_analysis: {...}
+│
+├── r2_decompilation_cache: Dict[str, str]  ◄── R2 decompiled C code
+│
+├── summary: str                   (LLM-generated report markdown)
+├── reasoning_trace: List[str]
+├── pending_actions: List[Dict]
+├── write_mode_enabled: bool
+├── review_approved: bool
+└── progress_callback: Optional    (WebSocket callback for real-time updates)
+```
+
+---
+
 ## Deployment
 
 ### Prerequisites
@@ -296,7 +436,7 @@ docker compose up --build -d
 
 # 3. Wait for readiness
 docker compose logs -f ghidra     # wait for "Ghidra container ready"
-docker compose logs -f radare2    # wait for container start (instant)
+docker compose logs -f radare2    # wait for container start
 docker compose logs -f agent      # wait for "Uvicorn running on 0.0.0.0:8080"
 
 # 4. Verify
@@ -306,25 +446,13 @@ curl http://localhost:8080/docs   # Swagger UI
 ### Service Startup Order
 
 ```
+postgres (immediate)
+  └─► langfuse (depends on postgres)
 ghidra (2-3 min first boot, installs PyGhidra venv)
 radare2 (1-3 min first boot — installs r2ghidra + r2dec plugins, then healthcheck passes)
   └─► agent (waits for both: ghidra via depends_on, radare2 via service_healthy condition)
         └─► ui (independent)
 ```
-
-### Health Endpoint
-
-The agent exposes `GET /health` returning the status of both backends:
-
-```json
-{
-  "status": "ok",
-  "ghidra": { "ready": true },
-  "radare2": { "ready": true, "container": true, "decompilers": ["pdg", "pdd", "pdf"] }
-}
-```
-
-At startup, the agent performs a best-effort R2 container verification (non-blocking).
 
 ### Volumes
 
@@ -332,32 +460,7 @@ At startup, the agent performs a best-effort R2 container verification (non-bloc
 |--------|-------------|---------|
 | `ghidra_projects` | `/data/projects` | Ghidra project databases (persistent across restarts) |
 | `ghidra_shared` | `/data/shared` | **Shared** binary storage — accessed by ghidra, radare2, and agent |
-| `r2_plugins` | `/root/.local/share/radare2/plugins` | R2 compiled plugins — persistent so r2ghidra/r2dec don't recompile on restart |
-
-### R2 Decompiler Plugins (Auto-installed)
-
-The R2 container entrypoint **automatically installs** `r2ghidra` and `r2dec` plugins at startup using `r2pm -Ui`. A persistent Docker volume (`r2_plugins`) caches the installed plugins across container restarts.
-
-The container uses a **healthcheck** (`cat /tmp/.r2_ready`) that only passes after plugin installation completes. The agent service has `depends_on: radare2: condition: service_healthy`, ensuring analysis doesn't start until R2 is fully ready.
-
-```yaml
-# docker-compose.yml (radare2 service)
-entrypoint: |
-  r2pm -Ui r2ghidra || echo "non-fatal"
-  r2pm -Ui r2dec   || echo "non-fatal"
-  touch /tmp/.r2_ready
-  tail -f /dev/null
-healthcheck:
-  test: ["CMD", "cat", "/tmp/.r2_ready"]
-  interval: 10s
-  start_period: 120s    # allow time for plugin compilation
-  retries: 30
-restart: unless-stopped
-```
-
-The runner's `detect_decompilers()` method **probes** which decompiler commands are actually available at runtime, so the fallback chain adapts automatically.
-
-Without these plugins, R2 falls back to `pdf` (raw disassembly).
+| `pgdata` | PostgreSQL data dir | Analysis history persistence |
 
 ### Teardown
 
@@ -368,88 +471,52 @@ docker compose down -v     # stop + wipe all data volumes
 
 ---
 
-## State Schema
-
-The `AgentState` is a Python `TypedDict` that flows through every pipeline node:
-
-```
-AgentState
-├── session_id: str
-├── binary_path: str
-├── program_hash: str              (SHA-256)
-├── user_query: str
-├── intent: str                    (reconnaissance|vulnerability|malware|protocol)
-├── status: str                    (initialized|completed|error)
-│
-├── current_function: Optional[str]
-├── current_address: Optional[str]
-│
-├── analysis_results: Dict         ◄── Ghidra findings
-│   ├── binary: {...}              (arch, compiler, entry points, segments)
-│   ├── functions: {...}           (name, address, size, xrefs)
-│   ├── strings: {...}             (value, address, section)
-│   ├── focus: {...}               (targeted decompilation)
-│   └── xrefs: {...}               (cross-references)
-│
-├── decompilation_cache: Dict[str, str]   ◄── Ghidra decompiled C code
-│
-├── r2_analysis_results: Dict      ◄── Radare2 findings (same structure)
-│   ├── binary: {...}              (arch, bits, os, imports, sections)
-│   ├── functions: {...}
-│   ├── strings: {...}
-│   ├── focus: {...}
-│   └── xrefs: {...}
-│
-├── r2_decompilation_cache: Dict[str, str]  ◄── R2 decompiled C code
-│
-├── summary: str                   (LLM-generated report markdown)
-├── reasoning_trace: List[str]
-├── pending_actions: List[Dict]
-├── write_mode_enabled: bool
-└── review_approved: bool
-```
-
----
-
 ## Test Coverage
 
-All tests live in `backend/tests/` — **53 tests, all passing**.
+All tests live in `backend/tests/` — **183 tests, all passing**.
 
-| Test File | Count | Scope |
-|-----------|-------|-------|
-| `test_r2_runner.py` | 12 | `Radare2Runner` — command execution, JSON parsing, timeout, POSIX path translation |
-| `test_r2_tools.py` | 11 | R2 `@tool` functions — analyze, list, decompile (fallback chain), strings, xrefs, disasm |
-| `test_r2_graph.py` | 10 | R2 pipeline — discovery, auto-decompile, focus, cross-reference |
-| `test_api.py` | 9 | API endpoints — dual-analyzer listing, detail, 404s, status, HTML/text export |
-| `test_e2e.py` | 11 | E2E pipeline flow, R2 failure isolation, ui_adapter, state integrity, prompts, config |
+| Test File | Scope |
+|-----------|-------|
+| `test_r2_runner.py` | `Radare2Runner` — command execution, JSON parsing, timeout, POSIX path translation |
+| `test_r2_tools.py` | R2 `@tool` functions — analyze, list, decompile (fallback chain), strings, xrefs, disasm |
+| `test_r2_graph.py` | R2 pipeline — discovery, auto-decompile, focus, cross-reference |
+| `test_api.py` | API endpoints — dual-analyzer listing, detail, 404s, status, HTML/text/PDF export |
+| `test_e2e.py` | E2E pipeline flow, R2 failure isolation, ui_adapter, state integrity, prompts, config |
+| `test_call_graph_analyzer.py` | Call graph attack chain building |
+| `test_function_priority.py` | Function ranking and library detection |
+| `test_chargen_e2e.py` | Chargen binary end-to-end test |
 
 Run tests:
 ```bash
 cd backend
-pip install ".[test]"
-PYTHONPATH=src pytest tests/ -v
+pip install -e .
+python -m pytest tests/ -v
 ```
 
 ---
 
 ## Key Design Decisions
 
-1. **Parallel execution** — Ghidra and R2 run concurrently via `asyncio.gather()`, roughly halving discovery time for binaries.
+1. **Parallel execution** — Ghidra and R2 run concurrently via `asyncio.gather()`, roughly halving discovery time.
 
-2. **Separate state fields** — Each tool writes to its own state keys (`analysis_results` vs `r2_analysis_results`), eliminating race conditions during parallel execution.
+2. **Separate state fields** — Each tool writes to its own state keys (`analysis_results` vs `r2_analysis_results`), eliminating race conditions.
 
 3. **R2 failure isolation** — If R2 crashes or times out, the pipeline continues with Ghidra-only results. The `_safe_r2()` wrapper catches all exceptions.
 
-4. **Docker exec pattern** — Instead of embedding Ghidra/R2 libraries in the agent process, the agent uses `docker exec` to send commands to sibling containers. This keeps the agent lightweight and allows independent tool upgrades.
+4. **Docker exec pattern** — The agent uses `docker exec` to send commands to sibling containers, keeping it lightweight and allowing independent tool upgrades.
 
-5. **Shared volume** — All three containers (agent, ghidra, radare2) mount the same `ghidra_shared` volume at `/data/shared`, avoiding binary copies.
+5. **Shared volume** — All three containers (agent, ghidra, radare2) mount the same `ghidra_shared` volume, avoiding binary copies.
 
-6. **Decompiler fallback** — R2 tries three decompilers in order: `pdg` (r2ghidra) → `pdd` (r2dec) → `pdf` (raw disassembly), maximising coverage even with minimal plugin installs. The available decompilers are **auto-detected** at runtime by probing each command.
+6. **Decompiler fallback** — R2 tries three decompilers: `pdg` (r2ghidra) → `pdd` (r2dec) → `pdf` (disassembly), auto-detected at runtime.
 
-7. **Dual-agent LLM prompt** — The system prompt explicitly instructs the LLM to cross-reference findings from both tools and note discrepancies.
+7. **Function priority scoring** — Functions are ranked by a composite score combining xref count, size, API call detection, and suspicious string references, with library function penalties.
 
-8. **Auto-install & healthcheck** — R2 decompiler plugins install automatically on container start via `r2pm`. A Docker healthcheck ensures the agent doesn't send commands until plugins are compiled. Plugin binaries persist across restarts via a dedicated volume.
+8. **Attack chain analysis** — Call graphs are traced from entry points to suspicious sinks (execution, network, file I/O, crypto, recon, timing) to identify potential malicious behaviour paths.
 
-9. **Retry logic** — `Radare2Runner.run_command()` retries up to 2 times on transient errors (timeouts, subprocess exceptions) with a 1.5s delay. Permanent errors (non-zero exit codes) abort immediately.
+9. **Dual report templates** — The HTML report uses a dark-themed interactive template (Tailwind CDN). The PDF uses a completely separate white-background, inline-CSS template designed for deterministic A4 rendering.
 
-10. **Container pre-flight** — Before running the R2 pipeline in `discovery()`, the runner verifies the container is reachable (`r2 -q -v`). If down, R2 is skipped gracefully with a trace entry.
+10. **PostgreSQL persistence** — Completed analyses are stored in PostgreSQL with full binary metadata, enabling cross-binary search (functions, strings, IOCs) and session restore.
+
+11. **Auto-install & healthcheck** — R2 decompiler plugins install automatically on container start. A Docker healthcheck ensures the agent waits until plugins are compiled.
+
+12. **Retry logic** — `Radare2Runner.run_command()` retries up to 2 times on transient errors with a 1.5s delay. Permanent errors abort immediately.

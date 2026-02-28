@@ -12,8 +12,9 @@ Complete guide for deploying Gireng on **Windows** and **Linux**.
 4. [Management Script (`run.py`)](#4-management-script-runpy)
 5. [Local Development (Without Docker)](#5-local-development-without-docker)
 6. [Upload & Analyze a Binary](#6-upload--analyze-a-binary)
-7. [API Reference (Quick)](#7-api-reference-quick)
-8. [Troubleshooting](#8-troubleshooting)
+7. [API Reference](#7-api-reference)
+8. [Report Export](#8-report-export)
+9. [Troubleshooting](#9-troubleshooting)
 
 ---
 
@@ -60,15 +61,9 @@ Git for Windows               https://git-scm.com/download/win
 curl -fsSL https://get.docker.com | sh
 sudo usermod -aG docker $USER   # log out & back in
 
-# Python 3.11+ & venv/pip
-# Ubuntu 24.04+ ships with Python 3.12/3.13 — just install venv & pip:
+# Python 3.11+
 sudo apt update
 sudo apt install -y python3 python3-venv python3-pip
-python3 --version   # verify >= 3.11
-
-# For Ubuntu 22.04 or older (where default Python is 3.10):
-#   sudo add-apt-repository ppa:deadsnakes/ppa
-#   sudo apt install -y python3.11 python3.11-venv python3-pip
 
 # Node.js 20 (via NodeSource)
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
@@ -85,7 +80,7 @@ ls -la /var/run/docker.sock   # must be accessible to your user
 
 | Image | Source | Notes |
 |-------|--------|-------|
-| `ireng-runner` (or `$RUNNER_IMAGE`) | Custom Ghidra image | Must be built or pulled before first run |
+| `danilid/ireng-runner:2.0.1` (or `$RUNNER_IMAGE`) | Docker Hub / Custom build | Headless Ghidra with PyGhidra |
 | `radare/radare2:latest` | Docker Hub | Pulled automatically |
 | `postgres:16-alpine` | Docker Hub | Pulled automatically |
 | `langfuse/langfuse:2` | Docker Hub | Pulled automatically |
@@ -103,6 +98,7 @@ tenacity==8.5.0           websockets==12.0
 python-multipart==0.0.9   litellm==1.61.16
 zhipuai>=2.0.0            langchain-community>=0.0.32
 asyncpg>=0.29.0           langfuse>=2.0.0,<3.0.0
+playwright>=1.40.0        (Chromium for PDF export)
 ```
 
 ### 1.5 Frontend (Node.js) Dependencies
@@ -113,7 +109,7 @@ Installed automatically inside the `ui` Docker container. For local development:
 cd app && npm ci
 ```
 
-Key packages: React 19, Vite 7, Tailwind CSS 3, Radix UI, Recharts, react-markdown.
+Key packages: React 19, Vite 7, TypeScript 5.9, Tailwind CSS 3.4, Radix UI, Framer Motion, Recharts, react-markdown, Lucide React.
 
 ---
 
@@ -144,21 +140,21 @@ Edit `.env` and fill in the required variables:
 | `API_PORT` | no | Host port for backend API | `8080` |
 | `UI_PORT` | no | Host port for frontend UI | `4173` |
 | `LANGFUSE_PORT` | no | Host port for Langfuse dashboard | `3100` |
-| `RUNNER_IMAGE` | yes | Ghidra runner Docker image name | `ireng-runner` |
+| `RUNNER_IMAGE` | yes | Ghidra runner Docker image name | `danilid/ireng-runner:2.0.1` |
 | `ANTHROPIC_API_KEY` | yes | LLM API key | `sk-abc123...` |
-| `ANTHROPIC_BASE_URL` | yes | LLM API endpoint | `https://api.z.ai/api/anthropic` |
+| `ANTHROPIC_BASE_URL` | yes | LLM API endpoint | `https://api.anthropic.com` |
 | `POSTGRES_PASSWORD` | no | Database password (default: `ireng_secret`) | `strong_password` |
 | `LANGFUSE_PUBLIC_KEY` | no | Langfuse public key (for tracing) | `pk-lf-...` |
 | `LANGFUSE_SECRET_KEY` | no | Langfuse secret key (for tracing) | `sk-lf-...` |
 
-Optional explicit overrides if you need custom URLs:
+Optional explicit overrides:
 
 | Variable | Description | Example |
 |----------|-------------|---------|
-| `VITE_API_BASE_URL` | UI -> backend base URL | `https://api.example.com` |
-| `VITE_WS_URL` | UI -> backend WebSocket URL | `wss://api.example.com/stream` |
+| `VITE_API_BASE_URL` | UI → backend base URL | `https://api.example.com` |
+| `VITE_WS_URL` | UI → backend WebSocket URL | `wss://api.example.com/stream` |
 | `LANGFUSE_URL` | Browser-facing Langfuse URL | `https://trace.example.com` |
-| `LANGFUSE_HOST` | Agent -> Langfuse URL (defaults to internal Docker DNS) | `http://langfuse:3000` |
+| `LANGFUSE_HOST` | Agent → Langfuse URL | `http://langfuse:3000` |
 
 ---
 
@@ -167,10 +163,6 @@ Optional explicit overrides if you need custom URLs:
 ### 3.1 Build & Start All Services
 
 ```bash
-# Linux / macOS
-docker compose up --build -d
-
-# Windows (PowerShell)
 docker compose up --build -d
 ```
 
@@ -184,11 +176,11 @@ python run.py rebuild
 
 | Service | Image | Port | Description |
 |---------|-------|------|-------------|
-| `ghidra` | `ireng-runner` | (internal) | Headless Ghidra runner with PyGhidra. First boot takes ~2-3 min. |
+| `ghidra` | `danilid/ireng-runner:2.0.1` | (internal) | Headless Ghidra runner with PyGhidra. First boot takes ~2-3 min. |
 | `radare2` | `radare/radare2` | (internal) | Radare2 with r2ghidra/r2dec decompiler plugins. |
-| `postgres` | `postgres:16-alpine` | (internal) | PostgreSQL database for sessions & Langfuse. |
+| `postgres` | `postgres:16-alpine` | (internal) | PostgreSQL database for sessions, history & Langfuse. |
 | `langfuse` | `langfuse/langfuse:2` | **`${LANGFUSE_PORT}`** (default `3100`) | LLM observability dashboard. |
-| `agent` | Built from `backend/Dockerfile` | **`${API_PORT}`** (default `8080`) | FastAPI backend (the main API). |
+| `agent` | Built from `backend/Dockerfile` | **`${API_PORT}`** (default `8080`) | FastAPI backend + Playwright/Chromium for PDF. |
 | `ui` | Built from `app/Dockerfile.ui` | **`${UI_PORT}`** (default `4173`) | React frontend (Vite preview server). |
 
 ### 3.3 Verify Deployment
@@ -198,13 +190,13 @@ python run.py rebuild
 docker compose ps
 
 # Check backend is alive
-curl http://{HOST}:{API_PORT}/docs
+curl http://localhost:8080/docs
 
 # Check frontend is alive
-curl http://{HOST}:{UI_PORT}
+curl http://localhost:4173
 
 # Check Langfuse dashboard
-curl http://{HOST}:{LANGFUSE_PORT}
+curl http://localhost:3100
 ```
 
 ### 3.4 Watch Logs
@@ -279,8 +271,9 @@ npm run dev    # Vite dev server at http://localhost:5173
 ### 5.3 Run Tests Locally
 
 ```bash
-# Backend tests
-python -m pytest backend/tests -v
+# Backend tests (183 tests)
+cd backend
+python -m pytest tests/ -v
 
 # Frontend lint
 cd app && npm run lint
@@ -293,7 +286,7 @@ cd app && npm run lint
 ### 6.1 Upload
 
 ```bash
-curl -X POST http://{HOST}:{API_PORT}/analyze/upload \
+curl -X POST http://localhost:8080/analyze/upload \
   -F "file=@./sample-binary/chargen"
 ```
 
@@ -306,7 +299,7 @@ Response:
 ### 6.2 Check Status
 
 ```bash
-curl http://{HOST}:{API_PORT}/status/{session_id}
+curl http://localhost:8080/status/{session_id}
 ```
 
 Status values: `initialized` → `completed` (or `error`).
@@ -314,7 +307,7 @@ Status values: `initialized` → `completed` (or `error`).
 ### 6.3 Query the Agent
 
 ```bash
-curl -X POST http://{HOST}:{API_PORT}/query \
+curl -X POST http://localhost:8080/query \
   -H "Content-Type: application/json" \
   -d '{"session_id": "SESSION_ID", "query": "Find buffer overflow vulnerabilities"}'
 ```
@@ -322,7 +315,7 @@ curl -X POST http://{HOST}:{API_PORT}/query \
 ### 6.4 WebSocket (Real-Time Events)
 
 ```
-ws://{HOST}:{API_PORT}/stream/{session_id}
+ws://localhost:8080/stream/{session_id}
 ```
 
 | Event | When |
@@ -335,14 +328,16 @@ ws://{HOST}:{API_PORT}/stream/{session_id}
 ### 6.5 Results by Hash
 
 ```bash
-curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}
-curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}/files
-curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}/reports/summary
+curl http://localhost:8080/api/analysis/{program_hash}
+curl http://localhost:8080/api/analysis/{program_hash}/files
+curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 ```
 
 ---
 
-## 7. API Reference (Quick)
+## 7. API Reference
+
+### 7.1 Core Analysis (7 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -352,15 +347,97 @@ curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}/reports/summary
 | `POST` | `/query` | Ask the agent a question |
 | `POST` | `/write_mode` | Enable/disable write mode |
 | `POST` | `/write_mode/confirm` | Approve pending write actions |
-| `GET` | `/api/analysis/{hash}` | Get analysis by binary hash |
-| `GET` | `/api/analysis/{hash}/files` | Get decompiled files |
-| `GET` | `/api/analysis/{hash}/reports/summary` | Get report summary |
 | `WS` | `/stream/{session_id}` | Real-time event stream |
-| `GET` | `/docs` | OpenAPI (Swagger) documentation |
+
+### 7.2 Analysis Results (10 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/analysis/{hash}` | Get analysis by binary hash |
+| `GET` | `/api/analysis/{hash}/analyzers` | List analyzers (Ghidra + R2) |
+| `GET` | `/api/analysis/{hash}/analyzers/{id}` | Analyzer details |
+| `GET` | `/api/analysis/{hash}/files` | Get decompiled file tree |
+| `GET` | `/api/analysis/{hash}/files/{id}` | Get decompiled function code |
+| `GET` | `/api/analysis/{hash}/reports` | List reports |
+| `GET` | `/api/analysis/{hash}/reports/{id}` | Get report content |
+| `GET` | `/api/analysis/{hash}/similar` | Similar files |
+| `GET` | `/api/analysis/{hash}/results/ghidra` | Raw Ghidra results |
+| `GET` | `/api/analysis/{hash}/results/radare2` | Raw Radare2 results |
+
+### 7.3 Export (7 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/analysis/{hash}/export/html` | Export full HTML report |
+| `GET` | `/api/analysis/{hash}/export/text` | Export plain text report |
+| `GET` | `/api/analysis/{hash}/export/pdf` | Export A4 PDF report (Playwright) |
+| `GET` | `/export/session/{session_id}/html` | Export session HTML (convenience) |
+| `GET` | `/export/session/{session_id}/text` | Export session text (convenience) |
+| `GET` | `/export/session/{session_id}/pdf` | Export session PDF (convenience) |
+| `GET` | `/export/session/{session_id}/agent/{agent}` | Export per-agent report |
+
+### 7.4 Analysis History (5 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/history` | List past analyses (paginated, filterable) |
+| `GET` | `/api/history/{session_id}` | Single past analysis summary |
+| `GET` | `/api/history/{session_id}/qa` | Q&A history for session |
+| `POST` | `/api/history/{session_id}/restore` | Restore past session into memory |
+| `DELETE` | `/api/history/{session_id}` | Delete past analysis |
+
+### 7.5 Cross-Binary Search (7 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/query/functions` | Search functions across all binaries |
+| `GET` | `/api/query/strings` | Full-text search strings |
+| `GET` | `/api/query/iocs` | Search IOCs across all binaries |
+| `GET` | `/api/binary/{hash}/functions` | Functions for a specific binary |
+| `GET` | `/api/binary/{hash}/decompilations` | Decompiled functions for a binary |
+| `GET` | `/api/binary/{hash}/iocs` | IOCs for a specific binary |
+| `GET` | `/api/binary/{hash}/attack-chains` | Attack chains for a binary |
+
+### 7.6 Utility (2 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Service health check |
+| `GET` | `/api/models` | Available LLM models |
+
+Full interactive documentation available at: `http://localhost:8080/docs` (Swagger UI)
 
 ---
 
-## 8. Troubleshooting
+## 8. Report Export
+
+### 8.1 Formats
+
+| Format | Endpoint | Description |
+|--------|----------|-------------|
+| **HTML** | `/api/analysis/{hash}/export/html` | Interactive dark-themed report with MITRE cards, code evidence, call graphs |
+| **PDF** | `/api/analysis/{hash}/export/pdf` | Professional white-background A4 report generated via Playwright/Chromium |
+| **Text** | `/api/analysis/{hash}/export/text` | Plain text report for scripting and archival |
+
+### 8.2 PDF Report
+
+The PDF uses a dedicated light-mode HTML template (`_build_pdf_html`) — completely separate from the dark-themed web HTML — with:
+
+- White background, clean typography, inline CSS (no external dependencies)
+- 13 numbered sections: Executive Summary, Binary Information, MITRE ATT&CK, Malware Capabilities, Technical Analysis, Functions, Evidence, Code Evidence, Operational Flow, Call Graph, IOCs, Recommendations, Conclusion
+- Verdict badge with risk score
+- Rendered via Playwright headless Chromium at 1100px viewport, scale 0.82
+- Deterministic output — no CDN, no JavaScript
+
+### 8.3 UI Export
+
+The React frontend provides export buttons in:
+- **Analysis Completed card** (chat) — HTML + PDF download buttons
+- **Report tab** (right panel) — Export dropdown with HTML, Text, and PDF options
+
+---
+
+## 9. Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
@@ -368,12 +445,13 @@ curl http://{HOST}:{API_PORT}/api/analysis/{program_hash}/reports/summary
 | Ghidra analysis times out | Increase `DEFAULT_ANALYSIS_TIMEOUT` in `.env` (default 120s). |
 | Ghidra container takes too long on first boot | Normal — PyGhidra venv setup takes 2-3 minutes on first start. |
 | Upload returns 413 | Binary exceeds `MAX_UPLOAD_BYTES` (default 200 MB). Adjust in `.env`. |
-| 404 "Session not found" | Sessions are in-memory; lost on agent restart. Re-upload the binary. |
+| 404 "Session not found" | Sessions are in-memory; lost on agent restart. Use `/api/history/{id}/restore` to reload from DB. |
 | LLM errors in logs | Verify `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` in `.env`. |
 | `docker compose` not found | Install Docker Compose v2 (`docker compose`, not `docker-compose`). |
 | API/UI/Langfuse port already in use | Set `API_PORT`, `UI_PORT`, or `LANGFUSE_PORT` in `.env` and restart. |
 | Frontend can't reach backend | Ensure `HOST` and `API_PORT` are correct, or override with `VITE_API_BASE_URL`. |
 | Database connection errors | Check that `postgres` container is healthy: `docker compose ps`. |
+| PDF export fails | Playwright + Chromium are installed in the agent Docker image. If running locally, run `playwright install chromium`. |
 
 ---
 

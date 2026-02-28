@@ -1,16 +1,27 @@
-# gireng - Technical Specification
+# gireng — Frontend Technical Specification
 
-## 1. Tech Stack Overview
+## 1. Tech Stack
 
-| Category | Technology |
-|----------|------------|
-| Framework | React 18 + TypeScript |
-| Build Tool | Vite |
-| Styling | Tailwind CSS 3.4 |
-| UI Components | shadcn/ui |
-| Animation | Framer Motion |
-| Icons | Lucide React |
-| State Management | React Context + useState |
+| Category | Technology | Version |
+|----------|------------|---------|
+| Framework | React + TypeScript | 19.2 / 5.9 |
+| Build Tool | Vite | 7.2 |
+| Styling | Tailwind CSS | 3.4 |
+| UI Primitives | Radix UI (20+ primitives) | latest |
+| UI Components | shadcn/ui | latest |
+| Animation | Framer Motion | 12.29 |
+| Icons | Lucide React | 0.562 |
+| Charts | Recharts | 2.15 |
+| Markdown | react-markdown + remark-gfm | 10.1 / 4.0 |
+| Code Highlighting | PrismJS | 1.30 |
+| Forms | React Hook Form + Zod | 7.70 / 4.3 |
+| Resizable Panels | react-resizable-panels | 4.2 |
+| Toasts | Sonner | 2.0 |
+| Theme | next-themes | 0.4 |
+| Command Palette | cmdk | 1.1 |
+| Drawer | Vaul | 1.1 |
+| Carousel | embla-carousel-react | 8.6 |
+| Date Utilities | date-fns | 4.1 |
 
 ## 2. Tailwind Configuration
 
@@ -25,7 +36,7 @@
         'bg-secondary': '#161B22',
         'bg-tertiary': '#1C2128',
         'bg-hover': '#21262D',
-        
+
         // Accents
         'accent-blue': '#58A6FF',
         'accent-purple': '#A371F7',
@@ -33,12 +44,12 @@
         'accent-red': '#F85149',
         'accent-orange': '#D29922',
         'accent-yellow': '#F0883E',
-        
+
         // Text
         'text-primary': '#F0F6FC',
         'text-secondary': '#8B949E',
         'text-muted': '#6E7681',
-        
+
         // Border
         'border-default': '#30363D',
         'border-subtle': '#21262D',
@@ -47,25 +58,6 @@
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
         mono: ['"SF Mono"', 'Monaco', '"Cascadia Code"', 'monospace'],
       },
-      animation: {
-        'fade-in': 'fadeIn 0.3s ease-out',
-        'slide-up': 'slideUp 0.4s ease-out',
-        'progress': 'progress 2s ease-out forwards',
-      },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { opacity: '0', transform: 'translateY(10px)' },
-          '100%': { opacity: '1', transform: 'translateY(0)' },
-        },
-        progress: {
-          '0%': { strokeDashoffset: '100' },
-          '100%': { strokeDashoffset: '0' },
-        },
-      },
     },
   },
 }
@@ -73,154 +65,132 @@
 
 ## 3. Component Inventory
 
-### Shadcn/UI Components (Pre-installed)
-- Button (customize: ghost variant, sizes)
-- Input (customize: dark theme)
-- Card (customize: dark borders)
-- Badge (customize: pill style)
-- Tabs (customize: underline style)
-- Accordion (for expandable sections)
-- Tooltip
-- Dropdown Menu
-- Scroll Area
+### Layout Components (5)
 
-### Custom Components
+| Component | File | Description |
+|-----------|------|-------------|
+| `MainLayout` | `layout/MainLayout.tsx` | App shell — sidebar + main + right panel |
+| `Sidebar` | `layout/Sidebar.tsx` | Collapsible left navigation |
+| `TabbedPanel` | `layout/TabbedPanel.tsx` | Right panel (Resources/Code/Report tabs) with export dropdown |
+| `ResourcesPanel` | `layout/ResourcesPanel.tsx` | Resource list in right panel |
+| `ResizablePanel` | `layout/ResizablePanel.tsx` | Draggable panel resize |
 
-#### Layout Components
-| Component | Props | Description |
-|-----------|-------|-------------|
-| `Sidebar` | `collapsed: boolean` | Main navigation sidebar |
-| `SidebarNav` | `items: NavItem[]` | Navigation icon list |
-| `ChatList` | `chats: Chat[]` | Chat history list |
-| `MainLayout` | `children: ReactNode` | App shell layout |
-| `ResourcesPanel` | `files: File[], analyses: Analysis[]` | Right resource sidebar |
+### Chat Components (11)
 
-#### Chat Components
-| Component | Props | Description |
-|-----------|-------|-------------|
-| `ChatInterface` | `messages: Message[]` | Main chat container |
-| `WelcomeScreen` | `userName: string` | Initial welcome view |
-| `MessageBubble` | `message: Message, isUser: boolean` | Individual message |
-| `ChatInput` | `onSend: (text: string) => void` | Message input area |
-| `QuickActionChips` | `actions: QuickAction[]` | Quick action buttons |
-| `ModelSelector` | `models: Model[], selected: string` | AI model dropdown |
-| `ToolCallCard` | `tool: ToolCall, status: string` | Tool execution display |
+| Component | File | Description |
+|-----------|------|-------------|
+| `ChatInterface` | `chat/ChatInterface.tsx` | Main chat container |
+| `WelcomeScreen` | `chat/WelcomeScreen.tsx` | Initial welcome view |
+| `MessageBubble` | `chat/MessageBubble.tsx` | Individual message display |
+| `ChatInput` | `chat/ChatInput.tsx` | Message input area |
+| `QuickActionChips` | `chat/QuickActionChips.tsx` | Quick action buttons |
+| `ModelSelector` | `chat/ModelSelector.tsx` | AI model dropdown |
+| `ToolCallCard` | `chat/ToolCallCard.tsx` | Tool execution display |
+| `CodeBlock` | `chat/CodeBlock.tsx` | Syntax-highlighted code in chat |
+| `AnalysisCompletedCard` | `chat/AnalysisCompletedCard.tsx` | Post-analysis card with export buttons (HTML + PDF) |
+| `AgentPicker` | `chat/AgentPicker.tsx` | Agent selection |
+| `AgentSelector` | `chat/AgentSelector.tsx` | Agent selector dropdown |
 
-#### Analysis Components
-| Component | Props | Description |
-|-----------|-------|-------------|
-| `AnalysisHeader` | `analysis: AnalysisResult` | Results header card |
-| `CircularProgress` | `value: number, max: number, color: string` | SVG progress ring |
-| `StatusBadge` | `status: string` | Color-coded status |
-| `TagCloud` | `tags: string[]` | Category tags display |
-| `AnalysisTabs` | `activeTab: string` | Tab navigation |
-| `AnalyzerList` | `analyzers: Analyzer[]` | Analyzer details list |
-| `AnalyzerItem` | `analyzer: Analyzer, expanded: boolean` | Expandable analyzer |
-| `AnalysisSection` | `title: string, children: ReactNode` | Content section |
-| `ExecutionLogs` | `logs: string[]` | Log display footer |
+### Analysis Components (9)
 
-#### Resource Components
-| Component | Props | Description |
-|-----------|-------|-------------|
-| `ResourceSection` | `title: string, count: number` | Collapsible section |
-| `FileTree` | `files: FileNode[]` | Hierarchical file list |
-| `AnalysisCard` | `analysis: Analysis` | Analysis summary card |
+| Component | File | Description |
+|-----------|------|-------------|
+| `AnalysisHeader` | `analysis/AnalysisHeader.tsx` | Results header with threat score |
+| `AnalysisTabs` | `analysis/AnalysisTabs.tsx` | Tab navigation |
+| `AnalysisSection` | `analysis/AnalysisSection.tsx` | Content section wrapper |
+| `AnalyzerList` | `analysis/AnalyzerList.tsx` | Analyzer details list |
+| `AnalyzerItem` | `analysis/AnalyzerItem.tsx` | Expandable analyzer card |
+| `CircularProgress` | `analysis/CircularProgress.tsx` | SVG progress ring |
+| `StatusBadge` | `analysis/StatusBadge.tsx` | Color-coded status badge |
+| `TagCloud` | `analysis/TagCloud.tsx` | Category tags display |
+| `CallGraphView` | `analysis/CallGraphView.tsx` | Call graph visualisation |
 
-## 4. Animation Implementation Plan
+### Other Components
 
-| Interaction Name | Tech Choice | Implementation Logic |
-|------------------|-------------|---------------------|
-| Page Load | Framer Motion | `staggerChildren: 0.05` on container, `y: 10 -> 0` + opacity fade on items |
-| Sidebar Toggle | Framer Motion | `AnimatePresence` with width animation `260px <-> 60px` |
-| Chat Message Appear | Framer Motion | `initial={{ opacity: 0, y: 10 }}` `animate={{ opacity: 1, y: 0 }}` with stagger |
-| Tool Card Expand | Framer Motion | `AnimatePresence` with height `auto` animation |
-| Progress Ring | CSS + SVG | `stroke-dasharray` + `stroke-dashoffset` animation on mount |
-| Tab Underline | Framer Motion | `layoutId="tab-underline"` for shared element transition |
-| Analyzer Expand | Framer Motion | `AnimatePresence` with `height: auto`, chevron rotates 90deg |
-| Hover States | Tailwind | `transition-all duration-150 hover:bg-bg-hover` |
-| Button Press | Tailwind | `active:scale-[0.98]` |
-| Dropdown Open | Framer Motion | `initial={{ opacity: 0, y: -10 }}` `animate={{ opacity: 1, y: 0 }}` |
-| Card Hover | Tailwind | `hover:border-border-default/80 transition-colors duration-200` |
-| Tag Scroll | CSS | `overflow-x-auto` with custom scrollbar styling |
-| Resource Section Toggle | Framer Motion | `AnimatePresence` with height animation |
+| Component | File | Description |
+|-----------|------|-------------|
+| `CodeViewer` | `code/CodeViewer.tsx` | Syntax-highlighted code display |
+| `MarkdownContent` | `common/MarkdownContent.tsx` | Markdown renderer |
+| `DataTable` | `data/DataTable.tsx` | Generic data table |
+| `ShareModal` | `modals/ShareModal.tsx` | Share/export modal |
 
-### Animation Timing Reference
-- Fast (micro): 150ms - hover, focus, active states
-- Normal (UI): 200ms - card hovers, button transitions
-- Medium (content): 300ms - dropdowns, tooltips, modals
-- Slow (page): 400ms - page transitions, staggered reveals
+### shadcn/ui Components (~50)
 
-### Easing Functions
-- Default: `[0.4, 0, 0.2, 1]` (ease-out)
-- Enter: `[0, 0, 0.2, 1]` (decelerate)
-- Exit: `[0.4, 0, 1, 1]` (accelerate)
-- Spring: `{ type: "spring", stiffness: 300, damping: 30 }`
+Pre-installed Radix-based components in `components/ui/`: accordion, alert, alert-dialog, avatar, badge, breadcrumb, button, button-group, calendar, card, carousel, chart, checkbox, collapsible, command, context-menu, dialog, drawer, dropdown-menu, empty, field, form, hover-card, input, input-group, input-otp, item, kbd, label, menubar, navigation-menu, pagination, popover, progress, radio-group, resizable, scroll-area, select, separator, sheet, sidebar, skeleton, slider, sonner, spinner, switch, table, tabs, textarea, toggle, toggle-group, tooltip.
 
-## 5. Project File Structure
+## 4. Project File Structure
 
 ```
-/mnt/okcomputer/output/app/
-├── src/
-│   ├── components/
-│   │   ├── ui/                    # shadcn/ui components
-│   │   ├── layout/
-│   │   │   ├── Sidebar.tsx
-│   │   │   ├── MainLayout.tsx
-│   │   │   └── ResourcesPanel.tsx
-│   │   ├── chat/
-│   │   │   ├── ChatInterface.tsx
-│   │   │   ├── WelcomeScreen.tsx
-│   │   │   ├── MessageBubble.tsx
-│   │   │   ├── ChatInput.tsx
-│   │   │   ├── QuickActionChips.tsx
-│   │   │   ├── ModelSelector.tsx
-│   │   │   └── ToolCallCard.tsx
-│   │   └── analysis/
-│   │       ├── AnalysisHeader.tsx
-│   │       ├── CircularProgress.tsx
-│   │       ├── StatusBadge.tsx
-│   │       ├── TagCloud.tsx
-│   │       ├── AnalysisTabs.tsx
-│   │       ├── AnalyzerList.tsx
-│   │       ├── AnalyzerItem.tsx
-│   │       ├── AnalysisSection.tsx
-│   │       └── ExecutionLogs.tsx
-│   ├── hooks/
-│   │   └── useAnimation.ts
-│   ├── types/
-│   │   └── index.ts
-│   ├── data/
-│   │   └── mockData.ts
-│   ├── lib/
-│   │   └── utils.ts
-│   ├── App.tsx
-│   ├── main.tsx
-│   └── index.css
-├── public/
+app/
 ├── index.html
-├── tailwind.config.js
+├── package.json
 ├── vite.config.ts
-└── package.json
+├── tsconfig.json
+├── tsconfig.app.json
+├── tsconfig.node.json
+├── tailwind.config.js
+├── postcss.config.js
+├── eslint.config.js
+├── components.json            # shadcn/ui config
+├── Dockerfile.ui
+│
+└── src/
+    ├── App.tsx                # App root — chat + panels + state
+    ├── App.css
+    ├── main.tsx               # Entry point
+    ├── index.css              # Global styles + Tailwind
+    │
+    ├── agents/
+    │   ├── ghidra-agent.ts    # Ghidra agent config
+    │   └── radare-agent.ts    # Radare2 agent config
+    │
+    ├── components/
+    │   ├── analysis/          # 9 analysis components
+    │   ├── chat/              # 11 chat components
+    │   ├── code/              # Code viewer
+    │   ├── common/            # Shared components
+    │   ├── data/              # Data table
+    │   ├── layout/            # 5 layout components
+    │   ├── modals/            # Modals
+    │   ├── report/            # Report components
+    │   └── ui/                # ~50 shadcn/ui primitives
+    │
+    ├── data/
+    │   └── mockData.ts        # Mock data for development
+    │
+    ├── hooks/
+    │   └── use-mobile.ts      # Mobile detection hook
+    │
+    ├── lib/
+    │   ├── api.ts             # REST API client + export URL builders
+    │   └── utils.ts           # Utility functions (cn, etc.)
+    │
+    └── types/
+        └── index.ts           # TypeScript type definitions
 ```
 
-## 6. Package Installation List
+## 5. API Integration (`lib/api.ts`)
 
-```bash
-# Animation library
-npm install framer-motion
+The API client provides:
 
-# Icons
-npm install lucide-react
+| Function | Description |
+|----------|-------------|
+| `getApiBaseUrl()` | Resolves API URL from env or defaults to `http://localhost:8080` |
+| `getWsUrl()` | Resolves WebSocket URL |
+| `uploadBinary(file)` | Upload binary for analysis |
+| `getStatus(sessionId)` | Poll analysis status |
+| `sendQuery(sessionId, query)` | Send follow-up query |
+| `getAnalyzers(hash)` | Fetch Ghidra + R2 results |
+| `getFileTree(hash)` | Fetch decompiled file tree |
+| `getFileContent(hash, fileId)` | Fetch decompiled function code |
+| `getReports(hash)` | Fetch reports list |
+| `getExportHtmlUrl(hash)` | Build HTML export URL |
+| `getExportTextUrl(hash)` | Build text export URL |
+| `getExportPdfUrl(hash)` | Build PDF export URL |
 
-# Utility
-npm install clsx tailwind-merge
-```
-
-## 7. Type Definitions
+## 6. Type Definitions (`types/index.ts`)
 
 ```typescript
-// types/index.ts
-
 export interface Message {
   id: string;
   content: string;
@@ -258,15 +228,6 @@ export interface Analyzer {
   details?: AnalyzerDetails;
 }
 
-export interface AnalyzerDetails {
-  executiveSummary: string;
-  staticAnalysis: string;
-  behavioralAnalysis: string;
-  iocs: string;
-  conclusion: string;
-  executionLogs: string[];
-}
-
 export interface Model {
   id: string;
   name: string;
@@ -294,31 +255,48 @@ export interface FileNode {
 }
 ```
 
-## 8. Key Implementation Notes
+## 7. Animation Strategy
 
-### Circular Progress Component
-- Use SVG with two `<circle>` elements
-- Background circle: gray stroke
-- Progress circle: colored stroke with `stroke-dasharray` and `stroke-dashoffset`
-- Calculate offset: `circumference - (value / max) * circumference`
-- Animate with CSS transition or Framer Motion
+| Interaction | Implementation |
+|-------------|----------------|
+| Page load | Framer Motion `staggerChildren: 0.05`, `y: 10 → 0` + opacity |
+| Sidebar toggle | `AnimatePresence` with width animation `260px ↔ 60px` |
+| Chat message appear | `initial={{ opacity: 0, y: 10 }}` with stagger |
+| Tool card expand | `AnimatePresence` with height `auto` |
+| Progress ring | SVG `stroke-dasharray` + `stroke-dashoffset` |
+| Tab underline | `layoutId="tab-underline"` shared element |
+| Analyzer expand | `AnimatePresence` + chevron rotation |
+| Hover states | Tailwind `transition-all duration-150 hover:bg-bg-hover` |
 
-### Tab Underline Animation
-- Use Framer Motion's `layoutId` for shared element
-- Underline follows active tab automatically
-- Smooth spring animation between positions
+### Timing
 
-### Sidebar Collapse
-- Use Framer Motion's `animate` prop for width
-- Content visibility toggles with `opacity` and `display`
-- Icons remain visible, text fades out
+- **Fast (micro)**: 150ms — hover, focus, active states
+- **Normal (UI)**: 200ms — card hovers, button transitions
+- **Medium**: 300ms — dropdowns, tooltips
+- **Slow (page)**: 400ms — staggered reveals
 
-### Message Stagger Animation
-- Container uses `staggerChildren: 0.1`
-- Each message animates `y: 10 -> 0` with opacity
-- New messages trigger animation on mount
+## 8. Build & Development
 
-### Analyzer Expand/Collapse
-- Use `AnimatePresence` for enter/exit
-- Content wrapper animates `height: 0 -> auto`
-- Chevron icon rotates with `animate={{ rotate: expanded ? 90 : 0 }}`
+```bash
+# Install
+npm ci
+
+# Development (hot reload at :5173)
+npm run dev
+
+# Production build
+npm run build
+
+# Lint
+npm run lint
+
+# Preview production build
+npm run preview
+```
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `VITE_API_BASE_URL` | `http://${HOST}:${API_PORT}` | Backend API URL |
+| `VITE_WS_URL` | `ws://${HOST}:${API_PORT}/stream` | WebSocket URL |
