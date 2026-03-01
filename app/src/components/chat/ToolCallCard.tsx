@@ -7,6 +7,14 @@ interface ToolCallCardProps {
   tool: ToolCall;
 }
 
+function formatEta(seconds: number): string {
+  const safe = Math.max(0, Math.round(seconds));
+  const mins = Math.floor(safe / 60);
+  const secs = safe % 60;
+  if (mins > 0) return `${mins}m ${secs}s`;
+  return `${secs}s`;
+}
+
 function getResultFileId(result: unknown): string | null {
   if (!result || typeof result !== 'object') return null;
   const maybeFileId = (result as { fileId?: unknown }).fileId;
@@ -80,6 +88,10 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
                   <div className="flex items-center justify-between text-xs text-text-secondary mb-1">
                     <span>Analyzers Progress</span>
                     <span>{tool.progress}/{tool.maxProgress || 7}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-text-muted mb-1">
+                    <span>{tool.phase ? `Phase: ${tool.phase}` : 'Phase: working'}</span>
+                    <span>{tool.etaSeconds !== undefined ? `ETA ${formatEta(tool.etaSeconds)}` : 'ETA estimating...'}</span>
                   </div>
                   <div 
                     className="h-1.5 rounded-full overflow-hidden"

@@ -1,0 +1,41 @@
+FROM python:3.11-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git git-lfs gcc g++ cmake pkg-config \
+    && git lfs install \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG QILING_VERSION=1.4.6
+RUN pip install --no-cache-dir "qiling==${QILING_VERSION}"
+
+# Clone required Qiling rootfs directories with sparse checkout + LFS.
+# The Windows rootfs requires DLLs and registry hives tracked via Git LFS.
+RUN git clone --depth 1 --sparse https://github.com/qilingframework/rootfs.git /tmp/qiling-rootfs \
+    && cd /tmp/qiling-rootfs \
+    && git sparse-checkout set x86_linux x8664_linux x86_windows x8664_windows \
+    && git lfs pull \
+    && mkdir -p /opt/qiling/rootfs \
+    && for d in x86_linux x8664_linux x86_windows x8664_windows; do \
+         if [ -d "/tmp/qiling-rootfs/$d" ]; then cp -r "/tmp/qiling-rootfs/$d" /opt/qiling/rootfs/; fi; \
+       done \
+    && rm -rf /tmp/qiling-rootfs
+
+VOLUME ["/data/shared"]
+
+COPY qiling_scripts/ /opt/qiling/scripts/
+
+# Create minimal Windows registry hives and stub DLLs for PE emulation.
+# Qiling's rootfs repo does not ship actual Windows system files (they are
+# proprietary), so we generate minimal valid REGF registry hives and PE DLL
+# stubs with correct export tables.  Qiling's Python-based DLL shims hook
+# at each export address to provide actual API behaviour at runtime.
+RUN for arch in x86_windows x8664_windows; do \
+      bits=32; [ "$arch" = "x8664_windows" ] && bits=64; \
+      rootfs="/opt/qiling/rootfs/$arch"; \
+      mkdir -p "$rootfs/Windows/registry" "$rootfs/Windows/System32"; \
+      python3 /opt/qiling/scripts/create_minimal_hives.py "$rootfs/Windows/registry"; \
+      python3 /opt/qiling/scripts/create_stub_dlls.py "$rootfs/Windows/System32" --bits $bits; \
+    done
+
+WORKDIR /opt/qiling
+CMD ["tail", "-f", "/dev/null"]

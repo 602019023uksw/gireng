@@ -28,6 +28,22 @@ R2_AUTO_DECOMPILE_MIN = 10         # Floor: always decompile at least this many
 R2_AUTO_DECOMPILE_MAX = 40         # Ceiling: cap decompilation to avoid runaway on large binaries
 
 
+def _ensure_analyzer_maps(state: AgentState) -> None:
+    state.setdefault("analyzer_progress", {"ghidra": 0, "radare2": 0, "qiling": 0})
+    state.setdefault("analyzer_status", {"ghidra": "pending", "radare2": "pending", "qiling": "pending"})
+    state.setdefault("analyzer_step", {"ghidra": "", "radare2": "", "qiling": ""})
+
+
+def _set_r2_progress(state: AgentState, progress: int, step: str, status: str = "running") -> None:
+    _ensure_analyzer_maps(state)
+    safe_progress = max(0, min(100, int(progress)))
+    state["analyzer_progress"]["radare2"] = safe_progress
+    state["analyzer_step"]["radare2"] = step
+    state["analyzer_status"]["radare2"] = status
+    if status == "completed":
+        state["analyzer_progress"]["radare2"] = 100
+
+
 def _to_num(value: Any) -> float:
     if isinstance(value, (int, float)):
         return float(value)
@@ -54,6 +70,18 @@ def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, s
 async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
     """Emit monotonic progress updates for R2 stages."""
     safe_pct = max(0, min(100, int(pct)))
+    # Map R2 discovery range (8..50) into analyzer-local 0..100.
+    if safe_pct <= 8:
+        r2_pct = 0
+    else:
+        r2_pct = int(((safe_pct - 8) / 42.0) * 100)
+    _set_r2_progress(
+        state,
+        progress=max(0, min(100, r2_pct)),
+        step=step,
+        status="completed" if safe_pct >= 50 else "running",
+    )
+
     try:
         current_pct = int(state.get("progress", 0))
     except (TypeError, ValueError):
@@ -92,6 +120,7 @@ async def r2_discovery(state: AgentState) -> AgentState:
         "program_hash": state["program_hash"],
         "binary_path": state.get("binary_path"),
     }
+    _set_r2_progress(state, progress=0, step="r2_discovery_starting", status="running")
 
     # Run binary analysis, function listing, and string extraction
     binary_info: Dict[str, Any] = {"ok": False, "error": "not run"}
@@ -155,6 +184,9 @@ async def r2_discovery(state: AgentState) -> AgentState:
 
     if not binary_info.get("ok"):
         state["r2_analysis_results"].setdefault("errors", []).append("r2_binary_structure_failed")
+        _set_r2_progress(state, progress=100, step="r2_discovery_failed", status="failed")
+    else:
+        _set_r2_progress(state, progress=100, step="r2_discovery_completed", status="completed")
 
     state["reasoning_trace"].append("r2_discovery_completed")
     return state

@@ -1,7 +1,8 @@
 """Tests for API endpoints — focuses on dual-analyzer (Ghidra + R2) responses."""
 
+import asyncio
 from copy import deepcopy
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -17,6 +18,7 @@ from tests.sample_data import (
     SAMPLE_FUNCTIONS_GHIDRA,
     SAMPLE_FUNCTIONS_R2,
     SAMPLE_HASH,
+    SAMPLE_QILING_RESULTS,
     SAMPLE_STRINGS_GHIDRA,
     SAMPLE_STRINGS_R2,
 )
@@ -45,6 +47,8 @@ def _populated_state():
         "call_graph_analysis": deepcopy(SAMPLE_CALL_GRAPH_ANALYSIS),
     }
     state["r2_decompilation_cache"] = {"main": SAMPLE_DECOMPILE_R2["c"]}
+    state["qiling_analysis_results"] = deepcopy(SAMPLE_QILING_RESULTS)
+    state["qiling_execution_cache"] = deepcopy(SAMPLE_QILING_RESULTS)
     return state
 
 
@@ -68,7 +72,7 @@ async def client(mock_store):
 
 class TestAnalyzersEndpoint:
     @pytest.mark.asyncio
-    async def test_returns_both_analyzers(self, client: AsyncClient):
+    async def test_returns_all_available_analyzers(self, client: AsyncClient):
         resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/analyzers")
         assert resp.status_code == 200
         data = resp.json()
@@ -76,6 +80,7 @@ class TestAnalyzersEndpoint:
         ids = [a["id"] for a in data]
         assert "ghidra" in ids
         assert "radare2" in ids
+        assert "qiling" in ids
 
     @pytest.mark.asyncio
     async def test_ghidra_only_when_no_r2(self, client: AsyncClient, mock_store):
@@ -104,6 +109,14 @@ class TestAnalyzersEndpoint:
         data = resp.json()
         assert data["id"] == "radare2"
         assert data["name"] == "Radare2 Reverse Engineer Agent"
+
+    @pytest.mark.asyncio
+    async def test_analyzer_detail_qiling(self, client: AsyncClient):
+        resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/analyzers/qiling")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == "qiling"
+        assert data["name"] == "Qiling Dynamic Analysis Agent"
 
     @pytest.mark.asyncio
     async def test_analyzer_detail_unknown(self, client: AsyncClient):
@@ -135,6 +148,18 @@ class TestStatusEndpoint:
         assert "progress_callback" not in data["state"]
 
 
+class TestAnalysisInfoEndpoint:
+    @pytest.mark.asyncio
+    async def test_analysis_info_includes_active_analyzers(self, client: AsyncClient):
+        resp = await client.get(f"/api/analysis/{SAMPLE_HASH}")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["analyzer"] == "multi"
+        assert "ghidra" in data["analyzers"]
+        assert "radare2" in data["analyzers"]
+        assert "qiling" in data["analyzers"]
+
+
 class TestExportEndpoints:
     @pytest.mark.asyncio
     async def test_export_html(self, client: AsyncClient):
@@ -142,12 +167,15 @@ class TestExportEndpoints:
         assert resp.status_code == 200
         assert "text/html" in resp.headers["content-type"]
         assert "<!DOCTYPE html>" in resp.text or "<html" in resp.text
+        assert "Qiling Dynamic Analysis" in resp.text
 
     @pytest.mark.asyncio
     async def test_export_text(self, client: AsyncClient):
         resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/export/text")
         assert resp.status_code == 200
         assert "text/plain" in resp.headers["content-type"]
+        assert "GHIDRA + RADARE2 + QILING BINARY ANALYSIS REPORT" in resp.text
+        assert "QILING DYNAMIC ANALYSIS" in resp.text
 
 
 class TestReportsEndpoint:
@@ -184,6 +212,33 @@ class TestReportsEndpoint:
         content = resp.json()["content"]
         assert "Ghidra Call Graph & Attack Chains" in content
         assert "Radare2 Call Graph & Attack Chains" in content
+        assert "Qiling Dynamic Highlights" in content
+
+    @pytest.mark.asyncio
+    async def test_qiling_report_endpoint(self, client: AsyncClient):
+        resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/reports/qiling_summary")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["id"] == "qiling_summary"
+        assert "Qiling Dynamic Analysis Report" in data["content"]
+        assert "Execution Trace" in data["content"]
+
+
+class TestAgentExportEndpoints:
+    @pytest.mark.asyncio
+    async def test_export_agent_qiling_html(self, client: AsyncClient):
+        resp = await client.get("/export/session/test-session/agent/qiling")
+        assert resp.status_code == 200
+        assert "text/html" in resp.headers["content-type"]
+        assert "Qiling Analysis Report" in resp.text
+        assert "Runtime Overview" in resp.text
+        assert "Syscalls" in resp.text
+
+    @pytest.mark.asyncio
+    async def test_export_agent_invalid(self, client: AsyncClient):
+        resp = await client.get("/export/session/test-session/agent/invalid-agent")
+        assert resp.status_code == 400
+        assert "Invalid agent" in resp.text
 
 
 class TestRawResultsEndpoints:
@@ -204,3 +259,73 @@ class TestRawResultsEndpoints:
         assert data["analyzer"] == "radare2"
         assert data["call_graph"]["ok"] is True
         assert data["call_graph_analysis"]["ok"] is True
+
+    @pytest.mark.asyncio
+    async def test_qiling_results_include_dynamic_sections(self, client: AsyncClient):
+        resp = await client.get(f"/api/analysis/{SAMPLE_HASH}/results/qiling")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["analyzer"] == "qiling"
+        assert "execution_trace" in data
+        assert "syscalls" in data
+
+
+class TestProgressEventSmoke:
+    @pytest.mark.asyncio
+    async def test_run_with_events_emits_analyzer_progress_payload(self, mock_store):
+        from ghidra_agent.api.main import _run_with_events
+
+        session_state = _populated_state()
+        session_state["session_id"] = "smoke-progress-session"
+        session_state["status"] = "initialized"
+        mock_store.sessions[session_state["session_id"]] = session_state
+        mock_store.get_session = MagicMock(side_effect=lambda sid: mock_store.sessions[sid])
+        mock_store.update_session = MagicMock(
+            side_effect=lambda sid, st: mock_store.sessions.__setitem__(sid, st)
+        )
+
+        sent_events: list[dict] = []
+
+        async def _capture_broadcast(_session_id: str, payload: dict):
+            sent_events.append(payload)
+
+        async def _fake_run_graph(state: dict, progress_callback):
+            state["analyzer_progress"] = {"ghidra": 55, "radare2": 48, "qiling": 62}
+            state["analyzer_status"] = {"ghidra": "running", "radare2": "running", "qiling": "running"}
+            state["analyzer_step"] = {
+                "ghidra": "decompiling_functions",
+                "radare2": "r2_decompiling",
+                "qiling": "qiling_parallel_analysis",
+            }
+            await progress_callback("qiling_parallel_analysis", 62)
+            state["status"] = "completed"
+            state["analyzer_status"] = {"ghidra": "completed", "radare2": "completed", "qiling": "completed"}
+            state["analyzer_progress"] = {"ghidra": 100, "radare2": 100, "qiling": 100}
+            state["analyzer_step"] = {
+                "ghidra": "analysis_completed",
+                "radare2": "r2_discovery_completed",
+                "qiling": "qiling_discovery_completed",
+            }
+            return state
+
+        with patch("ghidra_agent.api.main.manager.broadcast", side_effect=_capture_broadcast), \
+             patch("ghidra_agent.api.main.run_graph", side_effect=_fake_run_graph), \
+             patch("ghidra_agent.api.main.db.save_verdict", new_callable=AsyncMock), \
+             patch("ghidra_agent.api.main.db.save_normalized", new_callable=AsyncMock):
+            await _run_with_events(session_state)
+            await asyncio.sleep(0)
+
+        progress_events = [e for e in sent_events if e.get("type") == "analysis:progress"]
+        completed_events = [e for e in sent_events if e.get("type") == "analysis:completed"]
+
+        assert progress_events, "Expected at least one analysis:progress event"
+        assert completed_events, "Expected analysis:completed event"
+
+        first_progress = progress_events[0]["payload"]
+        assert "analyzer_progress" in first_progress
+        assert "analyzer_status" in first_progress
+        assert "analyzer_step" in first_progress
+
+        final_payload = completed_events[-1]["payload"]
+        assert final_payload["analyzer_progress"]["qiling"] == 100
+        assert final_payload["analyzer_status"]["qiling"] == "completed"

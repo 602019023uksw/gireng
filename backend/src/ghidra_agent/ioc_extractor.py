@@ -428,7 +428,7 @@ def format_iocs_for_report(iocs: IOCs) -> str:
 
 
 def extract_iocs_from_state(state: Dict[str, Any]) -> IOCs:
-    """Extract IOCs from the full agent state (both Ghidra and R2)."""
+    """Extract IOCs from the full agent state (Ghidra, R2, and Qiling)."""
     all_strings = []
 
     # Ghidra strings
@@ -440,6 +440,51 @@ def extract_iocs_from_state(state: Dict[str, Any]) -> IOCs:
     r2_strings = state.get("r2_analysis_results", {}).get("strings", {})
     if r2_strings.get("ok"):
         all_strings.extend(r2_strings.get("strings", []))
+
+    # Qiling dynamic artifacts (network/syscalls/api args)
+    qiling = state.get("qiling_analysis_results", {})
+    if qiling:
+        network = qiling.get("network_activity", {})
+        if isinstance(network, dict):
+            for conn in network.get("connections", []) or []:
+                if isinstance(conn, dict):
+                    addr = conn.get("address")
+                    port = conn.get("port")
+                    if addr:
+                        all_strings.append({"value": f"{addr}:{port}" if port else str(addr)})
+            for dns in network.get("dns_queries", []) or []:
+                if isinstance(dns, dict) and dns.get("domain"):
+                    all_strings.append({"value": str(dns["domain"])})
+            indicators = network.get("indicators", {})
+            if isinstance(indicators, dict):
+                for c2 in indicators.get("c2_candidates", []) or []:
+                    all_strings.append({"value": str(c2)})
+                for domain in indicators.get("dns_domains", []) or []:
+                    all_strings.append({"value": str(domain)})
+
+        syscalls = qiling.get("syscalls", {})
+        if isinstance(syscalls, dict):
+            syscall_rows = syscalls.get("syscalls", [])
+            if isinstance(syscall_rows, list):
+                for call in syscall_rows:
+                    if not isinstance(call, dict):
+                        continue
+                    all_strings.append({"value": str(call.get("name", ""))})
+                    for arg in call.get("args", []) or []:
+                        all_strings.append({"value": str(arg)})
+
+        api_calls = qiling.get("api_calls", {})
+        if isinstance(api_calls, dict):
+            api_rows = api_calls.get("api_calls", [])
+            if isinstance(api_rows, list):
+                for api in api_rows:
+                    if not isinstance(api, dict):
+                        continue
+                    all_strings.append({"value": str(api.get("name", ""))})
+                    params = api.get("args", {})
+                    if isinstance(params, dict):
+                        for v in params.values():
+                            all_strings.append({"value": str(v)})
 
     if not all_strings:
         return IOCs()
@@ -505,6 +550,104 @@ def _extract_llm_verdict(summary: str) -> str | None:
     return None
 
 
+_QILING_RISK_POINTS = {
+    "low": 4,
+    "medium": 8,
+    "high": 14,
+    "critical": 20,
+}
+
+_QILING_HIGH_RISK_SYSCALLS = frozenset(
+    {
+        "ptrace",
+        "process_vm_writev",
+        "process_vm_readv",
+        "execve",
+        "clone",
+        "mprotect",
+        "mmap",
+        "connect",
+        "socket",
+        "writeprocessmemory",
+        "createremotethread",
+        "ntcreatethreadex",
+    }
+)
+
+
+def _score_qiling_dynamic_behavior(state: Dict[str, Any], indicators: List[str]) -> int:
+    """Score Qiling runtime signals (syscalls + evasion) into verdict risk."""
+    qiling = state.get("qiling_analysis_results", {})
+    if not isinstance(qiling, dict) or not qiling:
+        return 0
+
+    score = 0
+
+    # Syscall risk scoring
+    syscalls = qiling.get("syscalls", {})
+    if isinstance(syscalls, dict):
+        syscall_rows = syscalls.get("syscalls", [])
+        if not isinstance(syscall_rows, list):
+            syscall_rows = []
+
+        summary = syscalls.get("summary", {})
+        suspicious_calls = summary.get("suspicious_calls", []) if isinstance(summary, dict) else []
+        if isinstance(suspicious_calls, list) and suspicious_calls:
+            suspicious_points = 0
+            for item in suspicious_calls[:20]:
+                if isinstance(item, dict):
+                    risk = str(item.get("risk", "")).lower()
+                    suspicious_points += _QILING_RISK_POINTS.get(risk, 6)
+                else:
+                    suspicious_points += 6
+            score += min(35, suspicious_points)
+            indicators.append(f"Qiling suspicious syscalls: {len(suspicious_calls)}")
+
+        syscall_names = {
+            str(call.get("name", "")).lower()
+            for call in syscall_rows
+            if isinstance(call, dict) and call.get("name")
+        }
+        high_risk_hits = sorted(name for name in syscall_names if name in _QILING_HIGH_RISK_SYSCALLS)
+        if high_risk_hits:
+            score += min(30, len(high_risk_hits) * 6)
+            indicators.append(f"Qiling high-risk syscalls: {', '.join(high_risk_hits[:6])}")
+
+    # Evasion scoring
+    evasion = qiling.get("evasion_techniques", {})
+    if isinstance(evasion, dict):
+        evasion_payload = evasion.get("evasion_techniques", evasion)
+        if isinstance(evasion_payload, dict):
+            techniques = evasion_payload.get("techniques", [])
+            if not isinstance(techniques, list):
+                techniques = []
+            summary = evasion_payload.get("summary", {})
+            risk_level = str(summary.get("risk_level", "")).lower() if isinstance(summary, dict) else ""
+            total = len(techniques)
+            if isinstance(summary, dict):
+                try:
+                    total = max(total, int(summary.get("total_techniques", total)))
+                except (TypeError, ValueError):
+                    pass
+
+            if total > 0 or risk_level in {"medium", "high", "critical"}:
+                score += min(40, total * 10)
+                score += _QILING_RISK_POINTS.get(risk_level, 0)
+                indicators.append(f"Qiling evasion techniques: {total} (risk: {risk_level or 'unknown'})")
+
+                mitre_ids = sorted(
+                    {
+                        str(t.get("mitre_id"))
+                        for t in techniques
+                        if isinstance(t, dict) and t.get("mitre_id")
+                    }
+                )
+                if mitre_ids:
+                    indicators.append(f"Qiling MITRE evasion IDs: {', '.join(mitre_ids[:6])}")
+
+    return score
+
+
 def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
     """Calculate malware verdict based on IOCs and analysis state.
 
@@ -523,6 +666,43 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
     r2_strings_data = state.get("r2_analysis_results", {}).get("strings", {})
     if r2_strings_data.get("ok"):
         all_string_vals.extend([s.get("value", "").lower() for s in r2_strings_data.get("strings", [])])
+
+    # Include Qiling dynamic syscall/API names in capability scoring.
+    # This lets runtime-observed behavior contribute even when static strings are sparse.
+    qiling_results = state.get("qiling_analysis_results", {})
+    if isinstance(qiling_results, dict):
+        syscalls = qiling_results.get("syscalls", {})
+        if isinstance(syscalls, dict):
+            syscall_rows = syscalls.get("syscalls")
+            if isinstance(syscall_rows, list):
+                for call in syscall_rows:
+                    if not isinstance(call, dict):
+                        continue
+                    name = str(call.get("name", "")).lower()
+                    if name:
+                        all_string_vals.append(name)
+                    args = call.get("args", [])
+                    if isinstance(args, list):
+                        all_string_vals.extend(str(arg).lower() for arg in args[:8])
+
+        api_calls = qiling_results.get("api_calls", {})
+        if isinstance(api_calls, dict):
+            api_rows = api_calls.get("api_calls", [])
+            if isinstance(api_rows, list):
+                for api in api_rows:
+                    if not isinstance(api, dict):
+                        continue
+                    name = str(api.get("name", "")).lower()
+                    module = str(api.get("module", "")).lower()
+                    if name:
+                        all_string_vals.append(name)
+                    if module:
+                        all_string_vals.append(module)
+                    args = api.get("args", {})
+                    if isinstance(args, dict):
+                        all_string_vals.extend(str(v).lower() for v in list(args.values())[:8])
+                    elif isinstance(args, list):
+                        all_string_vals.extend(str(v).lower() for v in args[:8])
 
     score = 0
     indicators = []
@@ -562,6 +742,9 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
         if any(x in strings_vals for x in ["exec", "system", "popen", "shell"]):
             score += 25
             indicators.append("Command execution capability detected")
+
+    # Score Qiling runtime behavior (dynamic syscall/evasion signals)
+    score += _score_qiling_dynamic_behavior(state, indicators)
 
     # Check if the LLM summary provides a clear verdict (expert override)
     llm_verdict = _extract_llm_verdict(state.get("summary", ""))

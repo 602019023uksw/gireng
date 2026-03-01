@@ -42,6 +42,39 @@ LLM_HIGH_PRIORITY_COUNT = 5            # How many top functions get the larger b
 LLM_STRING_LIMIT = 120                 # How many strings to send (up from 75)
 
 
+def _ensure_analyzer_maps(state: AgentState) -> None:
+    state.setdefault("analyzer_progress", {"ghidra": 0, "radare2": 0, "qiling": 0})
+    state.setdefault("analyzer_status", {"ghidra": "pending", "radare2": "pending", "qiling": "pending"})
+    state.setdefault("analyzer_step", {"ghidra": "", "radare2": "", "qiling": ""})
+
+
+def _set_analyzer_progress(
+    state: AgentState,
+    analyzer: str,
+    *,
+    progress: int | None = None,
+    status: str | None = None,
+    step: str | None = None,
+) -> None:
+    _ensure_analyzer_maps(state)
+    if progress is not None:
+        safe_progress = max(0, min(100, int(progress)))
+        state["analyzer_progress"][analyzer] = safe_progress
+    if step is not None:
+        state["analyzer_step"][analyzer] = step
+    if status is not None:
+        state["analyzer_status"][analyzer] = status
+        if status == "completed":
+            state["analyzer_progress"][analyzer] = 100
+
+
+def _ghidra_progress_from_global(pct: int) -> int:
+    if pct <= 5:
+        return 0
+    scaled = int(((pct - 5) / 45.0) * 100)
+    return max(0, min(100, scaled))
+
+
 def _smart_truncate(code: str, limit: int = LLM_DECOMP_SNIPPET_CHARS) -> str:
     """Truncate decompiled code keeping 100% head.
 
@@ -102,6 +135,15 @@ async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
 
     state["current_step"] = step
     state["progress"] = safe_pct
+    if step.startswith("ghidra_"):
+        analyzer_pct = _ghidra_progress_from_global(safe_pct)
+        _set_analyzer_progress(
+            state,
+            "ghidra",
+            progress=analyzer_pct,
+            status="completed" if analyzer_pct >= 100 else "running",
+            step=step,
+        )
 
     callback = state.get("progress_callback")
     if callback is None:
@@ -162,6 +204,7 @@ async def initialize_ghidra(state: AgentState) -> AgentState:
     await _emit_progress(state, "initializing_ghidra", 4)
     state["status"] = "initialized"
     state["reasoning_trace"].append("ghidra_initialized")
+    _set_analyzer_progress(state, "ghidra", progress=0, status="running", step="initializing_ghidra")
 
     # Verify R2 container if enabled
     if settings.enable_r2:
@@ -170,11 +213,30 @@ async def initialize_ghidra(state: AgentState) -> AgentState:
             runner = Radare2Runner()
             if await runner.verify_container():
                 state["reasoning_trace"].append("r2_initialized")
+                _set_analyzer_progress(state, "radare2", progress=0, status="pending", step="waiting_discovery")
             else:
                 state["reasoning_trace"].append("r2_unavailable")
+                _set_analyzer_progress(state, "radare2", status="failed", step="unavailable")
         except Exception as exc:
             logger.warning("r2_init_check_failed", error=str(exc))
             state["reasoning_trace"].append("r2_unavailable")
+            _set_analyzer_progress(state, "radare2", status="failed", step="init_failed")
+
+    # Verify Qiling container if enabled
+    if settings.enable_qiling:
+        try:
+            from ghidra_agent.qiling.runner import QilingRunner
+            runner = QilingRunner()
+            if await runner.verify_container():
+                state["reasoning_trace"].append("qiling_initialized")
+                _set_analyzer_progress(state, "qiling", progress=0, status="pending", step="waiting_discovery")
+            else:
+                state["reasoning_trace"].append("qiling_unavailable")
+                _set_analyzer_progress(state, "qiling", status="failed", step="unavailable")
+        except Exception as exc:
+            logger.warning("qiling_init_check_failed", error=str(exc))
+            state["reasoning_trace"].append("qiling_unavailable")
+            _set_analyzer_progress(state, "qiling", status="failed", step="init_failed")
 
     await _emit_progress(state, "initialization_completed", 5)
     return state
@@ -188,16 +250,24 @@ async def discovery(state: AgentState) -> AgentState:
         return state
 
     await _emit_progress(state, "discovery_starting", 5)
+    _set_analyzer_progress(state, "ghidra", status="running", step="discovery_starting")
 
-    # Run Ghidra + R2 discovery concurrently when R2 is available.
+    # Run static and dynamic analyzers concurrently when available.
+    tasks = [_ghidra_discovery(state)]
     if settings.enable_r2 and "r2_initialized" in state.get("reasoning_trace", []):
-        await asyncio.gather(_ghidra_discovery(state), _safe_r2_pipeline(state))
-    else:
-        await _ghidra_discovery(state)
+        _set_analyzer_progress(state, "radare2", status="running", step="r2_discovery_starting")
+        tasks.append(_safe_r2_pipeline(state))
+    if settings.enable_qiling and "qiling_initialized" in state.get("reasoning_trace", []):
+        _set_analyzer_progress(state, "qiling", status="running", step="qiling_discovery_starting")
+        tasks.append(_safe_qiling_pipeline(state))
+
+    await asyncio.gather(*tasks)
 
     # Extract and persist IOC data during pipeline (before LLM synthesis).
     _refresh_ioc_context(state)
     await _emit_progress(state, "discovery_completed", 60)
+    if state.get("analysis_results", {}).get("binary", {}).get("ok"):
+        _set_analyzer_progress(state, "ghidra", status="completed", step="ghidra_discovery_completed")
 
     state["reasoning_trace"].append("discovery_completed")
     return state
@@ -297,6 +367,9 @@ async def _ghidra_discovery(state: AgentState) -> None:
 
     if not binary_info.get("ok"):
         state["analysis_results"].setdefault("errors", []).append("binary_structure_failed")
+        _set_analyzer_progress(state, "ghidra", status="failed", step="ghidra_discovery_failed")
+    else:
+        _set_analyzer_progress(state, "ghidra", status="completed", step="ghidra_discovery_completed")
 
 
 async def _safe_r2_pipeline(state: AgentState) -> None:
@@ -307,6 +380,18 @@ async def _safe_r2_pipeline(state: AgentState) -> None:
     except Exception as exc:
         logger.error("r2_pipeline_failed", error=str(exc))
         state["reasoning_trace"].append(f"r2_error:{exc}")
+        _set_analyzer_progress(state, "radare2", status="failed", step="pipeline_error")
+
+
+async def _safe_qiling_pipeline(state: AgentState) -> None:
+    """Run Qiling pipeline safely — failures don't block static analysis results."""
+    try:
+        from ghidra_agent.qiling_graph import run_qiling_pipeline
+        await run_qiling_pipeline(state)
+    except Exception as exc:
+        logger.error("qiling_pipeline_failed", error=str(exc))
+        state["reasoning_trace"].append(f"qiling_error:{exc}")
+        _set_analyzer_progress(state, "qiling", status="failed", step="pipeline_error")
 
 
 async def _run_byte_signature_scan(state: AgentState, tool_args: Dict[str, Any]) -> None:
@@ -703,6 +788,64 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
                     parts.append(f"- **[{ch.get('category', '?')}]** {' → '.join(ch.get('path', []))}")
             parts.append("")
 
+    # Qiling dynamic results
+    qiling_results = state.get("qiling_analysis_results", {})
+    if qiling_results:
+        parts.append("## Dynamic Analysis (Qiling)")
+        execution = qiling_results.get("execution_trace", {})
+        if execution:
+            parts.append(
+                "- Execution: "
+                f"success={execution.get('success')}, os={execution.get('os', 'unknown')}, "
+                f"arch={execution.get('arch', 'unknown')}, "
+                f"instructions={execution.get('instructions_executed', 0)}, "
+                f"exit={execution.get('exit_reason', 'unknown')}"
+            )
+        syscalls = qiling_results.get("syscalls", {})
+        syscall_summary = syscalls.get("summary", {}) if isinstance(syscalls, dict) else {}
+        if syscall_summary:
+            parts.append(
+                "- Syscalls: "
+                f"{syscall_summary.get('total_calls', 0)} total, "
+                f"categories={syscall_summary.get('categories', {})}"
+            )
+        network = qiling_results.get("network_activity", {})
+        if isinstance(network, dict):
+            indicators = network.get("indicators", {})
+            c2 = indicators.get("c2_candidates", []) if isinstance(indicators, dict) else []
+            if c2:
+                parts.append(f"- Network C2 candidates: {', '.join(str(v) for v in c2[:10])}")
+        evasion = qiling_results.get("evasion_techniques", {})
+        if isinstance(evasion, dict):
+            ev_summary = evasion.get("summary", {})
+            if isinstance(ev_summary, dict) and ev_summary:
+                parts.append(
+                    "- Evasion techniques: "
+                    f"{ev_summary.get('total_techniques', 0)} "
+                    f"(risk={ev_summary.get('risk_level', 'low')})"
+                )
+        instruction_trace = qiling_results.get("instruction_trace", {})
+        if isinstance(instruction_trace, dict) and instruction_trace:
+            it_summary = instruction_trace.get("summary", {})
+            if isinstance(it_summary, dict):
+                parts.append(
+                    "- Instruction Trace: "
+                    f"{it_summary.get('total_instructions', 0)} instructions, "
+                    f"{it_summary.get('unique_instructions', 0)} unique"
+                )
+                freq = it_summary.get("mnemonic_frequency", {})
+                if isinstance(freq, dict) and freq:
+                    top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:10]
+                    parts.append(f"- Top Mnemonics: {', '.join(f'{m}:{c}' for m, c in top)}")
+            oep = instruction_trace.get("oep_candidates", [])
+            if isinstance(oep, list) and oep:
+                oep_strs = [f"{o.get('address', '?')}({o.get('confidence', '?')})" for o in oep[:5] if isinstance(o, dict)]
+                parts.append(f"- OEP Candidates: {', '.join(oep_strs)}")
+        q_errors = qiling_results.get("errors", [])
+        if q_errors:
+            parts.append(f"- Qiling errors: {q_errors}")
+        parts.append("")
+
     # Decompiled function names
     decomp = state.get("decompilation_cache", {})
     r2_decomp = state.get("r2_decompilation_cache", {})
@@ -716,6 +859,136 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
 
     parts.append("*Use `/query` to ask specific questions about the binary.*")
     return "\n".join(parts)
+
+
+def _safe_sequence(value: Any) -> List[Any]:
+    if isinstance(value, list):
+        return value
+    if isinstance(value, (tuple, set)):
+        return list(value)
+    return []
+
+
+def _summarize_qiling_network(network: Dict[str, Any]) -> str:
+    indicators = network.get("indicators", {}) if isinstance(network, dict) else {}
+    c2 = _safe_sequence(indicators.get("c2_candidates", [])) if isinstance(indicators, dict) else []
+    dns_domains = _safe_sequence(indicators.get("dns_domains", [])) if isinstance(indicators, dict) else []
+    protocols = _safe_sequence(indicators.get("protocols_used", [])) if isinstance(indicators, dict) else []
+    return (
+        "Qiling Network: "
+        f"connections={len(_safe_sequence(network.get('connections', [])))}, "
+        f"dns_queries={len(_safe_sequence(network.get('dns_queries', [])))}, "
+        f"c2_candidates={c2[:10]}, "
+        f"dns_domains={dns_domains[:10]}, "
+        f"protocols={protocols[:10]}"
+    )
+
+
+def _summarize_qiling_evasion(evasion: Dict[str, Any]) -> str:
+    summary = evasion.get("summary", {}) if isinstance(evasion, dict) else {}
+    techniques = _safe_sequence(evasion.get("techniques", [])) if isinstance(evasion, dict) else []
+    sample = [
+        f"{t.get('method', 'unknown')}:{t.get('mitre_id', 'N/A')}"
+        for t in techniques[:10]
+        if isinstance(t, dict)
+    ]
+    return (
+        "Qiling Evasion: "
+        f"total={summary.get('total_techniques', len(techniques)) if isinstance(summary, dict) else len(techniques)}, "
+        f"risk={summary.get('risk_level', 'low') if isinstance(summary, dict) else 'low'}, "
+        f"sample={sample}"
+    )
+
+
+def _summarize_qiling_api_calls(api_calls: Dict[str, Any]) -> str:
+    calls = _safe_sequence(api_calls.get("api_calls", [])) if isinstance(api_calls, dict) else []
+    summary = api_calls.get("summary", {}) if isinstance(api_calls, dict) else {}
+    modules = _safe_sequence(summary.get("modules_used", [])) if isinstance(summary, dict) else []
+    suspicious = _safe_sequence(summary.get("suspicious_apis", [])) if isinstance(summary, dict) else []
+    suspicious_names = [
+        s.get("name", "unknown")
+        for s in suspicious[:10]
+        if isinstance(s, dict)
+    ]
+    return (
+        "Qiling API Calls: "
+        f"total={summary.get('total_calls', len(calls)) if isinstance(summary, dict) else len(calls)}, "
+        f"modules={modules[:10]}, "
+        f"suspicious={suspicious_names}"
+    )
+
+
+def _summarize_qiling_instruction_trace(instruction_trace: Dict[str, Any]) -> str:
+    """Summarize Qiling instruction trace (Capstone disassembly) for LLM context."""
+    if not isinstance(instruction_trace, dict):
+        return ""
+    summary = instruction_trace.get("summary", {})
+    if not isinstance(summary, dict):
+        summary = {}
+    total = summary.get("total_instructions", 0)
+    unique = summary.get("unique_instructions", 0)
+
+    # Top mnemonics
+    freq = summary.get("mnemonic_frequency", {})
+    top_mnemonics = []
+    if isinstance(freq, dict):
+        sorted_freq = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:15]
+        top_mnemonics = [f"{m}:{c}" for m, c in sorted_freq]
+
+    # OEP candidates from memory analysis integration
+    oep_candidates = instruction_trace.get("oep_candidates", [])
+    oep_info = ""
+    if isinstance(oep_candidates, list) and oep_candidates:
+        oep_entries = []
+        for oep in oep_candidates[:5]:
+            if isinstance(oep, dict):
+                oep_entries.append(
+                    f"addr={oep.get('address', '?')}"
+                    f"(confidence={oep.get('confidence', '?')},"
+                    f"reason={oep.get('reason', '?')})"
+                )
+        if oep_entries:
+            oep_info = f", oep_candidates=[{'; '.join(oep_entries)}]"
+
+    # Instruction regions / segments
+    regions = instruction_trace.get("regions", [])
+    region_info = ""
+    if isinstance(regions, list) and regions:
+        region_summaries = []
+        for r in regions[:5]:
+            if isinstance(r, dict):
+                region_summaries.append(
+                    f"{r.get('name', '?')}({r.get('instruction_count', 0)} insns)"
+                )
+        if region_summaries:
+            region_info = f", regions=[{', '.join(region_summaries)}]"
+
+    # Sample instructions (first few + last few for entry/exit patterns)
+    instructions = instruction_trace.get("instructions", [])
+    sample_info = ""
+    if isinstance(instructions, list) and instructions:
+        sample_lines = []
+        for insn in instructions[:10]:
+            if isinstance(insn, dict):
+                sample_lines.append(
+                    f"  {insn.get('address', '?')}: {insn.get('mnemonic', '?')} {insn.get('operands', '')}"
+                )
+        if len(instructions) > 20:
+            sample_lines.append(f"  ... ({len(instructions) - 20} more instructions) ...")
+            for insn in instructions[-10:]:
+                if isinstance(insn, dict):
+                    sample_lines.append(
+                        f"  {insn.get('address', '?')}: {insn.get('mnemonic', '?')} {insn.get('operands', '')}"
+                    )
+        if sample_lines:
+            sample_info = "\n" + "\n".join(sample_lines)
+
+    return (
+        f"Qiling Instruction Trace: total={total}, unique={unique}, "
+        f"top_mnemonics=[{', '.join(top_mnemonics)}]"
+        f"{oep_info}{region_info}"
+        f"{sample_info}"
+    )
 
 
 async def synthesize(state: AgentState) -> AgentState:
@@ -879,6 +1152,53 @@ async def synthesize(state: AgentState) -> AgentState:
             char_limit = LLM_DECOMP_SNIPPET_CHARS_HIGH if i <= LLM_HIGH_PRIORITY_COUNT else LLM_DECOMP_SNIPPET_CHARS
             context_parts.append(f"\n--- R2 Function: {func_name} ---")
             context_parts.append(_smart_truncate(c_code, limit=char_limit))
+
+    # Include Qiling dynamic analysis when available.
+    qiling_results = state.get("qiling_analysis_results", {})
+    if qiling_results:
+        context_parts.append("\n=== QILING DYNAMIC ANALYSIS ===")
+        execution = qiling_results.get("execution_trace", {})
+        if isinstance(execution, dict) and execution:
+            context_parts.append(
+                "Execution Trace: "
+                f"success={execution.get('success')}, "
+                f"os={execution.get('os', 'unknown')}, "
+                f"arch={execution.get('arch', 'unknown')}, "
+                f"instructions={execution.get('instructions_executed', 0)}, "
+                f"duration_ms={execution.get('duration_ms', 0)}, "
+                f"exit_reason={execution.get('exit_reason', 'unknown')}"
+            )
+        syscalls = qiling_results.get("syscalls", {})
+        if isinstance(syscalls, dict) and syscalls:
+            summary = syscalls.get("summary", {})
+            if isinstance(summary, dict):
+                context_parts.append(
+                    "Qiling Syscalls: "
+                    f"total={summary.get('total_calls', 0)}, "
+                    f"categories={summary.get('categories', {})}, "
+                    f"suspicious={summary.get('suspicious_calls', [])[:20]}"
+                )
+        memory_events = qiling_results.get("memory_events", {})
+        if isinstance(memory_events, dict) and memory_events:
+            indicators = memory_events.get("indicators", {})
+            context_parts.append(
+                "Qiling Memory Indicators: "
+                f"{indicators if isinstance(indicators, dict) else {}}"
+            )
+        network = qiling_results.get("network_activity", {})
+        if isinstance(network, dict) and network:
+            context_parts.append(_summarize_qiling_network(network))
+        evasion = qiling_results.get("evasion_techniques", {})
+        if isinstance(evasion, dict) and evasion:
+            context_parts.append(_summarize_qiling_evasion(evasion))
+        api_calls = qiling_results.get("api_calls", {})
+        if isinstance(api_calls, dict) and api_calls:
+            context_parts.append(_summarize_qiling_api_calls(api_calls))
+        instruction_trace = qiling_results.get("instruction_trace", {})
+        if isinstance(instruction_trace, dict) and instruction_trace:
+            context_parts.append(_summarize_qiling_instruction_trace(instruction_trace))
+        if qiling_results.get("errors"):
+            context_parts.append(f"Qiling Errors: {qiling_results.get('errors')}")
 
     context = "\n".join(context_parts) if context_parts else "No analysis data available."
 

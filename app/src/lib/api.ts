@@ -53,6 +53,14 @@ export interface AnalyzerRawResults {
   call_graph?: CallGraphRaw;
   call_graph_analysis?: CallGraphAnalysis;
   decompiled?: Record<string, string>;
+  execution_trace?: Record<string, unknown>;
+  syscalls?: Record<string, unknown>;
+  api_calls?: Record<string, unknown>;
+  memory_events?: Record<string, unknown>;
+  network_activity?: Record<string, unknown>;
+  evasion_techniques?: Record<string, unknown>;
+  instruction_trace?: Record<string, unknown>;
+  errors?: unknown[];
 }
 
 // Upload a binary file for analysis
@@ -159,6 +167,12 @@ export async function getGhidraResults(hash: string): Promise<AnalyzerRawResults
 
 export async function getRadare2Results(hash: string): Promise<AnalyzerRawResults | null> {
   const res = await fetch(`${API_BASE}/api/analysis/${hash}/results/radare2`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function getQilingResults(hash: string): Promise<AnalyzerRawResults | null> {
+  const res = await fetch(`${API_BASE}/api/analysis/${hash}/results/qiling`);
   if (!res.ok) return null;
   return res.json();
 }

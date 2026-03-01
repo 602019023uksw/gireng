@@ -1,6 +1,6 @@
-# gireng — Ghidra and Radare Intelligent Reverse Engineering
+# gireng — Ghidra, Radare, and Qiling Intelligent Reverse Engineering
 
-> Dual-engine AI-powered binary analysis platform — **Ghidra + Radare2** orchestrated via LangGraph, with LLM-driven malware assessment, MITRE ATT&CK mapping, IOC extraction, and professional PDF/HTML reporting.
+> Tri-engine AI-powered binary analysis platform — **Ghidra + Radare2 + Qiling** orchestrated via LangGraph, with static + dynamic malware assessment, MITRE ATT&CK mapping, IOC extraction, and professional PDF/HTML reporting.
 
 ```
  ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -64,8 +64,8 @@
 
 ## Features
 
-- **Dual-engine analysis** — Ghidra and Radare2 run in parallel via `asyncio.gather()`
-- **LLM-powered synthesis** — Cross-references findings from both tools for comprehensive malware assessment
+- **Tri-engine analysis** — Ghidra, Radare2, and Qiling run in parallel via `asyncio.gather()`
+- **Hybrid static + dynamic synthesis** — Cross-references static disassembly with runtime behavior traces
 - **MITRE ATT&CK mapping** — Automatically maps observed behaviours to ATT&CK techniques
 - **IOC extraction** — IPs, URLs, domains, file paths, emails, registry keys, mutexes, crypto materials
 - **Call graph analysis** — Builds attack chains from entry points to suspicious sinks

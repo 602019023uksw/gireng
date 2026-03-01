@@ -247,6 +247,38 @@ async def query(request: QueryRequest) -> JSONResponse:
         for func_name, c_code in list(r2_decomp.items())[:10]:
             context_parts.append(f"\n--- {func_name} ---\n{c_code[:2000]}")
 
+    qiling_results = state.get("qiling_analysis_results", {})
+    if qiling_results:
+        context_parts.append("\n=== QILING DYNAMIC ANALYSIS ===")
+        execution = qiling_results.get("execution_trace", {})
+        if isinstance(execution, dict) and execution:
+            context_parts.append(
+                "Execution: "
+                f"success={execution.get('success')}, os={execution.get('os')}, "
+                f"arch={execution.get('arch')}, instructions={execution.get('instructions_executed')}, "
+                f"exit={execution.get('exit_reason')}"
+            )
+        syscalls = qiling_results.get("syscalls", {})
+        if isinstance(syscalls, dict) and syscalls:
+            context_parts.append(f"Qiling Syscalls: {syscalls.get('summary', {})}")
+        network = qiling_results.get("network_activity", {})
+        if isinstance(network, dict) and network:
+            context_parts.append(f"Qiling Network: {network.get('indicators', network)}")
+        evasion = qiling_results.get("evasion_techniques", {})
+        if isinstance(evasion, dict) and evasion:
+            context_parts.append(f"Qiling Evasion: {evasion.get('summary', evasion)}")
+        instr_trace = qiling_results.get("instruction_trace", {})
+        if isinstance(instr_trace, dict) and instr_trace:
+            summary = instr_trace.get("summary", {})
+            if isinstance(summary, dict) and summary.get("total_executed"):
+                top = summary.get("top_mnemonics", [])[:10]
+                top_str = ", ".join(f"{m.get('mnemonic')}:{m.get('count')}" for m in top if isinstance(m, dict))
+                context_parts.append(
+                    f"Qiling Instructions: total={summary.get('total_executed')}, "
+                    f"unique_mnemonics={summary.get('unique_mnemonics')}, "
+                    f"range={summary.get('address_range')}, top=[{top_str}]"
+                )
+
     # Include structured IOC extraction in the follow-up context.
     iocs = extract_iocs_from_state(state)
     verdict, _, indicators, score = calculate_verdict(iocs, state)
@@ -363,10 +395,25 @@ def _create_tracked_task(coro) -> asyncio.Task:
 async def _run_with_events(state: Dict[str, Any]) -> None:
     session_id = state["session_id"]
     try:
+        state.setdefault("analyzer_progress", {"ghidra": 0, "radare2": 0, "qiling": 0})
+        state.setdefault("analyzer_status", {"ghidra": "pending", "radare2": "pending", "qiling": "pending"})
+        state.setdefault("analyzer_step", {"ghidra": "", "radare2": "", "qiling": ""})
         state["started_at"] = time.time()
         state["started_at_iso"] = datetime.now(timezone.utc).isoformat()
         store.update_session(session_id, state)
-        await manager.broadcast(session_id, {"type": "analysis:progress", "session_id": session_id, "payload": {"status": "started"}})
+        await manager.broadcast(
+            session_id,
+            {
+                "type": "analysis:progress",
+                "session_id": session_id,
+                "payload": {
+                    "status": "started",
+                    "analyzer_progress": state.get("analyzer_progress", {}),
+                    "analyzer_status": state.get("analyzer_status", {}),
+                    "analyzer_step": state.get("analyzer_step", {}),
+                },
+            },
+        )
         await manager.broadcast(session_id, {"type": "message:typing", "session_id": session_id, "payload": {"status": "running"}})
         async def on_progress(step: str, pct: int) -> None:
             safe_pct = max(0, min(100, int(pct)))
@@ -378,7 +425,14 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
                 {
                     "type": "analysis:progress",
                     "session_id": session_id,
-                    "payload": {"status": "running", "step": step, "progress": safe_pct},
+                    "payload": {
+                        "status": "running",
+                        "step": step,
+                        "progress": safe_pct,
+                        "analyzer_progress": state.get("analyzer_progress", {}),
+                        "analyzer_status": state.get("analyzer_status", {}),
+                        "analyzer_step": state.get("analyzer_step", {}),
+                    },
                 },
             )
 
@@ -399,12 +453,37 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
             await db.save_normalized(result)
         except Exception as norm_exc:
             logger.warning("save_normalized_failed", session_id=session_id, error=str(norm_exc))
-        await manager.broadcast(session_id, {"type": "analysis:completed", "session_id": session_id, "payload": {"status": result["status"]}})
+        await manager.broadcast(
+            session_id,
+            {
+                "type": "analysis:completed",
+                "session_id": session_id,
+                "payload": {
+                    "status": result["status"],
+                    "analyzer_progress": result.get("analyzer_progress", {}),
+                    "analyzer_status": result.get("analyzer_status", {}),
+                    "analyzer_step": result.get("analyzer_step", {}),
+                },
+            },
+        )
     except Exception as exc:
         logger.error("run_with_events_failed", session_id=session_id, error=str(exc), exc_info=exc)
         state["status"] = "error"
         store.update_session(session_id, state)
-        await manager.broadcast(session_id, {"type": "analysis:error", "session_id": session_id, "payload": {"status": "error", "error": str(exc)}})
+        await manager.broadcast(
+            session_id,
+            {
+                "type": "analysis:error",
+                "session_id": session_id,
+                "payload": {
+                    "status": "error",
+                    "error": str(exc),
+                    "analyzer_progress": state.get("analyzer_progress", {}),
+                    "analyzer_status": state.get("analyzer_status", {}),
+                    "analyzer_step": state.get("analyzer_step", {}),
+                },
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -481,10 +560,23 @@ async def analysis_status(program_hash: str) -> JSONResponse:
         duration_str = ""
     started_iso = state.get("started_at_iso", "")
     completed_iso = state.get("completed_at_iso", "")
+    active_analyzers: list[str] = []
+    if state.get("analysis_results"):
+        active_analyzers.append("ghidra")
+    if state.get("r2_analysis_results"):
+        active_analyzers.append("radare2")
+    if state.get("qiling_analysis_results"):
+        active_analyzers.append("qiling")
+    if not active_analyzers:
+        # Backward-compatible default while analysis is still warming up.
+        active_analyzers = ["ghidra"]
+    analyzer_label = active_analyzers[0] if len(active_analyzers) == 1 else "multi"
+
     return JSONResponse({
         "hash": program_hash,
         "status": state["status"],
-        "analyzer": "ghidra",
+        "analyzer": analyzer_label,
+        "analyzers": active_analyzers,
         "duration": duration_str,
         "started": started_iso,
         "completed": completed_iso,
@@ -499,13 +591,15 @@ async def analysis_analyzers(program_hash: str) -> JSONResponse:
     analyzers = [build_analyzer_response(state, "ghidra")]
     if state.get("r2_analysis_results"):
         analyzers.append(build_analyzer_response(state, "radare2"))
+    if state.get("qiling_analysis_results"):
+        analyzers.append(build_analyzer_response(state, "qiling"))
     return JSONResponse(analyzers)
 
 
 @app.get("/api/analysis/{program_hash}/analyzers/{analyzer_id}")
 async def analysis_analyzer_detail(program_hash: str, analyzer_id: str) -> JSONResponse:
     state = await _resolve_by_hash(program_hash)
-    if state is None or analyzer_id not in ("ghidra", "radare2"):
+    if state is None or analyzer_id not in ("ghidra", "radare2", "qiling"):
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse(build_analyzer_response(state, analyzer_id))
 
@@ -588,6 +682,28 @@ async def radare2_results(program_hash: str) -> JSONResponse:
     })
 
 
+@app.get("/api/analysis/{program_hash}/results/qiling")
+async def qiling_results(program_hash: str) -> JSONResponse:
+    """Return raw Qiling dynamic analysis results."""
+    state = await _resolve_by_hash(program_hash)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    qiling = state.get("qiling_analysis_results", {})
+    if not qiling:
+        return JSONResponse({"error": "qiling analysis not available"}, status_code=404)
+    return JSONResponse({
+        "analyzer": "qiling",
+        "execution_trace": qiling.get("execution_trace", {}),
+        "syscalls": qiling.get("syscalls", {}),
+        "api_calls": qiling.get("api_calls", {}),
+        "memory_events": qiling.get("memory_events", {}),
+        "network_activity": qiling.get("network_activity", {}),
+        "evasion_techniques": qiling.get("evasion_techniques", {}),
+        "instruction_trace": qiling.get("instruction_trace", {}),
+        "errors": qiling.get("errors", []),
+    })
+
+
 @app.get("/api/models")
 async def models() -> JSONResponse:
     return JSONResponse(build_model_list())
@@ -633,9 +749,9 @@ async def export_session_html(session_id: str) -> HTMLResponse:
 
 @app.get("/export/session/{session_id}/agent/{agent}")
 async def export_session_agent_html(session_id: str, agent: str) -> HTMLResponse:
-    """Export per-agent report (ghidra or r2)."""
-    if agent.lower() not in ("ghidra", "r2", "radare2"):
-        return HTMLResponse("<h1>Invalid agent. Use 'ghidra' or 'r2'.</h1>", status_code=400)
+    """Export per-agent report (ghidra, r2/radare2, or qiling)."""
+    if agent.lower() not in ("ghidra", "r2", "radare2", "qiling"):
+        return HTMLResponse("<h1>Invalid agent. Use 'ghidra', 'r2', or 'qiling'.</h1>", status_code=400)
     try:
         state = store.get_session(session_id)
         html = build_agent_report_html(state, agent)

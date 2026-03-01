@@ -75,6 +75,28 @@ services:
       timeout: 3s
       retries: 10
 
+  qiling:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.qiling
+    container_name: qiling_emulator
+    entrypoint:
+      - "/bin/sh"
+      - "-c"
+      - |
+        python3 -c "import qiling; print('Qiling', qiling.__version__)"
+        touch /tmp/.qiling_ready
+        echo "Qiling container ready"
+        tail -f /dev/null
+    volumes:
+      - ghidra_shared:/data/shared
+      - ./backend/qiling_scripts:/opt/qiling/scripts
+    healthcheck:
+      test: ["CMD", "cat", "/tmp/.qiling_ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   postgres:
     image: postgres:16-alpine
     container_name: ireng_postgres
@@ -124,6 +146,8 @@ services:
         condition: service_healthy
       radare2:
         condition: service_healthy
+      qiling:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       langfuse:
@@ -150,6 +174,12 @@ services:
       R2_SHARED_ROOT: /data/shared
       R2_TIMEOUT: "60"
       ENABLE_R2: "true"
+      QILING_CONTAINER_NAME: qiling_emulator
+      QILING_SHARED_ROOT: /data/shared
+      QILING_SCRIPTS_ROOT: /opt/qiling/scripts
+      QILING_ROOTFS_BASE: /opt/qiling/rootfs
+      QILING_TIMEOUT: "60"
+      ENABLE_QILING: "true"
       DATABASE_URL: postgresql://ireng:${POSTGRES_PASSWORD:-ireng_secret}@postgres:5432/ireng
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}

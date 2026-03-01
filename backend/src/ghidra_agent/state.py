@@ -22,9 +22,15 @@ class AgentState(TypedDict):
     progress_callback: Any
     review_approved: bool
     summary: str
+    analyzer_progress: Dict[str, int]
+    analyzer_status: Dict[str, str]
+    analyzer_step: Dict[str, str]
     # Radare2 results (parallel to Ghidra)
     r2_analysis_results: Dict[str, Any]
     r2_decompilation_cache: Dict[str, str]
+    # Qiling results (dynamic analysis)
+    qiling_analysis_results: Dict[str, Any]
+    qiling_execution_cache: Dict[str, Any]
 
 
 DEFAULT_STATE: AgentState = {
@@ -46,8 +52,13 @@ DEFAULT_STATE: AgentState = {
     "progress_callback": None,
     "review_approved": False,
     "summary": "",
+    "analyzer_progress": {"ghidra": 0, "radare2": 0, "qiling": 0},
+    "analyzer_status": {"ghidra": "pending", "radare2": "pending", "qiling": "pending"},
+    "analyzer_step": {"ghidra": "", "radare2": "", "qiling": ""},
     "r2_analysis_results": {},
     "r2_decompilation_cache": {},
+    "qiling_analysis_results": {},
+    "qiling_execution_cache": {},
 }
 
 
@@ -71,5 +82,16 @@ class AgentStateModel(BaseModel):
     progress_callback: Any = Field(default=None, exclude=True)
     review_approved: bool = False
     summary: str = ""
+    analyzer_progress: Dict[str, int] = Field(
+        default_factory=lambda: {"ghidra": 0, "radare2": 0, "qiling": 0}
+    )
+    analyzer_status: Dict[str, str] = Field(
+        default_factory=lambda: {"ghidra": "pending", "radare2": "pending", "qiling": "pending"}
+    )
+    analyzer_step: Dict[str, str] = Field(
+        default_factory=lambda: {"ghidra": "", "radare2": "", "qiling": ""}
+    )
     r2_analysis_results: Dict[str, Any] = Field(default_factory=dict)
     r2_decompilation_cache: Dict[str, str] = Field(default_factory=dict)
+    qiling_analysis_results: Dict[str, Any] = Field(default_factory=dict)
+    qiling_execution_cache: Dict[str, Any] = Field(default_factory=dict)

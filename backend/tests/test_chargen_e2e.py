@@ -529,7 +529,7 @@ class TestChargenUIAdapter:
 class TestChargenReporting:
     """Test report generation with chargen data."""
 
-    def _make_state(self):
+    def _make_state(self, include_qiling: bool = False):
         state = deepcopy(DEFAULT_STATE)
         state["session_id"] = "chargen-report"
         state["program_hash"] = compute_sha256(CHARGEN_PATH)
@@ -552,6 +552,46 @@ class TestChargenReporting:
             "strings": deepcopy(CHARGEN_STRINGS_R2),
         }
         state["r2_decompilation_cache"] = {"main": CHARGEN_DECOMPILE_R2["c"]}
+        if include_qiling:
+            state["qiling_analysis_results"] = {
+                "execution_trace": {
+                    "ok": True,
+                    "success": True,
+                    "binary_format": "elf",
+                    "arch": "x86_64",
+                    "os": "linux",
+                    "instructions_executed": 512,
+                },
+                "syscalls": {
+                    "ok": True,
+                    "success": True,
+                    "syscalls": [
+                        {"name": "socket", "address": "0x401000", "category": "network", "args": [2, 1, 0]},
+                        {"name": "connect", "address": "0x401020", "category": "network", "args": [3, "1.2.3.4:19", 16]},
+                    ],
+                    "summary": {"total_calls": 2, "categories": {"network": 2}, "suspicious_calls": []},
+                },
+                "network_activity": {
+                    "ok": True,
+                    "success": True,
+                    "connections": [{"type": "tcp_connect", "address": "1.2.3.4", "port": 19}],
+                    "dns_queries": [],
+                    "data_sent": [],
+                    "indicators": {"c2_candidates": ["1.2.3.4:19"]},
+                },
+                "memory_events": {
+                    "ok": True,
+                    "success": True,
+                    "events": [],
+                    "indicators": {"self_modifying_code": False, "unpacking_detected": False},
+                },
+                "evasion_techniques": {
+                    "ok": True,
+                    "success": True,
+                    "techniques": [],
+                    "summary": {"total_techniques": 0, "risk_level": "low", "mitre_tactics": []},
+                },
+            }
         return state
 
     def test_html_report_generation(self):
@@ -568,6 +608,21 @@ class TestChargenReporting:
         text = build_report_text(state)
         assert len(text) > 0
         assert "chargen" in text.lower() or "Chargen" in text
+
+    def test_html_report_generation_with_qiling_dynamic_section(self):
+        from ghidra_agent.reporting import build_report_html
+        state = self._make_state(include_qiling=True)
+        html = build_report_html(state)
+        assert "Qiling Dynamic Analysis" in html
+        assert "11 · Runtime Behavior" in html
+        assert "12 · Detection Inputs" in html
+
+    def test_text_report_generation_with_qiling_dynamic_section(self):
+        from ghidra_agent.reporting import build_report_text
+        state = self._make_state(include_qiling=True)
+        text = build_report_text(state)
+        assert "GHIDRA + RADARE2 + QILING BINARY ANALYSIS REPORT" in text
+        assert "QILING DYNAMIC ANALYSIS" in text
 
 
 class TestChargenAPI:
@@ -748,7 +803,8 @@ class TestChargenStateIntegrity:
         required_fields = [
             "binary_path", "program_hash", "current_address", "current_function",
             "analysis_results", "decompilation_cache", "r2_analysis_results",
-            "r2_decompilation_cache", "user_query", "reasoning_trace",
+            "r2_decompilation_cache", "qiling_analysis_results", "qiling_execution_cache",
+            "user_query", "reasoning_trace",
             "pending_actions", "write_mode_enabled", "session_id", "intent",
             "status", "review_approved", "summary",
         ]
@@ -777,6 +833,18 @@ class TestChargenStateIntegrity:
         assert m.r2_analysis_results == {}
         assert m.r2_decompilation_cache == {}
 
+    def test_agent_state_model_has_qiling_fields(self):
+        from ghidra_agent.state import AgentStateModel
+        m = AgentStateModel(
+            binary_path="/test",
+            program_hash="abc",
+            session_id="s1",
+        )
+        assert hasattr(m, "qiling_analysis_results")
+        assert hasattr(m, "qiling_execution_cache")
+        assert m.qiling_analysis_results == {}
+        assert m.qiling_execution_cache == {}
+
 
 class TestChargenConfig:
     """Validate configuration for dual-agent setup."""
@@ -791,6 +859,13 @@ class TestChargenConfig:
         assert s.r2_container_name == "radare2"
         assert s.r2_timeout == 90
         assert s.enable_r2 is True
+
+    def test_qiling_settings_exist(self):
+        from ghidra_agent.config import Settings
+        s = Settings()
+        assert hasattr(s, "qiling_container_name")
+        assert hasattr(s, "qiling_timeout")
+        assert hasattr(s, "enable_qiling")
 
     def test_llm_provider_setting(self):
         from ghidra_agent.config import Settings

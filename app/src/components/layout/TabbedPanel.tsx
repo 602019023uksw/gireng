@@ -1,23 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { X, LayoutGrid, FileCode, FileText, FileCheck, Download, ChevronDown } from 'lucide-react';
+import { X, LayoutGrid, FileCode, FileText, FileCheck, Download, ChevronDown, Activity } from 'lucide-react';
 import type { FileNode, Analysis, Report, CodeFile } from '@/types';
 import { TagCloud } from '@/components/analysis/TagCloud';
 import { ChevronRight, FolderOpen } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { MarkdownContent } from '@/components/common/MarkdownContent';
 import { getExportHtmlUrl, getExportTextUrl, getExportPdfUrl } from '@/lib/api';
+import type { AnalyzerRawResults } from '@/lib/api';
+import { QilingResultsView } from '@/components/analysis/QilingResultsView';
 
 interface TabbedPanelProps {
   files: FileNode[];
   analyses: Analysis[];
   reports: Report[];
   codeFiles: CodeFile[];
-  activeTab: 'resources' | 'code' | 'report';
+  activeTab: 'resources' | 'code' | 'report' | 'dynamic';
   activeCodeFileId?: string;
   activeReport?: Report | null;
   programHash?: string | null;
-  onTabChange: (tab: 'resources' | 'code' | 'report') => void;
+  qilingResults?: AnalyzerRawResults | null;
+  onTabChange: (tab: 'resources' | 'code' | 'report' | 'dynamic') => void;
   onCodeFileChange: (fileId: string) => void;
   onReportSelect?: (reportId: string) => void;
   onClose: () => void;
@@ -218,6 +221,7 @@ export function TabbedPanel({
   activeCodeFileId,
   activeReport,
   programHash,
+  qilingResults,
   onTabChange,
   onCodeFileChange,
   onReportSelect,
@@ -368,6 +372,24 @@ export function TabbedPanel({
           </div>
         );
 
+      case 'dynamic':
+        return (
+          <div className="flex flex-col h-full">
+            <div className="flex-1 overflow-y-auto scrollbar-dark p-4">
+              <h3 className="text-lg font-semibold text-text-primary mb-4">
+                Qiling Dynamic Analysis
+              </h3>
+              {qilingResults ? (
+                <QilingResultsView results={qilingResults} />
+              ) : (
+                <div className="text-sm text-text-muted italic">
+                  No dynamic analysis data available.
+                </div>
+              )}
+            </div>
+          </div>
+        );
+
       default:
         return null;
     }
@@ -424,6 +446,26 @@ export function TabbedPanel({
               </span>
             )}
           </button>
+
+          {/* Dynamic Analysis Tab - only show if data exists */}
+          {qilingResults && (
+            <button
+              onClick={() => onTabChange('dynamic')}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+                activeTab === 'dynamic'
+                  ? 'text-text-primary'
+                  : 'text-text-secondary hover:text-text-primary'
+              }`}
+              style={{
+                background: activeTab === 'dynamic'
+                  ? 'rgba(88, 166, 255, 0.15)'
+                  : 'transparent',
+              }}
+            >
+              <Activity className="w-4 h-4" />
+              <span>Dynamic</span>
+            </button>
+          )}
         </div>
 
         <button

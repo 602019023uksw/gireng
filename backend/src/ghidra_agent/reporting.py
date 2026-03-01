@@ -1193,6 +1193,438 @@ def _render_call_graph_section(source: str, analysis: Dict[str, Any]) -> str:
     )
 
 
+def _render_qiling_dynamic_section(qiling: Dict[str, Any]) -> str:
+    if not isinstance(qiling, dict) or not qiling:
+        return '<p class="text-sm text-slate-500 italic">Qiling dynamic analysis not available for this sample.</p>'
+
+    cards: List[str] = []
+
+    # ── 1. Execution Overview Card ──────────────────────────────────────
+    execution = qiling.get("execution_trace", {})
+    if isinstance(execution, dict) and execution:
+        success = execution.get("success", False)
+        status_color = "emerald" if success else "red"
+        status_icon = "fa-check-circle" if success else "fa-times-circle"
+        status_text = "Completed" if success else "Failed / Partial"
+        instr_count = execution.get("instructions_executed", 0)
+        duration = execution.get("duration_ms", 0)
+        exit_reason = escape(str(execution.get("exit_reason", "unknown")))
+        os_name = escape(str(execution.get("os", "unknown")))
+        arch_name = escape(str(execution.get("arch", "unknown")))
+
+        metrics_html = f'''
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+                <div class="bg-[#060B14] rounded-lg p-3 border border-[#131e36] text-center">
+                    <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Status</div>
+                    <div class="text-sm font-bold text-{status_color}-400"><i class="fas {status_icon} mr-1"></i>{status_text}</div>
+                </div>
+                <div class="bg-[#060B14] rounded-lg p-3 border border-[#131e36] text-center">
+                    <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Instructions</div>
+                    <div class="text-sm font-bold text-cyan-400 font-mono">{instr_count:,}</div>
+                </div>
+                <div class="bg-[#060B14] rounded-lg p-3 border border-[#131e36] text-center">
+                    <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Duration</div>
+                    <div class="text-sm font-bold text-blue-400">{duration:,} ms</div>
+                </div>
+                <div class="bg-[#060B14] rounded-lg p-3 border border-[#131e36] text-center">
+                    <div class="text-xs text-slate-500 uppercase tracking-wider mb-1">Exit Reason</div>
+                    <div class="text-sm font-bold text-slate-300 truncate" title="{exit_reason}">{exit_reason}</div>
+                </div>
+            </div>
+            <div class="flex flex-wrap gap-2 mt-3">
+                <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300"><i class="fas fa-desktop mr-1 text-slate-500"></i>{os_name}</span>
+                <span class="px-2.5 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs text-slate-300"><i class="fas fa-microchip mr-1 text-slate-500"></i>{arch_name}</span>
+            </div>'''
+
+        cards.append(
+            '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
+            '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
+            '<div class="w-7 h-7 rounded-lg bg-cyan-900/30 text-cyan-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-play-circle"></i></div>'
+            '<h3 class="font-bold text-white text-sm">Execution Overview</h3></div>'
+            f'<div class="p-5">{metrics_html}</div></div>'
+        )
+
+    # ── 2. Instruction Trace Card ───────────────────────────────────────
+    instruction_trace = qiling.get("instruction_trace", {})
+    if isinstance(instruction_trace, dict) and instruction_trace:
+        it_summary = instruction_trace.get("summary", {})
+        total_insn = it_summary.get("total_instructions", 0) if isinstance(it_summary, dict) else 0
+        unique_insn = it_summary.get("unique_instructions", 0) if isinstance(it_summary, dict) else 0
+
+        # Mnemonic frequency badges
+        freq = it_summary.get("mnemonic_frequency", {}) if isinstance(it_summary, dict) else {}
+        mnemonic_badges = ""
+        if isinstance(freq, dict) and freq:
+            sorted_freq = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:20]
+            badge_items = []
+            for mnem, count in sorted_freq:
+                pct = (count / total_insn * 100) if total_insn > 0 else 0
+                # Color-code by category
+                if mnem in ("call", "ret", "syscall", "int", "svc"):
+                    badge_color = "red"
+                elif mnem in ("jmp", "je", "jne", "jz", "jnz", "jg", "jl", "jge", "jle", "ja", "jb", "jae", "jbe", "jc", "jnc", "jo", "jno", "js", "jns", "b", "bl", "bx", "beq", "bne"):
+                    badge_color = "amber"
+                elif mnem in ("push", "pop", "mov", "lea", "ldr", "str", "stp", "ldp"):
+                    badge_color = "blue"
+                else:
+                    badge_color = "slate"
+                badge_items.append(
+                    f'<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-{badge_color}-900/30 border border-{badge_color}-700/50 text-xs">'
+                    f'<span class="font-mono text-{badge_color}-400">{escape(str(mnem))}</span>'
+                    f'<span class="text-{badge_color}-500">{count:,}</span>'
+                    f'<span class="text-{badge_color}-600 text-[10px]">({pct:.1f}%)</span></span>'
+                )
+            mnemonic_badges = f'<div class="flex flex-wrap gap-1.5 mt-3">{" ".join(badge_items)}</div>'
+
+        # OEP candidates
+        oep_candidates = instruction_trace.get("oep_candidates", [])
+        oep_html = ""
+        if isinstance(oep_candidates, list) and oep_candidates:
+            oep_rows = []
+            for oep in oep_candidates[:5]:
+                if isinstance(oep, dict):
+                    conf = oep.get("confidence", "unknown")
+                    conf_color = "emerald" if conf == "high" else "amber" if conf == "medium" else "slate"
+                    oep_rows.append(
+                        f'<div class="flex items-center gap-3 px-3 py-2 bg-[#060B14] rounded-lg border border-[#131e36]">'
+                        f'<span class="font-mono text-xs text-cyan-400">{escape(str(oep.get("address", "?")))}</span>'
+                        f'<span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-{conf_color}-900/30 text-{conf_color}-400 border border-{conf_color}-700/50">{escape(str(conf))}</span>'
+                        f'<span class="text-xs text-slate-400">{escape(str(oep.get("reason", "")))}</span></div>'
+                    )
+            if oep_rows:
+                oep_html = (
+                    '<div class="mt-4">'
+                    '<div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2"><i class="fas fa-crosshairs mr-1"></i>Original Entry Point Candidates</div>'
+                    f'<div class="space-y-1.5">{"".join(oep_rows)}</div></div>'
+                )
+
+        # Sample instructions (first + last)
+        instructions = instruction_trace.get("instructions", [])
+        sample_html = ""
+        if isinstance(instructions, list) and instructions:
+            sample_lines = []
+            display_insns = instructions[:8]
+            if len(instructions) > 16:
+                display_insns = instructions[:8] + [None] + instructions[-8:]
+            for insn in display_insns:
+                if insn is None:
+                    sample_lines.append(f'<div class="text-center text-xs text-slate-600 py-0.5">⋮ {len(instructions) - 16:,} more instructions ⋮</div>')
+                elif isinstance(insn, dict):
+                    addr = escape(str(insn.get("address", "")))
+                    mnem = escape(str(insn.get("mnemonic", "")))
+                    ops = escape(str(insn.get("operands", "")))
+                    sample_lines.append(
+                        f'<div class="flex gap-3 font-mono text-xs leading-relaxed">'
+                        f'<span class="text-slate-600 w-24 flex-shrink-0">{addr}</span>'
+                        f'<span class="text-cyan-400 w-12 flex-shrink-0">{mnem}</span>'
+                        f'<span class="text-slate-400">{ops}</span></div>'
+                    )
+            if sample_lines:
+                sample_html = (
+                    '<div class="mt-4">'
+                    '<div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2"><i class="fas fa-code mr-1"></i>Instruction Sample</div>'
+                    f'<div class="bg-[#060B14] rounded-lg p-3 border border-[#131e36] overflow-x-auto">{"".join(sample_lines)}</div></div>'
+                )
+
+        cards.append(
+            '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
+            '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
+            '<div class="w-7 h-7 rounded-lg bg-violet-900/30 text-violet-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-microchip"></i></div>'
+            '<h3 class="font-bold text-white text-sm">Instruction Trace</h3>'
+            f'<span class="ml-auto px-2 py-0.5 rounded-full bg-violet-900/30 text-violet-400 text-xs font-mono">{total_insn:,} total · {unique_insn:,} unique</span></div>'
+            f'<div class="p-5">{mnemonic_badges}{oep_html}{sample_html}</div></div>'
+        )
+
+    # ── 3. Syscall Analysis Card ────────────────────────────────────────
+    syscalls = qiling.get("syscalls", {})
+    if isinstance(syscalls, dict) and syscalls:
+        summary = syscalls.get("summary", {})
+        if isinstance(summary, dict) and summary:
+            total_calls = summary.get("total_calls", 0)
+            categories = summary.get("categories", {})
+
+            # Category breakdown as mini-bars
+            cat_html = ""
+            if isinstance(categories, dict) and categories:
+                sorted_cats = sorted(categories.items(), key=lambda x: x[1], reverse=True)
+                cat_items = []
+                max_count = max(categories.values()) if categories else 1
+                _cat_colors = ["cyan", "blue", "violet", "amber", "emerald", "rose", "slate"]
+                for idx, (cat_name, cat_count) in enumerate(sorted_cats[:7]):
+                    pct = (cat_count / total_calls * 100) if total_calls > 0 else 0
+                    bar_width = max(5, int(cat_count / max_count * 100))
+                    color = _cat_colors[idx % len(_cat_colors)]
+                    cat_items.append(
+                        f'<div class="flex items-center gap-3">'
+                        f'<span class="text-xs text-slate-400 w-28 flex-shrink-0 truncate" title="{escape(str(cat_name))}">{escape(str(cat_name))}</span>'
+                        f'<div class="flex-1 bg-[#060B14] rounded-full h-2 overflow-hidden"><div class="h-full bg-{color}-500 rounded-full" style="width:{bar_width}%"></div></div>'
+                        f'<span class="text-xs font-mono text-{color}-400 w-16 text-right">{cat_count:,} <span class="text-slate-600">({pct:.0f}%)</span></span></div>'
+                    )
+                cat_html = f'<div class="space-y-2 mt-3">{"".join(cat_items)}</div>'
+
+            # Suspicious syscalls
+            suspicious = summary.get("suspicious_calls", [])
+            suspicious_html = ""
+            if isinstance(suspicious, list) and suspicious:
+                sus_items = []
+                for item in suspicious[:12]:
+                    name = item.get("name", str(item)) if isinstance(item, dict) else str(item)
+                    reason = item.get("reason", "") if isinstance(item, dict) else ""
+                    sus_items.append(
+                        f'<span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-900/30 border border-red-700/50 text-xs">'
+                        f'<i class="fas fa-exclamation-triangle text-[9px] text-red-500"></i>'
+                        f'<span class="text-red-400">{escape(str(name))}</span></span>'
+                    )
+                suspicious_html = (
+                    '<div class="mt-4">'
+                    '<div class="text-xs font-bold text-red-400 uppercase tracking-wider mb-2"><i class="fas fa-shield-alt mr-1"></i>Suspicious Syscalls</div>'
+                    f'<div class="flex flex-wrap gap-1.5">{"".join(sus_items)}</div></div>'
+                )
+
+            cards.append(
+                '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
+                '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
+                '<div class="w-7 h-7 rounded-lg bg-blue-900/30 text-blue-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-terminal"></i></div>'
+                '<h3 class="font-bold text-white text-sm">Syscall Analysis</h3>'
+                f'<span class="ml-auto px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 text-xs font-mono">{total_calls:,} calls</span></div>'
+                f'<div class="p-5">{cat_html}{suspicious_html}</div></div>'
+            )
+
+    # ── 4. API Calls Card ───────────────────────────────────────────────
+    api_calls = qiling.get("api_calls", {})
+    if isinstance(api_calls, dict) and api_calls:
+        api_summary = api_calls.get("summary", {})
+        api_list = api_calls.get("api_calls", [])
+        if isinstance(api_summary, dict):
+            api_total = api_summary.get("total_calls", len(api_list) if isinstance(api_list, list) else 0)
+            modules = api_summary.get("modules_used", [])
+            suspicious_apis = api_summary.get("suspicious_apis", [])
+
+            # Module badges
+            mod_html = ""
+            if isinstance(modules, list) and modules:
+                mod_items = [
+                    f'<span class="px-2 py-0.5 rounded-full bg-emerald-900/30 border border-emerald-700/50 text-xs text-emerald-400">{escape(str(m))}</span>'
+                    for m in modules[:15]
+                ]
+                mod_html = f'<div class="flex flex-wrap gap-1.5 mt-2">{"".join(mod_items)}</div>'
+
+            # Suspicious API list
+            sus_api_html = ""
+            if isinstance(suspicious_apis, list) and suspicious_apis:
+                sus_rows = []
+                for api in suspicious_apis[:10]:
+                    if isinstance(api, dict):
+                        api_name = escape(str(api.get("name", "unknown")))
+                        api_reason = escape(str(api.get("reason", "")))
+                        api_count = api.get("count", 1)
+                        sus_rows.append(
+                            f'<div class="flex items-center gap-3 px-3 py-2 bg-[#060B14] rounded-lg border border-red-900/30">'
+                            f'<i class="fas fa-bug text-xs text-red-500"></i>'
+                            f'<span class="text-sm font-mono text-red-400">{api_name}</span>'
+                            f'<span class="text-xs text-slate-500">×{api_count}</span>'
+                            f'<span class="text-xs text-slate-400 ml-auto">{api_reason}</span></div>'
+                        )
+                if sus_rows:
+                    sus_api_html = (
+                        '<div class="mt-4">'
+                        '<div class="text-xs font-bold text-red-400 uppercase tracking-wider mb-2"><i class="fas fa-bug mr-1"></i>Suspicious APIs</div>'
+                        f'<div class="space-y-1.5">{"".join(sus_rows)}</div></div>'
+                    )
+
+            cards.append(
+                '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
+                '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
+                '<div class="w-7 h-7 rounded-lg bg-emerald-900/30 text-emerald-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-plug"></i></div>'
+                '<h3 class="font-bold text-white text-sm">Win32 API Calls</h3>'
+                f'<span class="ml-auto px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400 text-xs font-mono">{api_total:,} calls</span></div>'
+                f'<div class="p-5">{mod_html}{sus_api_html}</div></div>'
+            )
+
+    # ── 5. Network Activity Card ────────────────────────────────────────
+    network = qiling.get("network_activity", {})
+    if isinstance(network, dict) and network:
+        indicators = network.get("indicators", {}) if isinstance(network, dict) else {}
+        connections = network.get("connections", [])
+        dns_queries = network.get("dns_queries", [])
+
+        net_rows: List[str] = []
+
+        # C2 candidates
+        c2 = indicators.get("c2_candidates", []) if isinstance(indicators, dict) else []
+        if isinstance(c2, list) and c2:
+            c2_items = [
+                f'<span class="px-2 py-0.5 rounded-full bg-red-900/30 border border-red-700/50 text-xs text-red-400 font-mono">{escape(str(v))}</span>'
+                for v in c2[:15]
+            ]
+            net_rows.append(
+                '<div class="mt-2"><div class="text-xs font-bold text-red-400 uppercase tracking-wider mb-2"><i class="fas fa-satellite-dish mr-1"></i>C2 Candidates</div>'
+                f'<div class="flex flex-wrap gap-1.5">{"".join(c2_items)}</div></div>'
+            )
+
+        # DNS domains
+        dns_domains = indicators.get("dns_domains", []) if isinstance(indicators, dict) else []
+        if isinstance(dns_domains, list) and dns_domains:
+            dns_items = [
+                f'<span class="px-2 py-0.5 rounded-full bg-amber-900/30 border border-amber-700/50 text-xs text-amber-400 font-mono">{escape(str(d))}</span>'
+                for d in dns_domains[:15]
+            ]
+            net_rows.append(
+                '<div class="mt-3"><div class="text-xs font-bold text-amber-400 uppercase tracking-wider mb-2"><i class="fas fa-globe mr-1"></i>DNS Domains</div>'
+                f'<div class="flex flex-wrap gap-1.5">{"".join(dns_items)}</div></div>'
+            )
+
+        # Protocols
+        protocols = indicators.get("protocols_used", []) if isinstance(indicators, dict) else []
+        if isinstance(protocols, list) and protocols:
+            proto_items = [
+                f'<span class="px-2 py-0.5 rounded-full bg-blue-900/30 border border-blue-700/50 text-xs text-blue-400">{escape(str(p))}</span>'
+                for p in protocols[:10]
+            ]
+            net_rows.append(
+                f'<div class="flex flex-wrap gap-1.5 mt-3">{"".join(proto_items)}</div>'
+            )
+
+        # Connection table
+        if isinstance(connections, list) and connections:
+            conn_rows = []
+            for conn in connections[:10]:
+                if isinstance(conn, dict):
+                    conn_rows.append(
+                        f'<tr class="border-b border-[#131e36]">'
+                        f'<td class="px-3 py-1.5 text-xs font-mono text-slate-300">{escape(str(conn.get("dst_ip", "?")))}</td>'
+                        f'<td class="px-3 py-1.5 text-xs font-mono text-slate-400">{escape(str(conn.get("dst_port", "?")))}</td>'
+                        f'<td class="px-3 py-1.5 text-xs text-slate-400">{escape(str(conn.get("protocol", "?")))}</td>'
+                        f'<td class="px-3 py-1.5 text-xs text-slate-500">{escape(str(conn.get("type", "")))}</td></tr>'
+                    )
+            if conn_rows:
+                net_rows.append(
+                    '<div class="mt-3 overflow-x-auto"><table class="w-full text-left">'
+                    '<thead><tr class="border-b border-slate-700">'
+                    '<th class="px-3 py-1.5 text-[10px] text-slate-500 uppercase">Destination</th>'
+                    '<th class="px-3 py-1.5 text-[10px] text-slate-500 uppercase">Port</th>'
+                    '<th class="px-3 py-1.5 text-[10px] text-slate-500 uppercase">Protocol</th>'
+                    '<th class="px-3 py-1.5 text-[10px] text-slate-500 uppercase">Type</th>'
+                    f'</tr></thead><tbody>{"".join(conn_rows)}</tbody></table></div>'
+                )
+
+        if net_rows:
+            conn_count = len(connections) if isinstance(connections, list) else 0
+            cards.append(
+                '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
+                '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
+                '<div class="w-7 h-7 rounded-lg bg-red-900/30 text-red-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-network-wired"></i></div>'
+                '<h3 class="font-bold text-white text-sm">Network Activity</h3>'
+                f'<span class="ml-auto px-2 py-0.5 rounded-full bg-red-900/30 text-red-400 text-xs font-mono">{conn_count} connections</span></div>'
+                f'<div class="p-5">{"".join(net_rows)}</div></div>'
+            )
+
+    # ── 6. Memory Indicators Card ───────────────────────────────────────
+    memory = qiling.get("memory_events", {})
+    if isinstance(memory, dict) and memory:
+        mem_payload = memory.get("memory_events", memory)
+        if isinstance(mem_payload, dict):
+            indicators = mem_payload.get("indicators", {})
+            if isinstance(indicators, dict) and indicators:
+                ind_items = []
+                for key, val in indicators.items():
+                    if isinstance(val, bool):
+                        icon = "fa-check text-emerald-400" if val else "fa-times text-slate-600"
+                        val_text = "Yes" if val else "No"
+                        val_color = "emerald" if val else "slate"
+                    elif isinstance(val, (int, float)):
+                        icon = "fa-chart-bar text-cyan-400"
+                        val_text = f"{val:,}" if isinstance(val, int) else f"{val:.2f}"
+                        val_color = "cyan"
+                    else:
+                        icon = "fa-info-circle text-blue-400"
+                        val_text = str(val)
+                        val_color = "blue"
+                    ind_items.append(
+                        f'<div class="flex items-center justify-between px-3 py-2 bg-[#060B14] rounded-lg border border-[#131e36]">'
+                        f'<span class="flex items-center gap-2 text-xs text-slate-400"><i class="fas {icon} text-[10px]"></i>{escape(str(key).replace("_", " ").title())}</span>'
+                        f'<span class="text-xs font-bold text-{val_color}-400">{escape(str(val_text))}</span></div>'
+                    )
+                if ind_items:
+                    cards.append(
+                        '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
+                        '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
+                        '<div class="w-7 h-7 rounded-lg bg-amber-900/30 text-amber-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-memory"></i></div>'
+                        '<h3 class="font-bold text-white text-sm">Memory Indicators</h3></div>'
+                        f'<div class="p-5"><div class="grid grid-cols-1 md:grid-cols-2 gap-2">{"".join(ind_items)}</div></div></div>'
+                    )
+
+    # ── 7. Evasion Techniques Card ──────────────────────────────────────
+    evasion = qiling.get("evasion_techniques", {})
+    if isinstance(evasion, dict) and evasion:
+        ev_summary = evasion.get("summary", {})
+        techniques = evasion.get("techniques", [])
+
+        if isinstance(ev_summary, dict) and ev_summary:
+            total_tech = ev_summary.get("total_techniques", 0)
+            risk_level = str(ev_summary.get("risk_level", "low"))
+            risk_colors = {"critical": "red", "high": "red", "medium": "amber", "low": "emerald"}
+            risk_color = risk_colors.get(risk_level.lower(), "slate")
+
+            tech_cards = []
+            if isinstance(techniques, list):
+                for tech in techniques[:12]:
+                    if isinstance(tech, dict):
+                        method = escape(str(tech.get("method", "unknown")))
+                        mitre_id = escape(str(tech.get("mitre_id", "N/A")))
+                        description = escape(str(tech.get("description", "")))
+                        category = escape(str(tech.get("category", "")))
+                        tech_cards.append(
+                            f'<div class="bg-[#060B14] rounded-lg p-3 border border-{risk_color}-900/30">'
+                            f'<div class="flex items-center gap-2 mb-1">'
+                            f'<span class="text-sm font-bold text-{risk_color}-400">{method}</span>'
+                            f'<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-{risk_color}-900/30 text-{risk_color}-400 border border-{risk_color}-700/50">{mitre_id}</span>'
+                            f'</div>'
+                            f'<div class="text-xs text-slate-400">{description}</div>'
+                            f'{"<div class=&quot;text-[10px] text-slate-600 mt-1&quot;>" + category + "</div>" if category else ""}'
+                            f'</div>'
+                        )
+
+            tech_grid = f'<div class="grid grid-cols-1 md:grid-cols-2 gap-2 mt-3">{"".join(tech_cards)}</div>' if tech_cards else ''
+
+            cards.append(
+                '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
+                '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
+                '<div class="w-7 h-7 rounded-lg bg-rose-900/30 text-rose-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-user-secret"></i></div>'
+                '<h3 class="font-bold text-white text-sm">Evasion Techniques</h3>'
+                f'<span class="ml-auto flex items-center gap-2">'
+                f'<span class="px-2 py-0.5 rounded-full bg-{risk_color}-900/30 text-{risk_color}-400 text-xs font-bold uppercase">{escape(risk_level)} risk</span>'
+                f'<span class="px-2 py-0.5 rounded-full bg-rose-900/30 text-rose-400 text-xs font-mono">{total_tech} techniques</span></span></div>'
+                f'<div class="p-5">{tech_grid}</div></div>'
+            )
+
+    # ── 8. Errors Card (if any) ─────────────────────────────────────────
+    errors = qiling.get("errors", [])
+    if isinstance(errors, list) and errors:
+        err_items = [
+            f'<div class="flex items-start gap-2 px-3 py-2 bg-[#060B14] rounded-lg border border-orange-900/30">'
+            f'<i class="fas fa-exclamation-triangle text-xs text-orange-500 mt-0.5"></i>'
+            f'<span class="text-xs text-orange-400">{escape(str(e))}</span></div>'
+            for e in errors[:10]
+        ]
+        cards.append(
+            '<div class="bg-[#0B1324] rounded-xl border border-orange-900/30 overflow-hidden">'
+            '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-orange-900/30">'
+            '<div class="w-7 h-7 rounded-lg bg-orange-900/30 text-orange-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-exclamation-circle"></i></div>'
+            '<h3 class="font-bold text-orange-400 text-sm">Emulation Warnings</h3></div>'
+            f'<div class="p-5 space-y-1.5">{"".join(err_items)}</div></div>'
+        )
+
+    if not cards:
+        return (
+            '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] p-8 text-center">'
+            '<i class="fas fa-vial text-3xl text-slate-600 mb-3"></i>'
+            '<p class="text-sm text-slate-500">Qiling ran but returned no dynamic telemetry.</p></div>'
+        )
+
+    return f'<div class="space-y-4">{"".join(cards)}</div>'
+
+
 # ---------------------------------------------------------------------------
 # Suspicious API patterns for code evidence section.
 # Uses *word-boundary* matching (not substring) to avoid false positives.
@@ -1354,6 +1786,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
 
     analysis_results = state.get("analysis_results", {})
     r2_results = state.get("r2_analysis_results", {})
+    qiling_results = state.get("qiling_analysis_results", {})
     binary = analysis_results.get("binary", {})
     r2_binary = r2_results.get("binary", {})
     funcs = analysis_results.get("functions", {})
@@ -1387,6 +1820,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
     operational_md = _extract_section(summary_text, "Operational Flow")
     evidence_md = _extract_section(summary_text, "Evidence of Malicious Activity")
     conclusion_text = _extract_section(summary_text, "Conclusion")
+    dynamic_analysis_md = _extract_section(summary_text, "Dynamic Analysis")
     evidence_items = _extract_evidence(summary_text)
     recommendations = _extract_recommendations(summary_text)
 
@@ -1396,6 +1830,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
     technical_html = _render_technical_cards(technical_md)
     functions_html = _render_functions_cards(functions_md)
     operational_html = _render_operational_flow(operational_md)
+    dynamic_analysis_html = _render_technical_cards(dynamic_analysis_md) if dynamic_analysis_md else ""
     ioc_list = _parse_iocs_for_template(iocs)
 
     # --- Verdict display config ---
@@ -1459,6 +1894,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         + _render_call_graph_section("Radare2", r2_call_graph)
         + '</div>'
     )
+    qiling_dynamic_html = _render_qiling_dynamic_section(qiling_results)
     iocs_rows = _render_iocs(ioc_list)
     recommendations_html = _render_recommendations(recommendations)
 
@@ -1511,6 +1947,59 @@ def build_report_html(state: Dict[str, Any]) -> str:
                                         <td>Ghidra: {len(funcs.get('functions', []))} ({len(state.get('decompilation_cache', {}))}&nbsp;decompiled) &middot; R2: {len(r2_funcs.get('functions', []))} ({len(state.get('r2_decompilation_cache', {}))}&nbsp;decompiled)</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Strings</td>
                                         <td>Ghidra: {len(strings_data.get('strings', []))} &middot; R2: {len(r2_strings.get('strings', []))} extracted</td></tr>'''
+
+    has_qiling = bool(qiling_results)
+    qiling_section_no = "11"
+    iocs_section_no = "12" if has_qiling else "11"
+    recommendations_section_no = "13" if has_qiling else "12"
+    conclusion_section_no = "14" if has_qiling else "13"
+    report_scope_label = "Ghidra + Radare2 + Qiling Analysis" if has_qiling else "Ghidra + Radare2 Analysis"
+    report_fusion_copy = (
+        "This report fuses Ghidra, Radare2, and Qiling findings into a readable intelligence layout while preserving exact evidence from decompiled code and extracted indicators."
+        if has_qiling
+        else "This report fuses Ghidra and Radare2 findings into a readable intelligence layout while preserving exact evidence from decompiled code and extracted indicators."
+    )
+    qiling_nav_link = (
+        '<a href="#qiling-dynamic" class="nav-link px-3 py-2 rounded"><i class="fas fa-vial"></i><span>Qiling Dynamic</span></a>'
+        if has_qiling
+        else ""
+    )
+    qiling_mobile_link = (
+        '<a href="#qiling-dynamic" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Qiling</a>'
+        if has_qiling
+        else ""
+    )
+    # Build LLM dynamic analysis narrative block (if the LLM produced one)
+    dynamic_narrative_block = ""
+    if dynamic_analysis_html:
+        dynamic_narrative_block = (
+            '<div class="mb-6">'
+            '<h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">'
+            '<i class="fas fa-brain mr-2 text-cyan-400"></i>AI Analysis Narrative</h3>'
+            f'{dynamic_analysis_html}'
+            '</div>'
+            '<h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">'
+            '<i class="fas fa-chart-bar mr-2 text-cyan-400"></i>Raw Telemetry Data</h3>'
+        )
+
+    qiling_section_html = (
+        f'''
+                    <!-- 8b. Qiling Dynamic -->
+                    <section id="qiling-dynamic" class="scroll-mt-20 section-card">
+                        <div class="section-title-wrap">
+                            <div class="section-icon"><i class="fas fa-vial"></i></div>
+                            <div>
+                                <p class="section-eyebrow">{qiling_section_no} · Runtime Behavior</p>
+                                <h2 class="section-headline">Qiling Dynamic Analysis</h2>
+                                <p class="section-subtitle">Runtime telemetry from emulation: syscalls, network behavior, memory indicators, instruction traces, and evasive activity.</p>
+                            </div>
+                        </div>
+                        <div class="section-body">{dynamic_narrative_block}{qiling_dynamic_html}</div>
+                    </section>
+'''
+        if has_qiling
+        else ""
+    )
 
     # --- Assemble full HTML ---
     html = f'''<!DOCTYPE html>
@@ -1920,6 +2409,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             <a href="#code-evidence" class="nav-link px-3 py-2 rounded"><i class="fas fa-code"></i><span>Code Evidence</span></a>
             <a href="#operational-flow" class="nav-link px-3 py-2 rounded"><i class="fas fa-route"></i><span>Operational Flow</span></a>
             <a href="#call-graph" class="nav-link px-3 py-2 rounded"><i class="fas fa-project-diagram"></i><span>Call Graph</span></a>
+            {qiling_nav_link}
             <a href="#iocs" class="nav-link px-3 py-2 rounded"><i class="fas fa-network-wired"></i><span>IOCs</span></a>
             <a href="#recommendations" class="nav-link px-3 py-2 rounded"><i class="fas fa-shield-alt"></i><span>Recommendations</span></a>
             <a href="#conclusion" class="nav-link px-3 py-2 rounded"><i class="fas fa-gavel"></i><span>Conclusion</span></a>
@@ -1934,6 +2424,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                 <a href="#capabilities" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Capabilities</a>
                 <a href="#technical-analysis" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Technical</a>
                 <a href="#functions-analysis" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Functions</a>
+                {qiling_mobile_link}
                 <a href="#iocs" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">IOCs</a>
             </div>
             <div class="report-shell rounded-xl overflow-hidden">
@@ -1942,10 +2433,10 @@ def build_report_html(state: Dict[str, Any]) -> str:
                 <header class="hero-panel p-6 lg:p-8" role="banner">
                     <div class="grid lg:grid-cols-[1fr_260px] gap-6 items-start">
                         <div>
-                            <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300/90 mb-2">Ghidra &amp; Radare2 Analysis</p>
+                            <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300/90 mb-2">{escape(report_scope_label)}</p>
                             <h1 class="text-3xl lg:text-4xl font-display font-bold text-white mb-2 tracking-tight">Reverse Engineering Report</h1>
                             <p class="text-sm lg:text-[15px] text-slate-300 max-w-3xl leading-relaxed">
-                                This report fuses Ghidra and Radare2 findings into a readable intelligence layout while preserving exact evidence from decompiled code and extracted indicators.
+                                {escape(report_fusion_copy)}
                             </p>
                             <div class="flex flex-wrap items-center gap-2 mt-4">
                                 <span class="badge-chip {v_badge_bg} {v_badge_text} border {v_badge_border}"><i class="fas {v_icon}"></i>{escape(v_label)}</span>
@@ -2137,13 +2628,14 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         </div>
                         <div class="section-body">{call_graph_html}</div>
                     </section>
+                    {qiling_section_html}
 
                     <!-- 9. IOCs -->
                     <section id="iocs" class="scroll-mt-20 section-card">
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-network-wired"></i></div>
                             <div>
-                                <p class="section-eyebrow">11 · Detection Inputs</p>
+                                <p class="section-eyebrow">{iocs_section_no} · Detection Inputs</p>
                                 <h2 class="section-headline">Indicators of Compromise (IOCs)</h2>
                                 <p class="section-subtitle">Actionable observables for SIEM, EDR, and threat-hunting detections.</p>
                             </div>
@@ -2169,7 +2661,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-shield-alt"></i></div>
                             <div>
-                                <p class="section-eyebrow">12 · Response Plan</p>
+                                <p class="section-eyebrow">{recommendations_section_no} · Response Plan</p>
                                 <h2 class="section-headline">Recommendations</h2>
                                 <p class="section-subtitle">Prioritized actions for containment, detection engineering, and hardening.</p>
                             </div>
@@ -2182,7 +2674,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-gavel"></i></div>
                             <div>
-                                <p class="section-eyebrow">13 · Final Assessment</p>
+                                <p class="section-eyebrow">{conclusion_section_no} · Final Assessment</p>
                                 <h2 class="section-headline">Conclusion</h2>
                                 <p class="section-subtitle">Final threat classification with supporting narrative from reverse-engineering evidence.</p>
                             </div>
@@ -2295,11 +2787,20 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
 
     Args:
         state: The analysis state dict.
-        agent: Either 'ghidra' or 'r2' (radare2).
+        agent: One of 'ghidra', 'r2'/'radare2', or 'qiling'.
     """
-    is_ghidra = agent.lower() in ("ghidra", "ghidra_agent")
-    agent_name = "Ghidra" if is_ghidra else "Radare2"
-    agent_color = "#1a73e8" if is_ghidra else "#e8710a"
+    agent_key = agent.lower()
+    is_ghidra = agent_key in ("ghidra", "ghidra_agent")
+    is_qiling = agent_key in ("qiling", "qiling_agent", "ql")
+    if is_ghidra:
+        agent_name = "Ghidra"
+        agent_color = "#1a73e8"
+    elif is_qiling:
+        agent_name = "Qiling"
+        agent_color = "#0f766e"
+    else:
+        agent_name = "Radare2"
+        agent_color = "#e8710a"
 
     program_hash = state.get("program_hash", "unknown")
     file_name = escape(state.get("binary_path", "unknown").split("/")[-1])
@@ -2307,9 +2808,86 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
     session_id = state.get("session_id", "unknown")[:8]
 
     # Select per-agent data
+    qiling_runtime_section = ""
     if is_ghidra:
         analysis = state.get("analysis_results", {})
         decomp_cache = state.get("decompilation_cache", {})
+    elif is_qiling:
+        qiling = state.get("qiling_analysis_results", {})
+        execution = qiling.get("execution_trace", {}) if isinstance(qiling, dict) else {}
+        syscalls = qiling.get("syscalls", {}) if isinstance(qiling, dict) else {}
+        network = qiling.get("network_activity", {}) if isinstance(qiling, dict) else {}
+        evasion = qiling.get("evasion_techniques", {}) if isinstance(qiling, dict) else {}
+
+        syscall_rows_raw = syscalls.get("syscalls", []) if isinstance(syscalls, dict) else []
+        if not isinstance(syscall_rows_raw, list):
+            syscall_rows_raw = []
+        syscall_rows = [
+            {
+                "name": str(call.get("name", "unknown")),
+                "address": str(call.get("address", "N/A")),
+                "size": str(call.get("timestamp_ms", call.get("size", "N/A"))),
+                "xrefs": str(call.get("category", "unknown")),
+            }
+            for call in syscall_rows_raw
+            if isinstance(call, dict)
+        ]
+
+        q_strings: List[Dict[str, Any]] = []
+        if isinstance(network, dict):
+            for conn in network.get("connections", []) or []:
+                if isinstance(conn, dict):
+                    addr = conn.get("address")
+                    port = conn.get("port")
+                    if addr:
+                        q_strings.append({"address": "", "value": f"{addr}:{port}" if port else str(addr)})
+            for dns in network.get("dns_queries", []) or []:
+                if isinstance(dns, dict) and dns.get("domain"):
+                    q_strings.append({"address": "", "value": str(dns.get("domain"))})
+
+        execution_ok = bool(execution.get("success")) if isinstance(execution, dict) else False
+        syscall_summary = syscalls.get("summary", {}) if isinstance(syscalls, dict) else {}
+        total_calls = syscall_summary.get("total_calls", len(syscall_rows)) if isinstance(syscall_summary, dict) else len(syscall_rows)
+        suspicious_calls = syscall_summary.get("suspicious_calls", []) if isinstance(syscall_summary, dict) else []
+        total_connections = len(network.get("connections", []) or []) if isinstance(network, dict) else 0
+        total_dns = len(network.get("dns_queries", []) or []) if isinstance(network, dict) else 0
+        evasion_summary = evasion.get("summary", {}) if isinstance(evasion, dict) else {}
+        evasion_total = evasion_summary.get("total_techniques", 0) if isinstance(evasion_summary, dict) else 0
+        evasion_risk = evasion_summary.get("risk_level", "low") if isinstance(evasion_summary, dict) else "low"
+
+        qiling_runtime_section = f"""
+        <h2 class="section-header">Runtime Overview</h2>
+        <table class="data-table">
+            <tbody>
+                <tr><td class="prop">Execution Success</td><td>{escape(str(execution_ok))}</td></tr>
+                <tr><td class="prop">Instructions Executed</td><td>{escape(str(execution.get('instructions_executed', 0) if isinstance(execution, dict) else 0))}</td></tr>
+                <tr><td class="prop">Duration (ms)</td><td>{escape(str(execution.get('duration_ms', 0) if isinstance(execution, dict) else 0))}</td></tr>
+                <tr><td class="prop">Exit Reason</td><td>{escape(str(execution.get('exit_reason', 'unknown') if isinstance(execution, dict) else 'unknown'))}</td></tr>
+                <tr><td class="prop">Syscalls Observed</td><td>{escape(str(total_calls))}</td></tr>
+                <tr><td class="prop">Suspicious Syscalls</td><td>{escape(str(len(suspicious_calls) if isinstance(suspicious_calls, list) else 0))}</td></tr>
+                <tr><td class="prop">Network Connections</td><td>{escape(str(total_connections))}</td></tr>
+                <tr><td class="prop">DNS Queries</td><td>{escape(str(total_dns))}</td></tr>
+                <tr><td class="prop">Evasion Techniques</td><td>{escape(str(evasion_total))}</td></tr>
+                <tr><td class="prop">Evasion Risk</td><td>{escape(str(evasion_risk))}</td></tr>
+            </tbody>
+        </table>
+        """
+
+        analysis = {
+            "binary": {
+                "architecture": execution.get("arch", "unknown") if isinstance(execution, dict) else "unknown",
+                "bits": execution.get("bits", "unknown") if isinstance(execution, dict) else "unknown",
+                "os": execution.get("os", "unknown") if isinstance(execution, dict) else "unknown",
+                "image_base": "N/A",
+                "imports": [],
+                "exports": [],
+                "endian": "N/A",
+                "stripped": "N/A",
+            },
+            "functions": {"functions": syscall_rows},
+            "strings": {"strings": q_strings},
+        }
+        decomp_cache = {}
     else:
         analysis = state.get("r2_analysis_results", {})
         decomp_cache = state.get("r2_decompilation_cache", {})
@@ -2332,6 +2910,14 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         <tr><td class="prop">Segments</td><td>{len(binary.get('segments', []))}</td></tr>
         <tr><td class="prop">Functions Discovered</td><td>{len(func_list)}</td></tr>
         <tr><td class="prop">Functions Decompiled</td><td>{len(decomp_cache)}</td></tr>"""
+    elif is_qiling:
+        binary_rows = f"""
+        <tr><td class="prop">Architecture</td><td>{escape(str(binary.get('architecture', 'unknown')))}</td></tr>
+        <tr><td class="prop">Bits</td><td>{escape(str(binary.get('bits', 'unknown')))}</td></tr>
+        <tr><td class="prop">OS</td><td>{escape(str(binary.get('os', 'unknown')))}</td></tr>
+        <tr><td class="prop">Execution Type</td><td>Dynamic emulation</td></tr>
+        <tr><td class="prop">Syscalls Captured</td><td>{len(func_list)}</td></tr>
+        <tr><td class="prop">Dynamic Observables</td><td>{len(string_list)}</td></tr>"""
     else:
         binary_rows = f"""
         <tr><td class="prop">Architecture</td><td>{escape(str(binary.get('architecture', 'unknown')))}</td></tr>
@@ -2351,7 +2937,10 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
         addr = f.get("address", "?")
         size = f.get("size", "?")
         xrefs = f.get("xrefs", 0)
-        decompiled = "Yes" if name in decomp_cache else "No"
+        if is_qiling:
+            decompiled = "Yes"
+        else:
+            decompiled = "Yes" if name in decomp_cache else "No"
         func_rows += f'<tr><td class="mono">{escape(name)}</td><td class="mono">{escape(str(addr))}</td><td>{size}</td><td>{xrefs}</td><td>{decompiled}</td></tr>\n'
 
     # --- Decompiled Code Blocks ---
@@ -2460,10 +3049,12 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
             </tbody>
         </table>
 
+        {qiling_runtime_section}
+
         <!-- Functions -->
-        <h2 class="section-header">Functions ({len(func_list)} discovered)</h2>
+        <h2 class="section-header">{'Syscalls' if is_qiling else 'Functions'} ({len(func_list)} discovered)</h2>
         <table class="data-table">
-            <thead><tr><th>Name</th><th>Address</th><th>Size</th><th>XRefs</th><th>Decompiled</th></tr></thead>
+            <thead><tr><th>Name</th><th>Address</th><th>{'Timestamp / Size' if is_qiling else 'Size'}</th><th>{'Category' if is_qiling else 'XRefs'}</th><th>{'Observed' if is_qiling else 'Decompiled'}</th></tr></thead>
             <tbody>{func_rows}</tbody>
         </table>
 
@@ -2989,14 +3580,21 @@ def build_report_text(state: Dict[str, Any]) -> str:
     r2_binary = state.get("r2_analysis_results", {}).get("binary", {})
     funcs = state.get("analysis_results", {}).get("functions", {})
     r2_funcs = state.get("r2_analysis_results", {}).get("functions", {})
+    qiling = state.get("qiling_analysis_results", {})
     gh_call_graph_analysis = state.get("analysis_results", {}).get("call_graph_analysis", {})
     r2_call_graph_analysis = state.get("r2_analysis_results", {}).get("call_graph_analysis", {})
     decomp = state.get("decompilation_cache", {})
     r2_decomp = state.get("r2_decompilation_cache", {})
+    has_qiling = bool(qiling)
+    report_title = (
+        "GHIDRA + RADARE2 + QILING BINARY ANALYSIS REPORT"
+        if has_qiling
+        else "GHIDRA + RADARE2 BINARY ANALYSIS REPORT"
+    )
 
     lines = [
         "=" * 70,
-        "GHIDRA + RADARE2 BINARY ANALYSIS REPORT",
+        report_title,
         "=" * 70,
         "",
         f"SHA-256: {program_hash}",
@@ -3039,6 +3637,45 @@ def build_report_text(state: Dict[str, Any]) -> str:
         if exports:
             lines.append(f"Exports:      {len(exports)} symbols")
         lines.append(f"Functions:    {len(r2_funcs.get('functions', []))} ({len(r2_decomp)} decompiled)")
+        lines.append("")
+
+    # Qiling dynamic info
+    if qiling:
+        q_exec = qiling.get("execution_trace", {})
+        q_sys = qiling.get("syscalls", {})
+        q_network = qiling.get("network_activity", {})
+        q_evasion = qiling.get("evasion_techniques", {})
+
+        lines.append("-" * 70)
+        lines.append("QILING DYNAMIC ANALYSIS")
+        lines.append("-" * 70)
+        if isinstance(q_exec, dict) and q_exec:
+            lines.append(f"Execution Success: {q_exec.get('success')}")
+            lines.append(f"Architecture:      {q_exec.get('arch', 'unknown')}")
+            lines.append(f"OS:                {q_exec.get('os', 'unknown')}")
+            lines.append(f"Instructions:      {q_exec.get('instructions_executed', 0)}")
+            lines.append(f"Duration (ms):     {q_exec.get('duration_ms', 0)}")
+            lines.append(f"Exit Reason:       {q_exec.get('exit_reason', 'unknown')}")
+        if isinstance(q_sys, dict) and q_sys:
+            q_sys_summary = q_sys.get("summary", {})
+            lines.append(
+                f"Syscalls:          {q_sys_summary.get('total_calls', 0) if isinstance(q_sys_summary, dict) else 0}"
+            )
+            if isinstance(q_sys_summary, dict):
+                lines.append(f"Categories:        {q_sys_summary.get('categories', {})}")
+        if isinstance(q_network, dict) and q_network:
+            indicators = q_network.get("indicators", {})
+            lines.append(f"C2 Candidates:     {indicators.get('c2_candidates', []) if isinstance(indicators, dict) else []}")
+            lines.append(f"Protocols Used:    {indicators.get('protocols_used', []) if isinstance(indicators, dict) else []}")
+        if isinstance(q_evasion, dict) and q_evasion:
+            ev_summary = q_evasion.get("summary", {})
+            if isinstance(ev_summary, dict):
+                lines.append(
+                    f"Evasion:           {ev_summary.get('total_techniques', 0)} "
+                    f"(risk={ev_summary.get('risk_level', 'low')})"
+                )
+        if qiling.get("errors"):
+            lines.append(f"Errors:            {qiling.get('errors')}")
         lines.append("")
 
     # Executive summary first (most important for readers)

@@ -289,7 +289,7 @@ class TestE2EDualAgentFlow:
 
 
 class TestUiAdapterDualAgent:
-    """Tests that ui_adapter produces correct responses for both analyzers."""
+    """Tests that ui_adapter produces correct responses for all analyzers."""
 
     def test_ghidra_response(self, populated_state):
         from ghidra_agent.ui_adapter import build_analyzer_response
@@ -307,6 +307,14 @@ class TestUiAdapterDualAgent:
         assert "details" in resp
         assert "staticAnalysis" in resp["details"]
 
+    def test_qiling_response(self, populated_state):
+        from ghidra_agent.ui_adapter import build_analyzer_response
+        resp = build_analyzer_response(populated_state, "qiling")
+        assert resp["id"] == "qiling"
+        assert resp["name"] == "Qiling Dynamic Analysis Agent"
+        assert "details" in resp
+        assert "behavioralAnalysis" in resp["details"]
+
     def test_default_is_ghidra(self, populated_state):
         from ghidra_agent.ui_adapter import build_analyzer_response
         resp = build_analyzer_response(populated_state)
@@ -314,13 +322,19 @@ class TestUiAdapterDualAgent:
 
 
 class TestStateIntegrity:
-    """Verify R2 fields in AgentState and DEFAULT_STATE."""
+    """Verify analyzer-specific fields in AgentState and DEFAULT_STATE."""
 
     def test_default_state_has_r2_fields(self):
         assert "r2_analysis_results" in DEFAULT_STATE
         assert "r2_decompilation_cache" in DEFAULT_STATE
         assert isinstance(DEFAULT_STATE["r2_analysis_results"], dict)
         assert isinstance(DEFAULT_STATE["r2_decompilation_cache"], dict)
+
+    def test_default_state_has_qiling_fields(self):
+        assert "qiling_analysis_results" in DEFAULT_STATE
+        assert "qiling_execution_cache" in DEFAULT_STATE
+        assert isinstance(DEFAULT_STATE["qiling_analysis_results"], dict)
+        assert isinstance(DEFAULT_STATE["qiling_execution_cache"], dict)
 
     def test_agent_state_model_has_r2_fields(self):
         from ghidra_agent.state import AgentStateModel
@@ -333,6 +347,18 @@ class TestStateIntegrity:
         assert hasattr(m, "r2_decompilation_cache")
         assert m.r2_analysis_results == {}
         assert m.r2_decompilation_cache == {}
+
+    def test_agent_state_model_has_qiling_fields(self):
+        from ghidra_agent.state import AgentStateModel
+        m = AgentStateModel(
+            binary_path="/test",
+            program_hash="abc",
+            session_id="s1",
+        )
+        assert hasattr(m, "qiling_analysis_results")
+        assert hasattr(m, "qiling_execution_cache")
+        assert m.qiling_analysis_results == {}
+        assert m.qiling_execution_cache == {}
 
 
 class TestPromptsDualAgent:

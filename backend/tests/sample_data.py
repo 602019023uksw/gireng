@@ -127,3 +127,55 @@ SAMPLE_STRINGS_GHIDRA: Dict[str, Any] = {
         {"value": "socket", "address": "0x402060"},
     ],
 }
+
+SAMPLE_QILING_EXECUTION: Dict[str, Any] = {
+    "ok": True,
+    "success": True,
+    "binary_format": "elf",
+    "arch": "x86_64",
+    "os": "linux",
+    "bits": 64,
+    "instructions_executed": 1024,
+    "duration_ms": 45.5,
+    "exit_reason": "normal",
+}
+
+SAMPLE_QILING_SYSCALLS: Dict[str, Any] = {
+    "ok": True,
+    "success": True,
+    "syscalls": [
+        {"name": "open", "address": "0x401050", "category": "file_io", "args": ["/etc/passwd", 0, 0]},
+        {"name": "connect", "address": "0x401080", "category": "network", "args": [3, "1.2.3.4:443", 16]},
+    ],
+    "summary": {
+        "total_calls": 2,
+        "categories": {"file_io": 1, "network": 1},
+        "unique_syscalls": ["open", "connect"],
+        "suspicious_calls": [{"name": "connect", "reason": "Outbound network connection attempt", "risk": "medium"}],
+    },
+}
+
+SAMPLE_QILING_RESULTS: Dict[str, Any] = {
+    "execution_trace": SAMPLE_QILING_EXECUTION,
+    "syscalls": SAMPLE_QILING_SYSCALLS,
+    "network_activity": {
+        "ok": True,
+        "success": True,
+        "connections": [{"type": "tcp_connect", "address": "1.2.3.4", "port": 443, "timestamp_ms": 10.0}],
+        "dns_queries": [{"domain": "evil.example.com", "type": "A"}],
+        "data_sent": [],
+        "indicators": {"c2_candidates": ["1.2.3.4:443"], "dns_domains": ["evil.example.com"], "protocols_used": ["tcp"]},
+    },
+    "memory_events": {
+        "ok": True,
+        "success": True,
+        "events": [],
+        "indicators": {"self_modifying_code": False, "unpacking_detected": False},
+    },
+    "evasion_techniques": {
+        "ok": True,
+        "success": True,
+        "techniques": [],
+        "summary": {"total_techniques": 0, "risk_level": "low", "mitre_tactics": []},
+    },
+}

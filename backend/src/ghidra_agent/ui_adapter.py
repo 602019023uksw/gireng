@@ -111,9 +111,19 @@ def _analyzer_details(state: AgentState) -> Dict[str, Any]:
 
 
 def build_analyzer_response(state: AgentState, analyzer_id: str = "ghidra") -> Dict[str, Any]:
-    """Build response for a specific analyzer (ghidra or radare2)."""
+    """Build response for a specific analyzer (ghidra, radare2, or qiling)."""
     iocs = extract_iocs_from_state(state)
     verdict, _, _, _ = calculate_verdict(iocs, state)
+
+    if analyzer_id == "qiling":
+        return {
+            "id": "qiling",
+            "name": "Qiling Dynamic Analysis Agent",
+            "source": "gireng",
+            "sourceUrl": "https://github.com/danilchristianto/gireng",
+            "verdict": verdict,
+            "details": _qiling_analyzer_details(state),
+        }
 
     if analyzer_id == "radare2":
         return {
@@ -215,6 +225,73 @@ def _r2_analyzer_details(state: AgentState) -> Dict[str, Any]:
     }
 
 
+def _qiling_analyzer_details(state: AgentState) -> Dict[str, Any]:
+    """Build details payload from Qiling dynamic analysis results."""
+    findings = state.get("qiling_analysis_results", {})
+    logs = [l for l in state.get("reasoning_trace", []) if "qiling" in l.lower()]
+
+    iocs = extract_iocs_from_state(state)
+    iocs_text = format_iocs_for_report(iocs) if not iocs.is_empty() else "No IOCs extracted."
+
+    static_parts = []
+    execution = findings.get("execution_trace", {})
+    if isinstance(execution, dict) and execution:
+        static_parts.append(f"Execution success: {execution.get('success')}")
+        static_parts.append(f"Architecture: {execution.get('arch', 'unknown')}")
+        static_parts.append(f"OS: {execution.get('os', 'unknown')}")
+        static_parts.append(f"Instructions executed: {execution.get('instructions_executed', 0)}")
+        static_parts.append(f"Duration (ms): {execution.get('duration_ms', 0)}")
+        static_parts.append(f"Exit reason: {execution.get('exit_reason', 'unknown')}")
+
+    syscalls = findings.get("syscalls", {})
+    if isinstance(syscalls, dict) and syscalls:
+        summary = syscalls.get("summary", {})
+        if isinstance(summary, dict):
+            static_parts.append(f"Syscalls total: {summary.get('total_calls', 0)}")
+            static_parts.append(f"Syscall categories: {summary.get('categories', {})}")
+            suspicious = summary.get("suspicious_calls", [])
+            if suspicious:
+                static_parts.append(f"Suspicious syscalls: {suspicious[:20]}")
+
+    network = findings.get("network_activity", {})
+    behavioral = []
+    if isinstance(network, dict) and network:
+        indicators = network.get("indicators", {})
+        if isinstance(indicators, dict):
+            c2 = indicators.get("c2_candidates", [])
+            if c2:
+                behavioral.append(f"C2 candidates: {', '.join(str(v) for v in c2[:20])}")
+            protocols = indicators.get("protocols_used", [])
+            if protocols:
+                behavioral.append(f"Protocols used: {', '.join(str(v) for v in protocols)}")
+
+    evasion = findings.get("evasion_techniques", {})
+    if isinstance(evasion, dict) and evasion:
+        ev_summary = evasion.get("summary", {})
+        if isinstance(ev_summary, dict):
+            behavioral.append(
+                f"Evasion techniques: {ev_summary.get('total_techniques', 0)} "
+                f"(risk: {ev_summary.get('risk_level', 'low')})"
+            )
+
+    memory_events = findings.get("memory_events", {})
+    if isinstance(memory_events, dict) and memory_events:
+        indicators = memory_events.get("indicators", {})
+        if indicators:
+            behavioral.append(f"Memory indicators: {indicators}")
+
+    verdict, _, _, _ = calculate_verdict(iocs, state)
+
+    return {
+        "executiveSummary": state.get("summary", "Qiling dynamic analysis completed."),
+        "staticAnalysis": "\n".join(static_parts) if static_parts else json.dumps(findings, indent=2),
+        "behavioralAnalysis": "\n".join(behavioral) if behavioral else "No dynamic behavior detected.",
+        "iocs": iocs_text,
+        "conclusion": f"Analysis verdict: {verdict}. Review dynamic findings for runtime behavior.",
+        "executionLogs": logs,
+    }
+
+
 def build_file_tree(state: AgentState) -> Dict[str, Any]:
     children = []
     for func_name in state.get("decompilation_cache", {}).keys():
@@ -231,6 +308,8 @@ def build_reports(state: AgentState) -> list[Dict[str, Any]]:
     reports = [{"id": "summary", "name": "Analysis Report", "timestamp": 0}]
     if state.get("r2_analysis_results"):
         reports.append({"id": "r2_summary", "name": "Radare2 Report", "timestamp": 0})
+    if state.get("qiling_analysis_results"):
+        reports.append({"id": "qiling_summary", "name": "Qiling Dynamic Report", "timestamp": 0})
     return reports
 
 
@@ -239,6 +318,9 @@ def build_report_content(state: AgentState, report_id: str) -> Dict[str, Any]:
     if report_id == "r2_summary":
         content = _build_r2_report_markdown(state)
         return {"id": report_id, "name": "Radare2 Report", "timestamp": 0, "content": content}
+    if report_id == "qiling_summary":
+        content = _build_qiling_report_markdown(state)
+        return {"id": report_id, "name": "Qiling Dynamic Report", "timestamp": 0, "content": content}
     summary = state.get("summary", "No summary available.")
     call_graph_sections = []
     gh_call_graph = _build_call_graph_markdown(
@@ -253,6 +335,9 @@ def build_report_content(state: AgentState, report_id: str) -> Dict[str, Any]:
         call_graph_sections.append(gh_call_graph)
     if r2_call_graph:
         call_graph_sections.append(r2_call_graph)
+    qiling_overview = _build_qiling_overview_markdown(state.get("qiling_analysis_results", {}))
+    if qiling_overview:
+        call_graph_sections.append(qiling_overview)
     if call_graph_sections:
         summary = summary.rstrip() + "\n\n" + "\n\n".join(call_graph_sections)
     return {"id": report_id, "name": "Analysis Report", "timestamp": 0, "content": summary}
@@ -285,6 +370,78 @@ def _build_call_graph_markdown(source: str, analysis: Dict[str, Any]) -> str:
             calls = row.get("calls", []) or []
             calls_text = ", ".join(calls[:10]) if calls else "-"
             lines.append(f"- `{fn}` -> {calls_text}")
+    return "\n".join(lines)
+
+
+def _build_qiling_overview_markdown(qiling: Dict[str, Any]) -> str:
+    if not isinstance(qiling, dict) or not qiling:
+        return ""
+
+    lines: list[str] = ["## Qiling Dynamic Highlights", ""]
+
+    execution = qiling.get("execution_trace", {})
+    if isinstance(execution, dict) and execution:
+        lines.append(
+            "- **Execution:** "
+            f"success={execution.get('success')}, "
+            f"os={execution.get('os', 'unknown')}, "
+            f"arch={execution.get('arch', 'unknown')}, "
+            f"instructions={execution.get('instructions_executed', 0)}, "
+            f"duration_ms={execution.get('duration_ms', 0)}, "
+            f"exit_reason={execution.get('exit_reason', 'unknown')}"
+        )
+
+    syscalls = qiling.get("syscalls", {})
+    if isinstance(syscalls, dict) and syscalls:
+        summary = syscalls.get("summary", {})
+        if isinstance(summary, dict):
+            lines.append(f"- **Syscalls:** {summary.get('total_calls', 0)} total")
+            lines.append(f"- **Syscall Categories:** {summary.get('categories', {})}")
+            suspicious = summary.get("suspicious_calls", [])
+            if isinstance(suspicious, list) and suspicious:
+                suspicious_names = [
+                    item.get("name", "unknown") if isinstance(item, dict) else str(item)
+                    for item in suspicious[:10]
+                ]
+                lines.append(f"- **Suspicious Syscalls:** {', '.join(suspicious_names)}")
+
+    network = qiling.get("network_activity", {})
+    if isinstance(network, dict) and network:
+        indicators = network.get("indicators", {})
+        if isinstance(indicators, dict):
+            c2 = indicators.get("c2_candidates", [])
+            protocols = indicators.get("protocols_used", [])
+            if c2:
+                lines.append(f"- **C2 Candidates:** {', '.join(str(v) for v in c2[:20])}")
+            if protocols:
+                lines.append(f"- **Protocols:** {', '.join(str(v) for v in protocols[:20])}")
+        connections = network.get("connections", [])
+        if isinstance(connections, list):
+            lines.append(f"- **Connections Observed:** {len(connections)}")
+
+    memory = qiling.get("memory_events", {})
+    if isinstance(memory, dict):
+        indicators = memory.get("indicators", {})
+        if indicators:
+            lines.append(f"- **Memory Indicators:** {indicators}")
+
+    evasion = qiling.get("evasion_techniques", {})
+    if isinstance(evasion, dict) and evasion:
+        summary = evasion.get("summary", {})
+        if isinstance(summary, dict):
+            lines.append(
+                "- **Evasion:** "
+                f"{summary.get('total_techniques', 0)} techniques "
+                f"(risk={summary.get('risk_level', 'low')})"
+            )
+
+    errors = qiling.get("errors", [])
+    if isinstance(errors, list) and errors:
+        lines.append(f"- **Qiling Errors:** {', '.join(str(e) for e in errors[:10])}")
+
+    if len(lines) <= 2:
+        lines.append("- Qiling ran but returned no dynamic telemetry.")
+
     return "\n".join(lines)
 
 
@@ -379,6 +536,103 @@ def _build_r2_report_markdown(state: AgentState) -> str:
 
     if len(parts) <= 1:
         parts.append("No Radare2 analysis data available for this session.")
+
+    return "\n".join(parts)
+
+
+def _build_qiling_report_markdown(state: AgentState) -> str:
+    """Build a Qiling-focused dynamic analysis report."""
+    ql = state.get("qiling_analysis_results", {})
+    parts: list[str] = ["# Qiling Dynamic Analysis Report\n"]
+
+    execution = ql.get("execution_trace", {})
+    if isinstance(execution, dict) and execution:
+        parts.append("## Execution Trace")
+        parts.append(f"- **Success:** {execution.get('success')}")
+        parts.append(f"- **Architecture:** {execution.get('arch', 'unknown')}")
+        parts.append(f"- **OS:** {execution.get('os', 'unknown')}")
+        parts.append(f"- **Instructions:** {execution.get('instructions_executed', 0)}")
+        parts.append(f"- **Duration (ms):** {execution.get('duration_ms', 0)}")
+        parts.append(f"- **Exit Reason:** {execution.get('exit_reason', 'unknown')}")
+        if execution.get("error"):
+            parts.append(f"- **Error:** {execution.get('error')}")
+        parts.append("")
+
+    syscalls = ql.get("syscalls", {})
+    if isinstance(syscalls, dict) and syscalls:
+        summary = syscalls.get("summary", {})
+        calls = syscalls.get("syscalls", [])
+        parts.append("## Syscall Trace")
+        parts.append(f"- **Total Calls:** {summary.get('total_calls', 0) if isinstance(summary, dict) else len(calls)}")
+        if isinstance(summary, dict):
+            parts.append(f"- **Categories:** {summary.get('categories', {})}")
+            suspicious = summary.get("suspicious_calls", [])
+            if suspicious:
+                parts.append("### Suspicious Calls")
+                for item in suspicious[:20]:
+                    parts.append(f"- `{item.get('name', 'unknown')}`: {item.get('reason', '')}")
+        if isinstance(calls, list) and calls:
+            parts.append("### Sample Syscalls")
+            for call in calls[:30]:
+                parts.append(
+                    f"- `{call.get('name', 'unknown')}` @ `{call.get('address', 'N/A')}` "
+                    f"(category: {call.get('category', 'unknown')})"
+                )
+        parts.append("")
+
+    network = ql.get("network_activity", {})
+    if isinstance(network, dict) and network:
+        parts.append("## Network Activity")
+        indicators = network.get("indicators", {})
+        parts.append(f"- **C2 Candidates:** {indicators.get('c2_candidates', []) if isinstance(indicators, dict) else []}")
+        parts.append(f"- **Protocols Used:** {indicators.get('protocols_used', []) if isinstance(indicators, dict) else []}")
+        connections = network.get("connections", [])
+        if isinstance(connections, list) and connections:
+            parts.append("### Connections")
+            for conn in connections[:20]:
+                parts.append(
+                    f"- `{conn.get('type', 'unknown')}` -> `{conn.get('address', 'unknown')}:{conn.get('port', 0)}` "
+                    f"(t={conn.get('timestamp_ms', 0)}ms)"
+                )
+        parts.append("")
+
+    memory_events = ql.get("memory_events", {})
+    if isinstance(memory_events, dict) and memory_events:
+        parts.append("## Memory Behavior")
+        indicators = memory_events.get("indicators", {})
+        parts.append(f"- **Indicators:** {indicators}")
+        events = memory_events.get("events", [])
+        if isinstance(events, list) and events:
+            parts.append("### Memory Events")
+            for event in events[:20]:
+                parts.append(
+                    f"- `{event.get('type', 'event')}` at `{event.get('target_address', event.get('address', 'N/A'))}` "
+                    f"(size: {event.get('size', 0)})"
+                )
+        parts.append("")
+
+    evasion = ql.get("evasion_techniques", {})
+    if isinstance(evasion, dict) and evasion:
+        parts.append("## Evasion Techniques")
+        summary = evasion.get("summary", {})
+        parts.append(f"- **Summary:** {summary}")
+        techniques = evasion.get("techniques", [])
+        if isinstance(techniques, list):
+            for tech in techniques[:20]:
+                parts.append(
+                    f"- `{tech.get('technique', 'unknown')}` via `{tech.get('method', 'unknown')}` "
+                    f"({tech.get('mitre_id', 'N/A')})"
+                )
+        parts.append("")
+
+    if ql.get("errors"):
+        parts.append("## Errors")
+        for err in ql.get("errors", []):
+            parts.append(f"- {err}")
+        parts.append("")
+
+    if len(parts) <= 1:
+        parts.append("No Qiling analysis data available for this session.")
 
     return "\n".join(parts)
 

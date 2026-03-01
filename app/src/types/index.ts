@@ -27,6 +27,8 @@ export interface ToolCall {
   result?: unknown;
   progress?: number;
   maxProgress?: number;
+  etaSeconds?: number;
+  phase?: string;
 }
 
 export interface AnalysisResult {

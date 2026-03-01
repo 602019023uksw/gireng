@@ -463,6 +463,11 @@ async def save_normalized(state: Dict[str, Any]) -> None:
             if r2:
                 await _save_analyzer_data(conn, program_hash, "radare2", r2, r2_decomp)
 
+            # --- Qiling data (dynamic analyzer) ---
+            qiling = state.get("qiling_analysis_results", {})
+            if qiling:
+                await _save_analyzer_data(conn, program_hash, "qiling", qiling, {})
+
             # --- IOCs ---
             await _save_iocs(conn, program_hash, state)
 
@@ -473,8 +478,25 @@ async def _save_binary(conn: asyncpg.Connection, program_hash: str, state: Dict[
     """Upsert the binaries table from Ghidra or R2 binary info."""
     gh_bin = state.get("analysis_results", {}).get("binary", {})
     r2_bin = state.get("r2_analysis_results", {}).get("binary", {})
+    ql_exec = state.get("qiling_analysis_results", {}).get("execution_trace", {})
     # Prefer Ghidra, fall back to R2
-    b = gh_bin if gh_bin.get("ok") else r2_bin
+    if gh_bin.get("ok"):
+        b = gh_bin
+    elif r2_bin.get("ok"):
+        b = r2_bin
+    elif isinstance(ql_exec, dict) and ql_exec:
+        b = {
+            "architecture": ql_exec.get("arch"),
+            "bits": ql_exec.get("bits"),
+            "os": ql_exec.get("os"),
+            "image_base": None,
+            "entry_points": [ql_exec.get("entry_point")] if ql_exec.get("entry_point") else [],
+            "imports": [],
+            "exports": [],
+            "type": ql_exec.get("binary_format"),
+        }
+    else:
+        b = {}
 
     await conn.execute("""
         INSERT INTO binaries (program_hash, file_path, architecture, bits, os,

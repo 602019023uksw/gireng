@@ -1,15 +1,17 @@
 import { motion } from 'framer-motion';
 
 interface AnalysisTabsProps {
-  activeTab: 'overview' | 'analyzers' | 'callgraph';
-  onTabChange: (tab: 'overview' | 'analyzers' | 'callgraph') => void;
+  activeTab: 'overview' | 'analyzers' | 'callgraph' | 'dynamic';
+  onTabChange: (tab: 'overview' | 'analyzers' | 'callgraph' | 'dynamic') => void;
+  hasDynamicData?: boolean;
 }
 
-export function AnalysisTabs({ activeTab, onTabChange }: AnalysisTabsProps) {
+export function AnalysisTabs({ activeTab, onTabChange, hasDynamicData }: AnalysisTabsProps) {
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'analyzers', label: 'Analyzers Details' },
     { id: 'callgraph', label: 'Call Graph' },
+    ...(hasDynamicData ? [{ id: 'dynamic' as const, label: 'Dynamic Analysis' }] : []),
   ] as const;
 
   return (

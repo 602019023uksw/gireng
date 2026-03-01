@@ -21,6 +21,7 @@ from tests.sample_data import (
     SAMPLE_FUNCTIONS_GHIDRA,
     SAMPLE_FUNCTIONS_R2,
     SAMPLE_HASH,
+    SAMPLE_QILING_RESULTS,
     SAMPLE_STRINGS_GHIDRA,
     SAMPLE_STRINGS_R2,
 )
@@ -58,6 +59,8 @@ def populated_state(base_state: AgentState) -> AgentState:
     base_state["r2_decompilation_cache"] = {
         "main": SAMPLE_DECOMPILE_R2["c"],
     }
+    base_state["qiling_analysis_results"] = deepcopy(SAMPLE_QILING_RESULTS)
+    base_state["qiling_execution_cache"] = deepcopy(SAMPLE_QILING_RESULTS)
     base_state["status"] = "completed"
     base_state["summary"] = "Test malware analysis summary."
     return base_state

@@ -17,11 +17,23 @@ import { DataTable } from '@/components/data/DataTable';
 
 import { ModelSelector } from '@/components/chat/ModelSelector';
 import { MarkdownContent } from '@/components/common/MarkdownContent';
+import {
+  estimateEtaSecondsWithHistory,
+  loadTimingStore,
+  normalizePhaseKey,
+  phaseLabel,
+  recordPhaseTiming,
+  recordTotalTiming,
+  saveTimingStore,
+  type AnalyzerId,
+  type AnalyzerTimingStore,
+} from '@/lib/analyzerProgress';
 
 import {
   uploadBinary,
   sendQuery,
   pollStatus,
+  connectStream,
   getAnalysis,
   getAnalyzers,
   getFiles,
@@ -30,6 +42,7 @@ import {
   getReportContent,
   getGhidraResults,
   getRadare2Results,
+  getQilingResults,
   getExportHtmlUrl,
   type CallGraphAnalysis,
   type CallGraphRaw,
@@ -41,15 +54,18 @@ import {
   mockSimilarFiles,
 } from '@/data/mockData';
 
-import type { Message, Analyzer, FileNode, CodeFile, Report, Analysis } from '@/types';
+import type { Message, Analyzer, FileNode, CodeFile, Report, Analysis, ToolCall } from '@/types';
+import { QilingResultsView } from '@/components/analysis/QilingResultsView';
+import type { AnalyzerRawResults } from '@/lib/api';
 
 type ViewState = 'welcome' | 'chat' | 'analysis';
-type RightPanelTab = 'resources' | 'code' | 'report';
+type RightPanelTab = 'resources' | 'code' | 'report' | 'dynamic';
 type CallGraphPanel = {
   source: 'Ghidra' | 'Radare2';
   analysis: CallGraphAnalysis;
   rawGraph?: CallGraphRaw;
 };
+type AnalyzerPhaseElapsed = Partial<Record<AnalyzerId, number>>;
 
 const currentUser = { name: '' };
 
@@ -66,11 +82,162 @@ function getArrayLength(value: unknown): number {
   return Array.isArray(value) ? value.length : 0;
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null) return {};
+  return value as Record<string, unknown>;
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === 'string');
+}
+
+function hasAnalyzerData(value: unknown): boolean {
+  const record = asRecord(value);
+  return Object.keys(record).length > 0;
+}
+
+function asToolStatus(value: unknown): ToolCall['status'] | null {
+  if (value === 'pending' || value === 'running' || value === 'completed' || value === 'failed') {
+    return value;
+  }
+  return null;
+}
+
+function clampPercent(value: number): number {
+  return Math.max(0, Math.min(100, value));
+}
+
+function deriveAnalyzerToolCalls(
+  state: Record<string, unknown>,
+  progress: number,
+  overallStatus: string,
+  elapsedSeconds = 0,
+  options?: { timingHistory?: AnalyzerTimingStore; phaseElapsedSeconds?: AnalyzerPhaseElapsed },
+): ToolCall[] {
+  const trace = asStringArray(state.reasoning_trace);
+  const analysisResults = asRecord(state.analysis_results);
+  const ghidraCompleted =
+    overallStatus === 'completed' ||
+    trace.includes('discovery_completed') ||
+    hasAnalyzerData(analysisResults);
+  const r2Completed = trace.includes('r2_discovery_completed') || hasAnalyzerData(state.r2_analysis_results);
+  const qilingCompleted = trace.includes('qiling_discovery_completed') || hasAnalyzerData(state.qiling_analysis_results);
+  const r2Failed = trace.includes('r2_unavailable') || trace.some((item) => item.startsWith('r2_error:'));
+  const qilingFailed = trace.includes('qiling_unavailable') || trace.some((item) => item.startsWith('qiling_error:'));
+  const globalFailed = overallStatus === 'error';
+  const analyzerProgress = asRecord(state.analyzer_progress);
+  const analyzerStatus = asRecord(state.analyzer_status);
+  const analyzerStep = asRecord(state.analyzer_step);
+
+  const resolveStatus = (
+    completed: boolean,
+    failed: boolean,
+    readyHint: boolean,
+  ): ToolCall['status'] => {
+    if (failed || globalFailed) return 'failed';
+    if (completed) return 'completed';
+    if (readyHint) return 'running';
+    return 'pending';
+  };
+
+  const fallbackGhidraStatus = resolveStatus(
+    ghidraCompleted,
+    false,
+    trace.includes('ghidra_initialized') || overallStatus === 'running',
+  );
+  const fallbackR2Status = resolveStatus(
+    r2Completed,
+    r2Failed,
+    trace.includes('r2_initialized'),
+  );
+  const fallbackQilingStatus = resolveStatus(
+    qilingCompleted,
+    qilingFailed,
+    trace.includes('qiling_initialized'),
+  );
+
+  const ghidraStatus = asToolStatus(analyzerStatus.ghidra) ?? fallbackGhidraStatus;
+  const r2Status = asToolStatus(analyzerStatus.radare2) ?? fallbackR2Status;
+  const qilingStatus = asToolStatus(analyzerStatus.qiling) ?? fallbackQilingStatus;
+
+  const statusProgress = (status: ToolCall['status'], progressValue: unknown): number => {
+    if (status === 'completed') return 100;
+    if (status === 'failed' || status === 'pending') return 0;
+    const raw = Number(progressValue);
+    if (Number.isFinite(raw)) return clampPercent(raw);
+    return clampPercent(progress);
+  };
+
+  const ghidraProgress = statusProgress(ghidraStatus, analyzerProgress.ghidra);
+  const r2Progress = statusProgress(r2Status, analyzerProgress.radare2);
+  const qilingProgress = statusProgress(qilingStatus, analyzerProgress.qiling);
+  const ghidraStep = asString(analyzerStep.ghidra);
+  const r2Step = asString(analyzerStep.radare2);
+  const qilingStep = asString(analyzerStep.qiling);
+  const phaseElapsed = options?.phaseElapsedSeconds ?? {};
+  const timingHistory = options?.timingHistory;
+
+  return [
+    {
+      id: 'analyzer-ghidra',
+      name: 'Ghidra Analysis',
+      status: ghidraStatus,
+      progress: ghidraProgress,
+      maxProgress: 100,
+      phase: phaseLabel(ghidraStep),
+      etaSeconds: estimateEtaSecondsWithHistory({
+        status: ghidraStatus,
+        progressValue: ghidraProgress,
+        elapsedSeconds,
+        step: ghidraStep,
+        analyzer: 'ghidra',
+        phaseElapsedSeconds: phaseElapsed.ghidra,
+        history: timingHistory,
+      }),
+    },
+    {
+      id: 'analyzer-radare2',
+      name: 'Radare2 Analysis',
+      status: r2Status,
+      progress: r2Progress,
+      maxProgress: 100,
+      phase: phaseLabel(r2Step),
+      etaSeconds: estimateEtaSecondsWithHistory({
+        status: r2Status,
+        progressValue: r2Progress,
+        elapsedSeconds,
+        step: r2Step,
+        analyzer: 'radare2',
+        phaseElapsedSeconds: phaseElapsed.radare2,
+        history: timingHistory,
+      }),
+    },
+    {
+      id: 'analyzer-qiling',
+      name: 'Qiling Dynamic Analysis',
+      status: qilingStatus,
+      progress: qilingProgress,
+      maxProgress: 100,
+      phase: phaseLabel(qilingStep),
+      etaSeconds: estimateEtaSecondsWithHistory({
+        status: qilingStatus,
+        progressValue: qilingProgress,
+        elapsedSeconds,
+        step: qilingStep,
+        analyzer: 'qiling',
+        phaseElapsedSeconds: phaseElapsed.qiling,
+        history: timingHistory,
+      }),
+    },
+  ];
+}
+
 function App() {
   const [viewState, setViewState] = useState<ViewState>('welcome');
   const [selectedModelId, setSelectedModelId] = useState('glm-4.7');
   const [messages, setMessages] = useState<Message[]>([]);
-  const [activeTab, setActiveTab] = useState<'overview' | 'analyzers' | 'callgraph'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'analyzers' | 'callgraph' | 'dynamic'>('overview');
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<RightPanelTab>('resources');
   const [activeCodeFileId, setActiveCodeFileId] = useState<string>('');
@@ -84,6 +251,7 @@ function App() {
   const [analyses, setAnalyses] = useState<Analysis[]>([]);
   const [activeReport, setActiveReport] = useState<Report | null>(null);
   const [callGraphPanels, setCallGraphPanels] = useState<CallGraphPanel[]>([]);
+  const [qilingResults, setQilingResults] = useState<AnalyzerRawResults | null>(null);
 
   // Track current session
   const sessionRef = useRef<{ id: string; hash: string } | null>(null);
@@ -106,13 +274,14 @@ function App() {
   // Returns the number of analyzers fetched
   const fetchAnalysisData = useCallback(async (hash: string): Promise<number> => {
     try {
-      const [analysisInfo, analyzersData, filesData, reportsData, ghidraResults, radare2Results] = await Promise.all([
+      const [analysisInfo, analyzersData, filesData, reportsData, ghidraResults, radare2Results, qilingResults] = await Promise.all([
         getAnalysis(hash),
         getAnalyzers(hash),
         getFiles(hash),
         getReports(hash),
         getGhidraResults(hash),
         getRadare2Results(hash),
+        getQilingResults(hash),
       ]);
       setAnalyzers(analyzersData || []);
       if (filesData?.children) {
@@ -167,11 +336,23 @@ function App() {
       }
       setCallGraphPanels(callGraphData);
 
+      // Store Qiling dynamic analysis results
+      setQilingResults(qilingResults);
+
+      const analyzerTags = (analyzersData || []).map((a: Analyzer) => a.name.split(' ')[0].toLowerCase());
+      const hasQilingPayload =
+        Boolean(qilingResults?.execution_trace) ||
+        Boolean(qilingResults?.syscalls) ||
+        Boolean(qilingResults?.network_activity);
+      if (hasQilingPayload && !analyzerTags.includes('qiling')) {
+        analyzerTags.push('qiling');
+      }
+
       setAnalyses([{
         id: hash,
         hash,
         shortHash: hash.slice(0, 16) + '...',
-        tags: (analyzersData || []).map((a: Analyzer) => a.name.split(' ')[0].toLowerCase()),
+        tags: analyzerTags,
         extraTagCount: 0,
         verdict: overallVerdict,
         status: 'completed',
@@ -185,6 +366,8 @@ function App() {
 
   // Handle file upload (drag-and-drop or file picker)
   const handleFileUpload = useCallback(async (file: File) => {
+    let stream: WebSocket | null = null;
+
     const uploadMsg: Message = {
       id: Date.now().toString(),
       content: `Uploading binary: ${file.name} (${(file.size / 1024).toFixed(1)} KB)`,
@@ -199,25 +382,130 @@ function App() {
       const analyzingMsg: Message = {
         id: (Date.now() + 1).toString(),
         content:
-          `Binary uploaded. Analyzing **${file.name}** with Ghidra and Radare2... This typically takes 5-15 minutes.\n\n` +
+          `Binary uploaded. Analyzing **${file.name}** with Ghidra, Radare2, and Qiling... This typically takes 5-15 minutes.\n\n` +
           `**starting** - 0%`,
         isUser: false,
         timestamp: new Date(),
-        toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'running', progress: 0, maxProgress: 100 }],
+        toolCalls: deriveAnalyzerToolCalls({}, 0, 'running'),
       };
       setMessages(prev => [...prev, analyzingMsg]);
 
-      // Poll until done, updating status message on each tick
       const startTime = Date.now();
-      const result = await pollStatus(session_id, (statusUpdate) => {
-        const state = statusUpdate.state as Record<string, unknown>;
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
+      let latestState: Record<string, unknown> = {};
+      let latestStep = 'starting';
+      let latestProgress = 0;
+      let latestStatus = 'running';
+      let timingHistory = loadTimingStore();
+
+      type AnalyzerTracker = { phase: string; phaseStartedAtMs: number; finalized: boolean };
+      const analyzerTrackers: Partial<Record<AnalyzerId, AnalyzerTracker>> = {};
+      const analyzerIds: AnalyzerId[] = ['ghidra', 'radare2', 'qiling'];
+
+      const statusFromToolCalls = (toolCalls: ToolCall[]): Partial<Record<AnalyzerId, ToolCall['status']>> => {
+        const statusMap: Partial<Record<AnalyzerId, ToolCall['status']>> = {};
+        for (const tool of toolCalls) {
+          if (tool.id === 'analyzer-ghidra') statusMap.ghidra = tool.status;
+          if (tool.id === 'analyzer-radare2') statusMap.radare2 = tool.status;
+          if (tool.id === 'analyzer-qiling') statusMap.qiling = tool.status;
+        }
+        return statusMap;
+      };
+
+      const getPhaseElapsedSeconds = (nowMs: number): AnalyzerPhaseElapsed => {
+        const phaseElapsed: AnalyzerPhaseElapsed = {};
+        for (const analyzer of analyzerIds) {
+          const tracker = analyzerTrackers[analyzer];
+          if (!tracker || tracker.finalized) continue;
+          phaseElapsed[analyzer] = Math.max(0, Math.round((nowMs - tracker.phaseStartedAtMs) / 1000));
+        }
+        return phaseElapsed;
+      };
+
+      const syncTimingHistory = (
+        nowMs: number,
+        analyzerStep: Record<string, unknown>,
+        toolCalls: ToolCall[],
+        totalElapsedSeconds: number,
+      ): boolean => {
+        const statusMap = statusFromToolCalls(toolCalls);
+        let trackerChanged = false;
+        let historyChanged = false;
+
+        for (const analyzer of analyzerIds) {
+          const status = statusMap[analyzer];
+          const phaseRaw = asString(analyzerStep[analyzer], 'working');
+          const phaseKey = normalizePhaseKey(phaseRaw);
+          const tracker = analyzerTrackers[analyzer];
+
+          if (status === 'running') {
+            if (!tracker) {
+              analyzerTrackers[analyzer] = { phase: phaseKey, phaseStartedAtMs: nowMs, finalized: false };
+              trackerChanged = true;
+              continue;
+            }
+            if (tracker.phase !== phaseKey) {
+              const phaseDurationSeconds = Math.round((nowMs - tracker.phaseStartedAtMs) / 1000);
+              if (phaseDurationSeconds >= 1) {
+                timingHistory = recordPhaseTiming(timingHistory, analyzer, tracker.phase, phaseDurationSeconds);
+                historyChanged = true;
+              }
+              tracker.phase = phaseKey;
+              tracker.phaseStartedAtMs = nowMs;
+              tracker.finalized = false;
+              trackerChanged = true;
+            }
+            continue;
+          }
+
+          if ((status === 'completed' || status === 'failed') && tracker && !tracker.finalized) {
+            const phaseDurationSeconds = Math.round((nowMs - tracker.phaseStartedAtMs) / 1000);
+            if (phaseDurationSeconds >= 1) {
+              timingHistory = recordPhaseTiming(timingHistory, analyzer, tracker.phase, phaseDurationSeconds);
+              historyChanged = true;
+            }
+            if (totalElapsedSeconds >= 1) {
+              timingHistory = recordTotalTiming(timingHistory, analyzer, totalElapsedSeconds);
+              historyChanged = true;
+            }
+            tracker.finalized = true;
+            trackerChanged = true;
+          }
+        }
+
+        if (historyChanged) saveTimingStore(timingHistory);
+        return trackerChanged || historyChanged;
+      };
+
+      const updateAnalyzingMessage = (
+        nextStep?: string,
+        nextProgress?: number,
+        nextStatus?: string,
+        nextState?: Record<string, unknown>,
+      ) => {
+        if (nextState) latestState = nextState;
+        if (nextStep) latestStep = nextStep;
+        if (nextStatus) latestStatus = nextStatus;
+        if (typeof nextProgress === 'number' && Number.isFinite(nextProgress)) {
+          latestProgress = Math.max(0, Math.min(100, nextProgress));
+        }
+        const nowMs = Date.now();
+        const elapsed = Math.round((nowMs - startTime) / 1000);
         const mins = Math.floor(elapsed / 60);
         const secs = elapsed % 60;
         const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-        const step = asString(state.current_step, statusUpdate.status || 'analyzing');
-        const rawProgress = Number(state.progress ?? 0);
-        const progress = Number.isFinite(rawProgress) ? Math.max(0, Math.min(100, rawProgress)) : 0;
+        const analyzerStep = asRecord(latestState.analyzer_step);
+        const phaseElapsed = getPhaseElapsedSeconds(nowMs);
+        let toolCalls = deriveAnalyzerToolCalls(latestState, latestProgress, latestStatus, elapsed, {
+          timingHistory,
+          phaseElapsedSeconds: phaseElapsed,
+        });
+        const changed = syncTimingHistory(nowMs, analyzerStep, toolCalls, elapsed);
+        if (changed) {
+          toolCalls = deriveAnalyzerToolCalls(latestState, latestProgress, latestStatus, elapsed, {
+            timingHistory,
+            phaseElapsedSeconds: getPhaseElapsedSeconds(nowMs),
+          });
+        }
         setMessages(prev =>
           prev.map(m =>
             m.id === analyzingMsg.id
@@ -225,15 +513,51 @@ function App() {
                   ...m,
                   content:
                     `Analyzing **${file.name}**... (${timeStr} elapsed)\n\n` +
-                    `**${step}** - ${progress}%`,
-                  toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'running', progress, maxProgress: 100 }],
+                    `**${latestStep}** - ${latestProgress}%`,
+                  toolCalls,
                 }
               : m
           )
         );
+      };
+
+      stream = connectStream(session_id, (event) => {
+        const evt = asRecord(event);
+        const evtType = asString(evt.type);
+        const payload = asRecord(evt.payload);
+        const payloadState = {
+          ...latestState,
+          ...(payload.analyzer_progress ? { analyzer_progress: asRecord(payload.analyzer_progress) } : {}),
+          ...(payload.analyzer_status ? { analyzer_status: asRecord(payload.analyzer_status) } : {}),
+          ...(payload.analyzer_step ? { analyzer_step: asRecord(payload.analyzer_step) } : {}),
+        };
+        if (evtType === 'analysis:progress') {
+          updateAnalyzingMessage(
+            asString(payload.step, latestStep),
+            Number(payload.progress ?? latestProgress),
+            asString(payload.status, 'running'),
+            payloadState,
+          );
+        } else if (evtType === 'analysis:error') {
+          updateAnalyzingMessage(
+            asString(payload.step, latestStep),
+            Number(payload.progress ?? latestProgress),
+            'error',
+            payloadState,
+          );
+        } else if (evtType === 'analysis:completed') {
+          updateAnalyzingMessage('analysis_completed', 100, 'completed', payloadState);
+        }
       });
 
-      const state = result.state as Record<string, unknown>;
+      const result = await pollStatus(session_id, (statusUpdate) => {
+        const state = asRecord(statusUpdate.state);
+        const step = asString(state.current_step, statusUpdate.status || 'analyzing');
+        const rawProgress = Number(state.progress ?? 0);
+        updateAnalyzingMessage(step, rawProgress, statusUpdate.status, state);
+      });
+
+      const state = asRecord(result.state);
       const hash = asString(state.program_hash);
       if (!hash) {
         throw new Error('Analysis response is missing program hash');
@@ -250,13 +574,14 @@ function App() {
 
       // Count analyzers: Ghidra always present, R2 if results exist
       const hasR2 = Boolean(analysisResults.r2) || Boolean(state.r2_analysis_results);
-      const analyzerTotal = hasR2 ? 2 : 1;
+      const hasQiling = Boolean(state.qiling_analysis_results);
+      const analyzerTotal = 1 + (hasR2 ? 1 : 0) + (hasQiling ? 1 : 0);
       const resultMsg: Message = {
         id: (Date.now() + 2).toString(),
         content: summary + `\n\n---\n**${funcCount}** functions, **${strCount}** strings found.`,
         isUser: false,
         timestamp: new Date(),
-        toolCalls: [{ id: '1', name: 'Ghidra Analysis', status: 'completed' }],
+        toolCalls: deriveAnalyzerToolCalls(state, 100, result.status),
         showAnalysisCompleted: true,
         analysisHash: hash,
         analyzerCount: analyzerTotal,
@@ -307,6 +632,14 @@ function App() {
         timestamp: new Date(),
       };
       setMessages(prev => [...prev, errMsg]);
+    } finally {
+      if (stream) {
+        try {
+          stream.close();
+        } catch {
+          // no-op
+        }
+      }
     }
   }, [fetchAnalysisData]);
 
@@ -483,6 +816,7 @@ function App() {
           activeCodeFileId={activeCodeFileId}
           activeReport={activeReport}
           programHash={sessionRef.current?.hash ?? null}
+          qilingResults={qilingResults}
           onTabChange={setRightPanelTab}
           onCodeFileChange={setActiveCodeFileId}
           onReportSelect={handleReportSelect}
@@ -656,6 +990,7 @@ function App() {
                     <AnalysisTabs
                       activeTab={activeTab}
                       onTabChange={setActiveTab}
+                      hasDynamicData={qilingResults != null}
                     />
                   </div>
 
@@ -712,6 +1047,18 @@ function App() {
                       >
                         <AnalysisSection title="Call Graph & Attack Chains">
                           <CallGraphView panels={callGraphPanels} />
+                        </AnalysisSection>
+                      </motion.div>
+                    )}
+
+                    {activeTab === 'dynamic' && qilingResults && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <AnalysisSection title="Qiling Dynamic Analysis">
+                          <QilingResultsView results={qilingResults} />
                         </AnalysisSection>
                       </motion.div>
                     )}
