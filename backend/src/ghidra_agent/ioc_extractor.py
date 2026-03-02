@@ -469,7 +469,10 @@ def extract_iocs_from_state(state: Dict[str, Any]) -> IOCs:
                 for call in syscall_rows:
                     if not isinstance(call, dict):
                         continue
-                    all_strings.append({"value": str(call.get("name", ""))})
+                    # B3 FIX: Do NOT feed syscall names (e.g. "connect", "socket")
+                    # into IOC extraction — they match SUSPICIOUS_KEYWORDS and
+                    # inflate the verdict score with false positives.
+                    # Only extract argument values which may contain real IOCs.
                     for arg in call.get("args", []) or []:
                         all_strings.append({"value": str(arg)})
 
@@ -742,6 +745,46 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
         if any(x in strings_vals for x in ["exec", "system", "popen", "shell"]):
             score += 25
             indicators.append("Command execution capability detected")
+
+    # F2 FIX: Score suspicious import/export names from binary metadata.
+    # Imports like CreateRemoteThread, VirtualAllocEx are strong malware indicators
+    # that may not appear in strings data.
+    _SUSPICIOUS_IMPORTS = {
+        # Process injection
+        "createremotethread", "ntcreatethreadex", "rtlcreateuserthread",
+        "virtualallocex", "writeprocessmemory", "ntwritevirtualmemory",
+        "ntmapviewofsection", "queueuserapc", "setthreadcontext",
+        # Code injection / hollowing
+        "ntunmapviewofsection", "zwunmapviewofsection", "ntresumethread",
+        "resumethread", "suspendthread",
+        # Privilege escalation
+        "adjusttokenprivileges", "openprocesstoken", "lookupprivilegevalue",
+        # Anti-debug / evasion
+        "isdebuggerpresent", "ntqueryinformationprocess", "checkremotedebuggerpresent",
+        "outputdebugstring",
+        # Persistence / registry
+        "regsetvalueex", "regcreatekeyex",
+        # Keylogging / surveillance
+        "setwindowshookex", "getasynckeystate", "getkeystate",
+        # DLL injection
+        "loadlibrary", "loadlibrarya", "loadlibraryw", "getprocaddress",
+        # Linux-specific
+        "ptrace", "dlopen", "dlsym", "mprotect",
+    }
+    all_imports = []
+    gh_binary = state.get("analysis_results", {}).get("binary", {})
+    if gh_binary.get("ok"):
+        all_imports.extend(gh_binary.get("imports", []))
+        all_imports.extend(gh_binary.get("exports", []))
+    r2_binary = state.get("r2_analysis_results", {}).get("binary", {})
+    if r2_binary.get("ok"):
+        all_imports.extend(r2_binary.get("imports", []))
+        all_imports.extend(r2_binary.get("exports", []))
+    import_names_lower = {str(imp).lower() for imp in all_imports}
+    suspicious_import_hits = import_names_lower & _SUSPICIOUS_IMPORTS
+    if suspicious_import_hits:
+        score += min(len(suspicious_import_hits), 8) * 8
+        indicators.append(f"{len(suspicious_import_hits)} suspicious imports ({', '.join(sorted(suspicious_import_hits)[:5])})")
 
     # Score Qiling runtime behavior (dynamic syscall/evasion signals)
     score += _score_qiling_dynamic_behavior(state, indicators)

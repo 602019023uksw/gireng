@@ -656,6 +656,10 @@ def _prioritize_strings(strings_list: List[Dict[str, Any]]) -> List[Dict[str, An
     def relevance_score(s: Dict[str, Any]) -> int:
         val = s.get("value", "")
         score = 0
+        # F1 FIX: Boost strings with cross-references (actually used in code)
+        xrefs = s.get("xrefs", [])
+        if isinstance(xrefs, list) and xrefs:
+            score += min(len(xrefs), 10) * 15
         # ---- C2 / protocol-specific boosts ----
         # Google Sheets / Docs / Drive API (C2 over cloud services)
         if re.search(r'googleapis\.com|sheets\.google|docs\.google|drive\.google', val, re.IGNORECASE):
@@ -830,13 +834,13 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
             if isinstance(it_summary, dict):
                 parts.append(
                     "- Instruction Trace: "
-                    f"{it_summary.get('total_instructions', 0)} instructions, "
-                    f"{it_summary.get('unique_instructions', 0)} unique"
+                    f"{it_summary.get('total_executed', 0)} instructions, "
+                    f"{it_summary.get('unique_mnemonics', 0)} unique"
                 )
-                freq = it_summary.get("mnemonic_frequency", {})
-                if isinstance(freq, dict) and freq:
-                    top = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:10]
-                    parts.append(f"- Top Mnemonics: {', '.join(f'{m}:{c}' for m, c in top)}")
+                freq = it_summary.get("top_mnemonics", [])
+                if isinstance(freq, list) and freq:
+                    top_strs = [f"{e.get('mnemonic', '?')}:{e.get('count', 0)}" for e in freq[:10] if isinstance(e, dict)]
+                    parts.append(f"- Top Mnemonics: {', '.join(top_strs)}")
             oep = instruction_trace.get("oep_candidates", [])
             if isinstance(oep, list) and oep:
                 oep_strs = [f"{o.get('address', '?')}({o.get('confidence', '?')})" for o in oep[:5] if isinstance(o, dict)]
@@ -925,15 +929,16 @@ def _summarize_qiling_instruction_trace(instruction_trace: Dict[str, Any]) -> st
     summary = instruction_trace.get("summary", {})
     if not isinstance(summary, dict):
         summary = {}
-    total = summary.get("total_instructions", 0)
-    unique = summary.get("unique_instructions", 0)
+    total = summary.get("total_executed", 0)
+    unique = summary.get("unique_mnemonics", 0)
 
-    # Top mnemonics
-    freq = summary.get("mnemonic_frequency", {})
+    # Top mnemonics (list of {"mnemonic": str, "count": int})
+    freq = summary.get("top_mnemonics", [])
     top_mnemonics = []
-    if isinstance(freq, dict):
-        sorted_freq = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:15]
-        top_mnemonics = [f"{m}:{c}" for m, c in sorted_freq]
+    if isinstance(freq, list):
+        for entry in freq[:15]:
+            if isinstance(entry, dict):
+                top_mnemonics.append(f"{entry.get('mnemonic', '?')}:{entry.get('count', 0)}")
 
     # OEP candidates from memory analysis integration
     oep_candidates = instruction_trace.get("oep_candidates", [])
@@ -1027,8 +1032,16 @@ async def synthesize(state: AgentState) -> AgentState:
     strings_data = results.get("strings", {})
     if strings_data.get("ok") and strings_data.get("strings"):
         sorted_strings = _prioritize_strings(strings_data["strings"])
-        str_vals = [s.get("value") for s in sorted_strings[:LLM_STRING_LIMIT]]
-        context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_vals)}")
+        # F1 FIX: Include xref addresses from Ghidra when available.
+        str_entries = []
+        for s in sorted_strings[:LLM_STRING_LIMIT]:
+            val = s.get("value", "")
+            xrefs = s.get("xrefs", [])
+            if isinstance(xrefs, list) and xrefs:
+                str_entries.append(f"{val} [xrefs: {', '.join(str(x) for x in xrefs[:3])}]")
+            else:
+                str_entries.append(val)
+        context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_entries)}")
 
     # Include byte-signature findings collected in discovery.
     byte_sigs = results.get("byte_signatures", {})

@@ -161,7 +161,9 @@ async def r2_list_functions(
             "name": f.get("name", ""),
             "address": hex(raw_addr),
             "size": f.get("size", 0),
-            "xrefs": f.get("nrefsTo", 0) + f.get("nrefsFrom", 0),
+            # B6 FIX: Use only incoming xrefs (nrefsTo) to match Ghidra semantics.
+            # Previously summed nrefsTo+nrefsFrom which inflated priority scores.
+            "xrefs": f.get("nrefsTo", 0),
             "calltype": f.get("calltype", ""),
         })
 

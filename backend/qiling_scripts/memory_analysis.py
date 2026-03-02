@@ -165,8 +165,7 @@ def _run(binary_path: str, timeout_sec: int, rootfs_base: str) -> Dict[str, Any]
                 else:
                     consecutive_same_page_writes = 1
                 last_write_page = page
-            if is_exec_target:
-                total_exec_write_events += 1
+            # B4 FIX: Removed duplicate `if is_exec_target: total_exec_write_events += 1`
             if len(events) >= 250:
                 return
             entry = {

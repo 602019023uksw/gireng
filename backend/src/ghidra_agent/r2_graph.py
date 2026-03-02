@@ -90,8 +90,9 @@ async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
     if safe_pct < current_pct:
         return
 
-    state["current_step"] = step
-    state["progress"] = safe_pct
+    # B5 FIX: Do NOT write to global state["current_step"] / state["progress"]
+    # during concurrent asyncio.gather — Ghidra also writes these, causing a race.
+    # R2-specific progress is already tracked via _set_r2_progress() above.
 
     callback = state.get("progress_callback")
     if callback is None:

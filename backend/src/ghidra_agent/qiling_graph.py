@@ -173,6 +173,16 @@ async def run_qiling_pipeline(state: AgentState) -> AgentState:
         {"instructions": [], "summary": {}},
     )
 
+    # B9 FIX: Merge OEP candidates from memory_events into instruction_trace
+    # so they are accessible via a single path for LLM context and reporting.
+    mem_indicators = memory_events.get("indicators", {}) if isinstance(memory_events, dict) else {}
+    oep_candidates = mem_indicators.get("oep_candidates", []) if isinstance(mem_indicators, dict) else []
+    if isinstance(oep_candidates, list) and oep_candidates:
+        existing_oep = instruction_trace.get("oep_candidates", [])
+        if not isinstance(existing_oep, list):
+            existing_oep = []
+        instruction_trace["oep_candidates"] = existing_oep + oep_candidates
+
     results["syscalls"] = syscalls
     results["memory_events"] = memory_events
     results["network_activity"] = network_activity

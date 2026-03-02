@@ -117,7 +117,7 @@ class TestR2ListFunctions:
         assert result["ok"] is True
         assert len(result["functions"]) == 2
         assert result["functions"][0]["name"] == "main"
-        assert result["functions"][0]["xrefs"] == 5  # 3 + 2
+        assert result["functions"][0]["xrefs"] == 3  # nrefsTo only (B6 fix)
 
     @pytest.mark.asyncio
     async def test_not_a_list(self):

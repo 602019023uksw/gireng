@@ -211,8 +211,8 @@ async def query(request: QueryRequest) -> JSONResponse:
     decomp_cache = state.get("decompilation_cache", {})
     if decomp_cache:
         context_parts.append(f"\n=== GHIDRA DECOMPILED CODE ({len(decomp_cache)} functions) ===")
-        for func_name, c_code in list(decomp_cache.items())[:15]:
-            context_parts.append(f"\n--- {func_name} ---\n{c_code[:2000]}")
+        for func_name, c_code in list(decomp_cache.items())[:25]:
+            context_parts.append(f"\n--- {func_name} ---\n{c_code[:4000]}")
 
     r2_results = state.get("r2_analysis_results", {})
     r2_decomp = state.get("r2_decompilation_cache", {})
@@ -244,8 +244,8 @@ async def query(request: QueryRequest) -> JSONResponse:
             context_parts.append(f"R2 Syscalls ({len(r2_syscalls.get('syscalls', []))} total): {', '.join(syscall_desc)}")
     if r2_decomp:
         context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
-        for func_name, c_code in list(r2_decomp.items())[:10]:
-            context_parts.append(f"\n--- {func_name} ---\n{c_code[:2000]}")
+        for func_name, c_code in list(r2_decomp.items())[:25]:
+            context_parts.append(f"\n--- {func_name} ---\n{c_code[:4000]}")
 
     qiling_results = state.get("qiling_analysis_results", {})
     if qiling_results:
@@ -295,10 +295,10 @@ async def query(request: QueryRequest) -> JSONResponse:
     prompt = f"""You are a malware analyst answering a follow-up question about a binary you already analyzed.
 
 PREVIOUS ANALYSIS SUMMARY (for context):
-{prev_summary[:4000]}
+{prev_summary[:8000]}
 
 RAW ANALYSIS DATA:
-{context[:8000]}
+{context[:16000]}
 
 Binary hash: {state.get('program_hash', 'unknown')}
 

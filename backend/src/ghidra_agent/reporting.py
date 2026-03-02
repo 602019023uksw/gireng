@@ -286,6 +286,11 @@ def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
         results.append({"type": "Registry", "value": reg})
     for mutex in iocs.mutexes:
         results.append({"type": "Mutex", "value": mutex})
+    # B7 FIX: Include crypto materials and suspicious strings in report table.
+    for crypto in iocs.crypto_materials:
+        results.append({"type": "Crypto Material", "value": crypto})
+    for susp in iocs.suspicious_strings:
+        results.append({"type": "Suspicious String", "value": susp})
 
     return results
 
@@ -1248,16 +1253,19 @@ def _render_qiling_dynamic_section(qiling: Dict[str, Any]) -> str:
     instruction_trace = qiling.get("instruction_trace", {})
     if isinstance(instruction_trace, dict) and instruction_trace:
         it_summary = instruction_trace.get("summary", {})
-        total_insn = it_summary.get("total_instructions", 0) if isinstance(it_summary, dict) else 0
-        unique_insn = it_summary.get("unique_instructions", 0) if isinstance(it_summary, dict) else 0
+        total_insn = it_summary.get("total_executed", 0) if isinstance(it_summary, dict) else 0
+        unique_insn = it_summary.get("unique_mnemonics", 0) if isinstance(it_summary, dict) else 0
 
-        # Mnemonic frequency badges
-        freq = it_summary.get("mnemonic_frequency", {}) if isinstance(it_summary, dict) else {}
+        # Mnemonic frequency badges (top_mnemonics is a list of {"mnemonic": str, "count": int})
+        freq = it_summary.get("top_mnemonics", []) if isinstance(it_summary, dict) else []
         mnemonic_badges = ""
-        if isinstance(freq, dict) and freq:
-            sorted_freq = sorted(freq.items(), key=lambda x: x[1], reverse=True)[:20]
+        if isinstance(freq, list) and freq:
             badge_items = []
-            for mnem, count in sorted_freq:
+            for entry in freq[:20]:
+                if not isinstance(entry, dict):
+                    continue
+                mnem = entry.get("mnemonic", "?")
+                count = entry.get("count", 0)
                 pct = (count / total_insn * 100) if total_insn > 0 else 0
                 # Color-code by category
                 if mnem in ("call", "ret", "syscall", "int", "svc"):
