@@ -1,5 +1,6 @@
-const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
-const WS_BASE = import.meta.env.VITE_WS_URL || 'ws://localhost:8080/stream';
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+const WS_BASE = import.meta.env.VITE_WS_URL
+  || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/stream`;
 
 export interface UploadResponse {
   session_id: string;

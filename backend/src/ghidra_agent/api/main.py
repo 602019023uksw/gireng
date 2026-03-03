@@ -11,7 +11,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Res
 
 from ghidra_agent import database as db
 from ghidra_agent.config import settings
-from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state, format_iocs_for_report
+from ghidra_agent.ioc_extractor import calculate_verdict, classify_malware_type, build_analysis_tags, extract_iocs_from_state, format_iocs_for_report
 from ghidra_agent.langfuse_tracing import create_standalone_trace_metadata
 from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import configure_logging, logger
@@ -46,15 +46,52 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Ghidra Reverse Engineering Agent", lifespan=lifespan)
 
+import os as _os
+
+# Build the allowed origins list.
+# In production, set CORS_ORIGINS env var (comma-separated).
+# In dev, the Vite proxy makes CORS unnecessary, but we still allow common ports.
+_cors_env = _os.environ.get("CORS_ORIGINS", "")
+_cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else []
+
+# Always allow common local dev origins
+_DEFAULT_ORIGINS = [
+    "http://localhost:5173",   # Vite dev server
+    "http://localhost:4173",   # Vite preview / Docker UI
+    "http://localhost:3000",
+    "http://127.0.0.1:5173",
+    "http://127.0.0.1:4173",
+    "http://127.0.0.1:3000",
+]
+for _o in _DEFAULT_ORIGINS:
+    if _o not in _cors_origins:
+        _cors_origins.append(_o)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",  # catch any localhost port
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 configure_logging()
+
+
+# ---------------------------------------------------------------------------
+# Global exception handler – ensures CORS headers are present even on 500s.
+# Without this, unhandled exceptions bypass CORSMiddleware and the browser
+# reports a misleading CORS error instead of the real server error.
+# ---------------------------------------------------------------------------
+@app.exception_handler(Exception)
+async def _global_exception_handler(request, exc):
+    logger.error("unhandled_exception", path=request.url.path, error=str(exc), exc_info=exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {exc}"},
+    )
 
 
 def _to_num(value: Any) -> float:
@@ -125,17 +162,29 @@ async def analyze(request: SessionCreateRequest) -> SessionCreateResponse:
 
 @app.post("/analyze/upload", response_model=SessionCreateResponse)
 async def analyze_upload(file: UploadFile = File(...)) -> SessionCreateResponse:
-    shared_root = Path(settings.ghidra_shared_root)
-    ensure_directory(shared_root)
-    filename = file.filename or "upload"
-    target_path = shared_root / safe_basename(filename)
-    contents = await file.read()
-    if len(contents) > settings.max_upload_bytes:
+    try:
+        shared_root = Path(settings.ghidra_shared_root)
+        ensure_directory(shared_root)
+        filename = file.filename or "upload"
+        target_path = shared_root / safe_basename(filename)
+        contents = await file.read()
+        if len(contents) == 0:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty")
+        if len(contents) > settings.max_upload_bytes:
+            raise HTTPException(
+                status_code=413,
+                detail=f"File too large ({len(contents)} bytes). Max allowed: {settings.max_upload_bytes} bytes.",
+            )
+        target_path.write_bytes(contents)
+        logger.info("upload_saved", path=str(target_path), size=len(contents))
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("upload_failed", error=str(exc), exc_info=exc)
         raise HTTPException(
-            status_code=413,
-            detail=f"File too large ({len(contents)} bytes). Max allowed: {settings.max_upload_bytes} bytes.",
+            status_code=500,
+            detail=f"Failed to save uploaded file: {exc}",
         )
-    target_path.write_bytes(contents)
     state = store.create_session(str(target_path))
     _create_tracked_task(_run_with_events(state))
     return SessionCreateResponse(session_id=state["session_id"])
@@ -572,6 +621,12 @@ async def analysis_status(program_hash: str) -> JSONResponse:
         active_analyzers = ["ghidra"]
     analyzer_label = active_analyzers[0] if len(active_analyzers) == 1 else "multi"
 
+    # Compute verdict, malware type, and tags
+    iocs = extract_iocs_from_state(state)
+    verdict, _, indicators, score = calculate_verdict(iocs, state)
+    mtype, mconf, _ = classify_malware_type(state)
+    tags = build_analysis_tags(state)
+
     return JSONResponse({
         "hash": program_hash,
         "status": state["status"],
@@ -580,6 +635,13 @@ async def analysis_status(program_hash: str) -> JSONResponse:
         "duration": duration_str,
         "started": started_iso,
         "completed": completed_iso,
+        "verdict": verdict,
+        "threatScore": score,
+        "maxScore": 100,
+        "malwareType": mtype if mtype != "Unknown" else None,
+        "malwareTypeConfidence": mconf,
+        "tags": tags,
+        "indicators": indicators[:10],
     })
 
 

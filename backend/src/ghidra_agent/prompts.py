@@ -157,6 +157,24 @@ Write 2-3 concise sentences summarizing overall determination and priority.
 - `**Verdict: Suspicious**` — if some indicators exist but no definitive malicious code found
 - `**Verdict: Clean**` — if the binary is benign, a legitimate tool, standard library, or the suspicious indicators are clearly false positives
 
+**IMPORTANT: When the verdict is Malware or Suspicious, you MUST also include a malware type classification:**
+- `**Malware Type: RAT**` — Remote Access Trojan with C2, command execution, and surveillance
+- `**Malware Type: Backdoor**` — Provides unauthorized remote access, shell access, or command execution
+- `**Malware Type: Ransomware**` — Encrypts files and demands payment for decryption
+- `**Malware Type: Trojan**` — Disguised malicious program with hidden secondary functionality
+- `**Malware Type: Stealer**` — Harvests credentials, tokens, browser data, or sensitive files
+- `**Malware Type: Rootkit**` — Hides its presence using kernel/userland hooks or LD_PRELOAD tricks
+- `**Malware Type: Botnet**` — Bot agent for DDoS, spam, or coordinated attacks
+- `**Malware Type: Dropper**` — Downloads and executes secondary payloads
+- `**Malware Type: Spyware**` — Monitors user activity (keylogging, screenshots, audio)
+- `**Malware Type: Miner**` — Cryptocurrency mining using victim resources
+- `**Malware Type: Worm**` — Self-propagating across networks or removable media
+- `**Malware Type: Exploit**` — Contains exploit code (ROP chains, shellcode, buffer overflow)
+- `**Malware Type: Keylogger**` — Captures keyboard input
+- `**Malware Type: Unknown**` — Malicious but type cannot be determined from available evidence
+
+Choose the MOST SPECIFIC type that matches the observed behavior. If the binary exhibits multiple behaviors (e.g., RAT + Stealer), pick the PRIMARY classification. Base the classification on concrete code evidence, not speculation.
+
 Do NOT default to "Malware" just because the binary contains networking functions, crypto routines, or system paths — these are normal in system libraries and legitimate software. A binary is only Malware if there is concrete evidence of malicious INTENT (e.g., C2 communication targeting external attacker infrastructure, data exfiltration, exploit payloads, deliberate obfuscation to hide malicious behavior).
 
 ## Analysis Quality Checklist

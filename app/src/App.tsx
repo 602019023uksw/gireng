@@ -313,13 +313,24 @@ function App() {
         'Clean',
       );
 
-      // Also compute threat score based on verdict
-      const threatScoreMap: Record<string, number> = { 'Malware': 6, 'Suspicious': 3, 'Clean': 0 };
+      // Use real threat score and tags from the API when available,
+      // with fallback to the coarse verdict-based score.
+      const apiVerdict = analysisInfo?.verdict ?? overallVerdict;
+      const apiThreatScore = typeof analysisInfo?.threatScore === 'number'
+        ? analysisInfo.threatScore : ({ 'Malware': 6, 'Suspicious': 3, 'Clean': 0 } as Record<string, number>)[overallVerdict] ?? 0;
+      const apiMaxScore = typeof analysisInfo?.maxScore === 'number' ? analysisInfo.maxScore : 100;
+      const apiTags: string[] = Array.isArray(analysisInfo?.tags) ? analysisInfo.tags : [];
+      // Inject malware type as first tag if present
+      if (analysisInfo?.malwareType && !apiTags.includes(analysisInfo.malwareType)) {
+        apiTags.unshift(analysisInfo.malwareType);
+      }
 
       setCurrentAnalysis(prev => ({
         ...prev,
-        verdict: overallVerdict,
-        threatScore: threatScoreMap[overallVerdict] ?? 0,
+        verdict: apiVerdict,
+        threatScore: apiThreatScore,
+        maxScore: apiMaxScore,
+        tags: apiTags,
         ...(analysisInfo?.duration ? { duration: analysisInfo.duration } : {}),
         ...(analysisInfo?.started ? { started: new Date(analysisInfo.started).toLocaleString() } : {}),
         ...(analysisInfo?.completed ? { completed: new Date(analysisInfo.completed).toLocaleString() } : {}),

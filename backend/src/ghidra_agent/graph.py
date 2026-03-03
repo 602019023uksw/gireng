@@ -11,7 +11,7 @@ from ghidra_agent.function_priority import (
     build_interesting_callers_set,
     build_string_ref_functions,
 )
-from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state, format_iocs_for_report
+from ghidra_agent.ioc_extractor import calculate_verdict, classify_malware_type, extract_iocs_from_state, format_iocs_for_report
 from ghidra_agent.langfuse_tracing import get_trace_metadata
 from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import logger
@@ -1058,6 +1058,25 @@ async def synthesize(state: AgentState) -> AgentState:
     iocs = extract_iocs_from_state(state)
     verdict, _, indicators, score = calculate_verdict(iocs, state)
     context_parts.append(f"\nIOC Assessment: verdict={verdict}, score={score}, indicators={indicators}")
+
+    # Include malware type classification hints for the LLM
+    mtype, mconf, mcaps = classify_malware_type(state)
+    if mtype != "Unknown":
+        context_parts.append(
+            f"\nHeuristic Malware Type Classification: {mtype} (confidence: {mconf}, "
+            f"capabilities: {', '.join(mcaps)})"
+        )
+        context_parts.append(
+            "NOTE: This is a heuristic hint. Refine or override based on your deep code analysis. "
+            "You MUST output **Malware Type: <type>** in your conclusion."
+        )
+    else:
+        context_parts.append(
+            "\nHeuristic Malware Type: could not be determined automatically. "
+            "Analyze the decompiled code to determine the type (RAT, Backdoor, Ransomware, etc.) "
+            "and output **Malware Type: <type>** in your conclusion."
+        )
+
     if not iocs.is_empty():
         context_parts.append("\n=== EXTRACTED IOCS ===")
         context_parts.append(format_iocs_for_report(iocs))

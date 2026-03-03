@@ -43,6 +43,8 @@ export interface AnalysisResult {
   threatScore: number;
   maxScore: number;
   tags: string[];
+  malwareType?: string;
+  malwareTypeConfidence?: string;
 }
 
 export interface Analyzer {

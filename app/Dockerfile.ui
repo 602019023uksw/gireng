@@ -2,11 +2,20 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Build-time API URL (override for production: --build-arg VITE_API_BASE_URL=...)
-ARG VITE_API_BASE_URL=http://localhost:8080
-ARG VITE_WS_URL=ws://localhost:8080/stream
-ARG VITE_APP_NAME=gireng
-ENV VITE_API_BASE_URL=$VITE_API_BASE_URL VITE_WS_URL=$VITE_WS_URL VITE_APP_NAME=$VITE_APP_NAME
+# VITE_API_BASE_URL is intentionally left EMPTY so the frontend uses relative
+# URLs (e.g. /api/...) which the Vite preview proxy then forwards server-side.
+# This eliminates all browser-level CORS issues.
+ARG VITE_API_BASE_URL=
+ARG VITE_WS_URL=
+ARG VITE_APP_NAME=IrengSec
+
+# BACKEND_INTERNAL_URL is used by vite.config.ts proxy at RUNTIME (preview).
+# It points to the backend container from inside Docker networking.
+ARG BACKEND_INTERNAL_URL=http://agent:8080
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL \
+    VITE_WS_URL=$VITE_WS_URL \
+    VITE_APP_NAME=$VITE_APP_NAME \
+    BACKEND_INTERNAL_URL=$BACKEND_INTERNAL_URL
 
 COPY app/package.json app/package-lock.json ./
 RUN npm ci

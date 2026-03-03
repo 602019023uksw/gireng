@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 """Enhanced HTML report generation matching professional template format."""
 
 import logging
@@ -37,7 +38,7 @@ def _format_entry_points(entry_points: list, limit: int = _MAX_ENTRY_POINTS) -> 
     shown = entry_points[:limit]
     result = ', '.join(str(e) for e in shown)
     if len(entry_points) > limit:
-        result += f' … (+{len(entry_points) - limit} more)'
+        result += f' ... (+{len(entry_points) - limit} more)'
     return result
 
 
@@ -59,7 +60,7 @@ def _format_import_export_list(items: list, limit: int = _MAX_IMPORT_EXPORT) -> 
     shown = cleaned[:limit]
     result = ', '.join(shown)
     if len(cleaned) > limit:
-        result += f' … (+{len(cleaned) - limit} more)'
+        result += f' ... (+{len(cleaned) - limit} more)'
     return result
 
 
@@ -144,7 +145,7 @@ def _markdown_to_html(text: str) -> str:
     text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
 
-    # Tables — skip lines inside <pre><code> blocks
+    # Tables  --  skip lines inside <pre><code> blocks
     lines = text.split('\n')
     result = []
     i = 0
@@ -237,7 +238,7 @@ def _markdown_to_html(text: str) -> str:
 
     text = '\n'.join(result)
 
-    # Paragraphs — skip lines inside <pre><code> blocks and placeholder lines
+    # Paragraphs  --  skip lines inside <pre><code> blocks and placeholder lines
     lines = text.split('\n')
     result = []
     in_pre = False
@@ -269,7 +270,7 @@ def _markdown_to_html(text: str) -> str:
 
 
 def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
-    """Parse IOCs into template format — include ALL IOCs without truncation."""
+    """Parse IOCs into template format  --  include ALL IOCs without truncation."""
     results = []
 
     for ip in iocs.ips:
@@ -494,7 +495,7 @@ def _inline_code_html(text: str) -> str:
     s = re.sub(r'`(.+?)`', _save_ic, s)
     s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
 
-    # Entity chips — file paths, MITRE IDs, function names, hex addresses
+    # Entity chips  --  file paths, MITRE IDs, function names, hex addresses
     s = re.sub(
         r'(?<!["\w/])(/(?:etc|usr|var|tmp|bin|dev|proc|sys|home|opt|lib|sbin|run)(?:/[\w._-]+)+)',
         r'<span class="entity-chip path" title="File path">\1</span>', s)
@@ -610,7 +611,7 @@ def _render_capabilities_cards(md_text: str) -> str:
 
         if is_evidence_block:
             # Strip "Evidence" prefix to get the actual evidence text
-            ev_text = re.sub(r'^Evidence\s*[-:—]\s*', '', raw_title, flags=re.IGNORECASE).strip()
+            ev_text = re.sub(r'^Evidence\s*[-: -- ]\s*', '', raw_title, flags=re.IGNORECASE).strip()
             if rest.strip():
                 ev_text = ev_text + ' ' + rest.strip() if ev_text else rest.strip()
             if merged:
@@ -618,8 +619,8 @@ def _render_capabilities_cards(md_text: str) -> str:
             else:
                 merged.append({'title': 'Finding', 'desc_lines': [], 'evidence_lines': [ev_text]})
         elif is_cap_label:
-            # Strip "Capability" prefix: "Capability — Raw Socket" → "Raw Socket"
-            cap_name = re.sub(r'^Capability\s*[-:—]+\s*', '', raw_title, flags=re.IGNORECASE).strip()
+            # Strip "Capability" prefix: "Capability  --  Raw Socket" → "Raw Socket"
+            cap_name = re.sub(r'^Capability\s*[-: -- ]+\s*', '', raw_title, flags=re.IGNORECASE).strip()
             if not cap_name:
                 cap_name = raw_title
             merged.append({'title': cap_name, 'desc_lines': desc_lines, 'evidence_lines': evidence_lines})
@@ -724,7 +725,7 @@ def _render_technical_cards(md_text: str) -> str:
             skip_next = False
             continue
 
-        # Skip "Code Evidence" sub-headers — fold them into previous card
+        # Skip "Code Evidence" sub-headers  --  fold them into previous card
         if title.lower().startswith('code evidence'):
             continue
 
@@ -936,7 +937,7 @@ def _render_evidence_cards(evidence_items: List[str], md_text: str) -> str:
             sev_cls, sev_label, sev_icon, sev_color = _SEV_CFG[min(i, len(_SEV_CFG) - 1)]
 
             # Split on common patterns
-            parts = re.split(r'\s*[-—]\s*(?:Function|Evidence|Code)[:\s]', item, maxsplit=1)
+            parts = re.split(r'\s*[- -- ]\s*(?:Function|Evidence|Code)[:\s]', item, maxsplit=1)
             if len(parts) == 2:
                 title_str = parts[0].strip()
                 detail_str = parts[1].strip()
@@ -1001,7 +1002,7 @@ def _render_operational_flow(md_text: str) -> str:
     if not md_text:
         return '<p class="text-slate-500 italic">Operational flow analysis not available.</p>'
 
-    # Parse numbered steps: 1. **Title**: Description — Evidence: ...
+    # Parse numbered steps: 1. **Title**: Description  --  Evidence: ...
     steps: List[tuple] = []  # (title, desc, evidence)
     for line in md_text.split('\n'):
         stripped = line.strip()
@@ -1012,7 +1013,7 @@ def _render_operational_flow(md_text: str) -> str:
             title = m.group(2).strip()
             rest = m.group(3).strip()
             # Split evidence from description
-            ev_split = re.split(r'\s*[-—]\s*Evidence[:\s]*', rest, maxsplit=1)
+            ev_split = re.split(r'\s*[- -- ]\s*Evidence[:\s]*', rest, maxsplit=1)
             if len(ev_split) == 2:
                 desc = ev_split[0].strip()
                 evidence = ev_split[1].strip()
@@ -1021,7 +1022,7 @@ def _render_operational_flow(md_text: str) -> str:
                 evidence = ''
             steps.append((title, desc, evidence))
         elif steps:
-            # Continuation line — append to last step's description
+            # Continuation line  --  append to last step's description
             prev_title, prev_desc, prev_ev = steps[-1]
             cleaned = re.sub(r'^[-*]\s+', '', stripped).strip()
             if cleaned:
@@ -1035,7 +1036,7 @@ def _render_operational_flow(md_text: str) -> str:
             if m:
                 title = m.group(1).strip()
                 rest = m.group(2).strip()
-                ev_split = re.split(r'\s*[-—]\s*Evidence[:\s]*', rest, maxsplit=1)
+                ev_split = re.split(r'\s*[- -- ]\s*Evidence[:\s]*', rest, maxsplit=1)
                 if len(ev_split) == 2:
                     steps.append((title, ev_split[0].strip(), ev_split[1].strip()))
                 else:
@@ -1664,7 +1665,7 @@ _CONTEXT_APIS = {
 # Compiled word-boundary regex for each API
 _API_WORD_RE = {api: re.compile(r'\b' + re.escape(api) + r'\b', re.IGNORECASE) for api in (_HIGH_VALUE_APIS | _CONTEXT_APIS)}
 
-# APIs that are too generic to be interesting on their own — if a function
+# APIs that are too generic to be interesting on their own  --  if a function
 # ONLY triggers these and nothing from _HIGH_VALUE_APIS, skip it.
 _GENERIC_ONLY_APIS = {"memcpy", "memset", "malloc", "free", "realloc", "strcmp", "strstr"}
 
@@ -1682,7 +1683,7 @@ def _is_library_content(func_name: str, code: str, found_apis: list) -> bool:
 
     Returns True when:
     - Code contains OpenSSL / crypto-library internal identifiers, OR
-    - The only matched APIs are from the generic-only set (memcpy, memset, …).
+    - The only matched APIs are from the generic-only set (memcpy, memset, ...).
     """
     # Only apply to anonymous / unhelpful function names
     if not re.match(r'^(?:fcn\.|sub_|FUN_)', func_name):
@@ -1692,7 +1693,7 @@ def _is_library_content(func_name: str, code: str, found_apis: list) -> bool:
     if _OPENSSL_CONTENT_RE.search(code):
         return True
 
-    # Function only matched low-value generic APIs — skip it
+    # Function only matched low-value generic APIs  --  skip it
     if found_apis and all(api in _GENERIC_ONLY_APIS for api in found_apis):
         return True
 
@@ -1934,19 +1935,25 @@ def build_report_html(state: Dict[str, Any]) -> str:
     cc_grad, cc_border, cc_title, cc_body, cc_icon_bg, cc_icon_txt = _CC.get(verdict_class, _CC["malicious"])
 
     # Binary info table rows
+    _stripped_val = r2_binary.get('stripped', 'unknown')
+    _stripped_str = 'Yes' if _stripped_val is True else ('No' if _stripped_val is False else str(_stripped_val))
     binary_rows = f'''
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400 w-1/4">SHA256</td>
                                         <td class="text-xs break-all">{escape(program_hash)}</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Architecture</td>
                                         <td>{escape(str(arch))} ({bits}-bit)</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Format</td>
-                                        <td>{escape(fmt_str)} - {escape(str(os_name))}</td></tr>
+                                        <td>{escape(fmt_str)}  --  {escape(str(os_name))}</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Image Base</td>
                                         <td class="font-mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Entry Points</td>
                                         <td class="font-mono text-xs">{escape(_format_entry_points(binary.get('entry_points', ['unknown'])))}</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Compiler</td>
-                                        <td class="text-xs">{escape(_sanitize_compiler(binary.get('compiler', 'unknown')))}</td></tr>
+                                        <td class="text-xs">{escape(_sanitize_compiler(binary.get('compiler', r2_binary.get('compiler', 'unknown'))))}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Stripped</td>
+                                        <td>{_stripped_str}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Endianness</td>
+                                        <td>{escape(str(r2_binary.get('endian', 'unknown')))}</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Imports</td>
                                         <td class="text-xs">{escape(_format_import_export_list(binary.get('imports', [])))}</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Exports</td>
@@ -2113,7 +2120,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             .stat-card {{ padding: 0.35rem 0.5rem !important; }}
             .stat-card .text-xl {{ font-size: 0.85rem !important; }}
             .stat-card .text-xs, .stat-card .text-\\[11px\\] {{ font-size: 0.5rem !important; }}
-            /* Section cards — minimal padding */
+            /* Section cards  --  minimal padding */
             .section-card {{
                 padding: 0.65rem 0.8rem !important;
                 margin-bottom: 0.35rem !important;
@@ -2146,7 +2153,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             /* Code blocks */
             pre, code {{ font-size: 0.55rem !important; line-height: 1.3 !important; }}
             pre {{ padding: 0.4rem !important; margin: 0.25rem 0 !important; }}
-            /* Spacing — aggressive compaction */
+            /* Spacing  --  aggressive compaction */
             .space-y-8 > :not(:first-child) {{ margin-top: 0.5rem !important; }}
             .space-y-6 > :not(:first-child) {{ margin-top: 0.4rem !important; }}
             .space-y-4 > :not(:first-child) {{ margin-top: 0.3rem !important; }}
@@ -2163,7 +2170,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             .p-4, .p-6, .p-8 {{ padding: 0.4rem !important; }}
             .px-4 {{ padding-left: 0.4rem !important; padding-right: 0.4rem !important; }}
             .max-w-6xl {{ max-width: 100% !important; }}
-            /* Grid — keep multi-column */
+            /* Grid  --  keep multi-column */
             .grid.lg\\:grid-cols-5 {{ grid-template-columns: repeat(5, 1fr) !important; }}
             .grid.lg\\:grid-cols-3 {{ grid-template-columns: repeat(3, 1fr) !important; }}
             .grid.lg\\:grid-cols-2 {{ grid-template-columns: repeat(2, 1fr) !important; }}
@@ -2725,7 +2732,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             const origHTML = btn.innerHTML;
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
             btn.disabled = true;
-            // Build PDF URL – use embedded API base for file:// contexts
+            // Build PDF URL  -  use embedded API base for file:// contexts
             const EMBEDDED_API_BASE = 'http://localhost:8080';
             const loc = window.location;
             const isLocal = loc.protocol === 'file:';
@@ -3188,7 +3195,7 @@ def _pdf_md_to_html(text: str) -> str:
 
 
 def _pdf_code_evidence(state: Dict[str, Any]) -> str:
-    """Render code evidence for PDF — light-mode code blocks."""
+    """Render code evidence for PDF  --  light-mode code blocks."""
     decomp_cache = state.get("decompilation_cache", {})
     r2_decomp_cache = state.get("r2_decompilation_cache", {})
     func_data = state.get("analysis_results", {}).get("functions", {})
@@ -3250,7 +3257,7 @@ def _build_pdf_html(state: Dict[str, Any]) -> str:
     """Build a clean, white-background professional PDF report HTML.
 
     This is a self-contained, light-mode HTML document designed *exclusively*
-    for Playwright → A4 PDF rendering.  No Tailwind CDN, no JavaScript — pure
+    for Playwright → A4 PDF rendering.  No Tailwind CDN, no JavaScript  --  pure
     inline-CSS to guarantee deterministic output.
     """
     iocs = extract_iocs_from_state(state)
@@ -3419,6 +3426,29 @@ def _build_pdf_html(state: Dict[str, Any]) -> str:
             f'</div>'
         )
 
+    # ---- Pre-build nested HTML fragments (Python 3.11 cannot nest f''' inside f''') ----
+    _stripped_val = (
+        'Yes' if r2_binary.get('stripped') is True
+        else 'No' if r2_binary.get('stripped') is False
+        else str(r2_binary.get('stripped', 'unknown'))
+    )
+    file_metadata_html = (
+        '<table>'
+        f'<tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;width:25%;border-bottom:1px solid #f1f5f9;">SHA-256</td><td style="padding:0.25rem 0.5rem;font-size:0.6rem;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;word-break:break-all;">{escape(program_hash)}</td></tr>'
+        f'<tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Architecture</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(str(arch))} ({bits}-bit)</td></tr>'
+        f'<tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Format</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(fmt_str)}  --  {escape(str(os_name))}</td></tr>'
+        f'<tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Image Base</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;">{escape(str(binary.get("image_base", "unknown")))}</td></tr>'
+        f'<tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Entry Points</td><td style="padding:0.25rem 0.5rem;font-size:0.6rem;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;">{escape(_format_entry_points(binary.get("entry_points", ["unknown"])))}</td></tr>'
+        f'<tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Compiler</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(_sanitize_compiler(binary.get("compiler", r2_binary.get("compiler", "unknown"))))}</td></tr>'
+        f'<tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Stripped</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{_stripped_val}</td></tr>'
+        f'<tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Endianness</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(str(r2_binary.get("endian", "unknown")))}</td></tr>'
+        f'<tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Imports</td><td style="padding:0.25rem 0.5rem;font-size:0.6rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(_format_import_export_list(binary.get("imports", [])))}</td></tr>'
+        f'<tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Exports</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{len(binary.get("exports", []))} symbols</td></tr>'
+        f'<tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Functions</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">Ghidra: {len(gh_funcs)} ({gh_decomp} decompiled) &middot; R2: {len(r2_func_list)} ({r2_decomp} decompiled)</td></tr>'
+        f'<tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;">Strings</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;">Ghidra: {len(strings_data.get("strings", []))} &middot; R2: {len(r2_strings.get("strings", []))} extracted</td></tr>'
+        '</table>'
+    )
+
     # ---- Build HTML ----
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -3499,24 +3529,24 @@ def _build_pdf_html(state: Dict[str, Any]) -> str:
   </div>
 
   <!-- Sections -->
+
+  <!-- Maliciousness Assessment Banner -->
+  <div style="margin-bottom:0.7rem;padding:0.6rem 0.8rem;background:{v_bg};border:2px solid {v_color};border-radius:6px;display:flex;justify-content:space-between;align-items:center;break-inside:avoid;">
+    <div>
+      <div style="font-size:0.5rem;font-weight:800;letter-spacing:0.12em;text-transform:uppercase;color:{v_color};">Maliciousness Assessment</div>
+      <div style="font-size:1.1rem;font-weight:800;color:{v_dark};margin-top:0.1rem;">{v_label}</div>
+      <div style="font-size:0.6rem;color:{v_color};margin-top:0.1rem;">Confidence: {score}/100</div>
+    </div>
+    <div style="text-align:right;max-width:55%;">
+      {''.join(f'<div style="font-size:0.6rem;color:{v_dark};margin-bottom:0.1rem;">• ' + escape(str(ind)) + '</div>' for ind in (indicators or [])[:6])}
+    </div>
+  </div>
+
   {_sec("01", "Executive Summary", exec_html)}
 
-  {_sec("02", "Binary Information", f"""
-    <table>
-      <tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;width:25%;border-bottom:1px solid #f1f5f9;">SHA-256</td><td style="padding:0.25rem 0.5rem;font-size:0.6rem;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;word-break:break-all;">{escape(program_hash)}</td></tr>
-      <tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Architecture</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(str(arch))} ({bits}-bit)</td></tr>
-      <tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Format</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(fmt_str)} - {escape(str(os_name))}</td></tr>
-      <tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Image Base</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
-      <tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Entry Points</td><td style="padding:0.25rem 0.5rem;font-size:0.6rem;color:#1e293b;font-family:monospace;border-bottom:1px solid #f1f5f9;">{escape(_format_entry_points(binary.get('entry_points', ['unknown'])))}</td></tr>
-      <tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Compiler</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(_sanitize_compiler(binary.get('compiler', 'unknown')))}</td></tr>
-      <tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Imports</td><td style="padding:0.25rem 0.5rem;font-size:0.6rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{escape(_format_import_export_list(binary.get('imports', [])))}</td></tr>
-      <tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Exports</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">{len(binary.get('exports', []))} symbols</td></tr>
-      <tr style="background:#f8fafc;"><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;border-bottom:1px solid #f1f5f9;">Functions</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;border-bottom:1px solid #f1f5f9;">Ghidra: {len(gh_funcs)} ({gh_decomp} decompiled) &middot; R2: {len(r2_func_list)} ({r2_decomp} decompiled)</td></tr>
-      <tr><td style="padding:0.25rem 0.5rem;font-size:0.65rem;font-weight:600;color:#64748b;">Strings</td><td style="padding:0.25rem 0.5rem;font-size:0.65rem;color:#1e293b;">Ghidra: {len(strings_data.get('strings', []))} &middot; R2: {len(r2_strings.get('strings', []))} extracted</td></tr>
-    </table>
-  """)}
+  {_sec("02", "File Metadata", file_metadata_html)}
 
-  {_sec("03", "Threat Intel & MITRE ATT&CK", mitre_html, "Mapped tactics and techniques observed in the binary.")}
+  {_sec("03", "Threat Intel &amp; MITRE ATT&amp;CK", mitre_html, "Mapped tactics and techniques observed in the binary.")}
 
   {_sec("04", "Malware Capabilities", cap_html, "Behavioral capabilities identified through code analysis and pattern matching.")}
 
@@ -3530,7 +3560,7 @@ def _build_pdf_html(state: Dict[str, Any]) -> str:
 
   {_sec("09", "Operational Flow", ops_html, "Timeline from initialization to persistence and C2 communication.")}
 
-  {_sec("10", "Call Graph & Attack Chains", cg_html, "Graph-derived routes from entry points to suspicious sinks.")}
+  {_sec("10", "Call Graph &amp; Attack Chains", cg_html, "Graph-derived routes from entry points to suspicious sinks.")}
 
   {_sec("11", "Indicators of Compromise (IOCs)", f'<table><thead><tr><th style="padding:0.25rem 0.5rem;font-size:0.55rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:2px solid #e2e8f0;text-align:left;">Type</th><th style="padding:0.25rem 0.5rem;font-size:0.55rem;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.05em;border-bottom:2px solid #e2e8f0;text-align:left;">Value</th></tr></thead><tbody>{ioc_rows}</tbody></table>' if ioc_rows else '<p style="font-size:0.65rem;color:#94a3b8;font-style:italic;">No IOCs extracted.</p>')}
 
@@ -3540,7 +3570,7 @@ def _build_pdf_html(state: Dict[str, Any]) -> str:
 
   <!-- Footer -->
   <div style="margin-top:1rem;padding-top:0.4rem;border-top:2px solid #e2e8f0;display:flex;justify-content:space-between;font-size:0.5rem;color:#94a3b8;">
-    <span>Confidential &amp; Proprietary — Reverse Engineering Analysis Report</span>
+    <span>Confidential &amp; Proprietary  --  Reverse Engineering Analysis Report</span>
     <span>Generated by Gireng Analysis Agent &mdash; {timestamp}</span>
   </div>
 
@@ -3581,156 +3611,286 @@ async def build_report_pdf(state: Dict[str, Any]) -> bytes:
 
 
 def build_report_text(state: Dict[str, Any]) -> str:
-    """Build plain text report for download."""
+    """Build a rich, sandbox.md-inspired plain text report for download.
+
+    Extracts each section from the LLM summary via _extract_section(),
+    presents structured binary metadata, verdict assessment, IoCs grouped
+    by type, call graph analysis, and decompiled function appendices.
+    """
     summary = state.get("summary", "No summary available.")
     program_hash = state.get("program_hash", "unknown")
     binary = state.get("analysis_results", {}).get("binary", {})
     r2_binary = state.get("r2_analysis_results", {}).get("binary", {})
     funcs = state.get("analysis_results", {}).get("functions", {})
     r2_funcs = state.get("r2_analysis_results", {}).get("functions", {})
+    strings_data = state.get("analysis_results", {}).get("strings", {})
+    r2_strings_data = state.get("r2_analysis_results", {}).get("strings", {})
     qiling = state.get("qiling_analysis_results", {})
     gh_call_graph_analysis = state.get("analysis_results", {}).get("call_graph_analysis", {})
     r2_call_graph_analysis = state.get("r2_analysis_results", {}).get("call_graph_analysis", {})
     decomp = state.get("decompilation_cache", {})
     r2_decomp = state.get("r2_decompilation_cache", {})
     has_qiling = bool(qiling)
+
+    # --- Verdict ---
+    iocs_obj = extract_iocs_from_state(state)
+    verdict, verdict_class, indicators, score = calculate_verdict(iocs_obj, state)
+    ioc_list = _parse_iocs_for_template(iocs_obj)
+
+    # --- Extract LLM sections ---
+    exec_summary   = _extract_section(summary, "Executive Summary") or summary[:3000]
+    mitre_md       = (_extract_section(summary, "Threat Intel & MITRE ATT&CK")
+                      or _extract_section(summary, "MITRE ATT&CK Tactics & Techniques") or "")
+    capabilities_md = _extract_section(summary, "Malware Capabilities") or ""
+    technical_md   = _extract_section(summary, "Technical Analysis") or ""
+    functions_md   = _extract_section(summary, "Functions Analysis") or ""
+    evidence_md    = _extract_section(summary, "Evidence of Malicious Activity") or ""
+    operational_md = _extract_section(summary, "Operational Flow") or ""
+    dynamic_md     = _extract_section(summary, "Dynamic Analysis") or ""
+    conclusion_md  = _extract_section(summary, "Conclusion") or ""
+    recommendations_list = _extract_recommendations(summary)
+
+    # --- Helpers ---
+    SEP  = "-" * 70
+    SEP2 = "=" * 70
+
+    def _md_plain(md: str) -> str:
+        """Strip common markdown formatting for plain-text output."""
+        lines_in = md.split("\n")
+        out = []
+        for line in lines_in:
+            # Remove heading markers
+            line2 = re.sub(r'^#{1,6}\s+', '', line.rstrip())
+            # Bold / italic
+            line2 = re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', line2)
+            # Inline code backticks → [code]
+            line2 = re.sub(r'`(.+?)`', r'[\1]', line2)
+            # Table separator rows
+            if re.match(r'^\s*[\|\-\s]+$', line2):
+                continue
+            out.append(line2)
+        return "\n".join(out).strip()
+
     report_title = (
         "GHIDRA + RADARE2 + QILING BINARY ANALYSIS REPORT"
         if has_qiling
         else "GHIDRA + RADARE2 BINARY ANALYSIS REPORT"
     )
+    file_name = state.get("binary_path", "unknown").split("/")[-1].split("\\")[-1]
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
-    lines = [
-        "=" * 70,
+    lines: List[str] = [
+        SEP2,
         report_title,
-        "=" * 70,
+        SEP2,
         "",
-        f"SHA-256: {program_hash}",
-        f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+        f"Sample:    {file_name}",
+        f"SHA-256:   {program_hash}",
+        f"Generated: {timestamp}",
         "",
     ]
 
-    # Ghidra info
-    if binary.get("ok"):
-        lines.append("-" * 70)
-        lines.append("GHIDRA BINARY INFO")
-        lines.append("-" * 70)
-        lines.append(f"Architecture: {binary.get('architecture', 'unknown')}")
-        lines.append(f"Image Base:   {binary.get('image_base', 'unknown')}")
-        lines.append(f"Entry Points: {_format_entry_points(binary.get('entry_points', []))}")
-        lines.append(f"Compiler:     {_sanitize_compiler(binary.get('compiler', 'unknown'))}")
-        gh_imports = binary.get("imports", [])
-        if gh_imports:
-            lines.append(f"Imports:      {_format_import_export_list(gh_imports)}")
-        gh_exports = binary.get("exports", [])
-        if gh_exports:
-            lines.append(f"Exports:      {len(gh_exports)} symbols")
-        lines.append(f"Functions:    {len(funcs.get('functions', []))} ({len(decomp)} decompiled)")
+    # ------------------------------------------------------------------ #
+    # Verdict / Maliciousness Assessment
+    # ------------------------------------------------------------------ #
+    verdict_upper = verdict.upper()
+    lines += [
+        SEP,
+        "MALICIOUSNESS ASSESSMENT",
+        SEP,
+        f"Verdict:     {verdict_upper}",
+        f"Risk Score:  {score}/100",
+        "",
+    ]
+    if indicators:
+        lines.append("Key Indicators:")
+        for ind in indicators[:10]:
+            lines.append(f"  * {ind}")
         lines.append("")
 
-    # R2 info
-    if r2_binary.get("ok"):
-        lines.append("-" * 70)
-        lines.append("RADARE2 BINARY INFO")
-        lines.append("-" * 70)
-        lines.append(f"Architecture: {r2_binary.get('architecture', 'unknown')}")
-        lines.append(f"Bits:         {r2_binary.get('bits', 'unknown')}")
-        lines.append(f"OS:           {r2_binary.get('os', 'unknown')}")
-        lines.append(f"Endian:       {r2_binary.get('endian', 'unknown')}")
-        lines.append(f"Stripped:     {r2_binary.get('stripped', 'unknown')}")
-        imports = r2_binary.get("imports", [])
-        if imports:
-            lines.append(f"Imports:      {_format_import_export_list(imports)}")
-        exports = r2_binary.get("exports", [])
-        if exports:
-            lines.append(f"Exports:      {len(exports)} symbols")
-        lines.append(f"Functions:    {len(r2_funcs.get('functions', []))} ({len(r2_decomp)} decompiled)")
-        lines.append("")
+    # ------------------------------------------------------------------ #
+    # File Metadata  --  merged Ghidra + R2
+    # ------------------------------------------------------------------ #
+    arch = binary.get('architecture', r2_binary.get('architecture', 'unknown'))
+    bits = r2_binary.get('bits', '?')
+    os_name = r2_binary.get('os', 'unknown')
+    fmt_raw = (str(binary.get('format', '')).lower()
+               + str(r2_binary.get('format', '')).lower()
+               + os_name.lower())
+    if 'elf' in fmt_raw or os_name.lower() in ('linux',):
+        fmt_str = 'ELF'
+    elif 'pe' in fmt_raw or os_name.lower() in ('windows',):
+        fmt_str = 'PE'
+    elif 'mach' in fmt_raw or 'mac' in os_name.lower():
+        fmt_str = 'Mach-O'
+    else:
+        fmt_str = 'Binary'
 
-    # Qiling dynamic info
+    gh_funcs_list  = funcs.get("functions", []) or []
+    r2_funcs_list  = r2_funcs.get("functions", []) or []
+    gh_exports     = binary.get("exports", [])
+    r2_exports     = r2_binary.get("exports", [])
+    gh_imports     = binary.get("imports", [])
+    r2_imports_list = r2_binary.get("imports", [])
+    stripped_val   = r2_binary.get('stripped', 'unknown')
+    stripped_str   = ("Yes" if stripped_val is True
+                      else "No" if stripped_val is False
+                      else str(stripped_val))
+
+    lines += [SEP, "FILE METADATA", SEP]
+    meta_rows = [
+        ("SHA-256",       program_hash),
+        ("Architecture",  f"{arch} ({bits}-bit)" if bits and bits != '?' else str(arch)),
+        ("Format",        f"{fmt_str}  -  {os_name}"),
+        ("Image Base",    str(binary.get('image_base', 'unknown'))),
+        ("Entry Points",  _format_entry_points(binary.get('entry_points', []))),
+        ("Compiler",      _sanitize_compiler(binary.get('compiler',
+                                                         r2_binary.get('compiler', 'unknown')))),
+        ("Stripped",      stripped_str),
+        ("Endianness",    r2_binary.get('endian', 'unknown')),
+        ("Exports",       f"{len(gh_exports) or len(r2_exports)} symbols"),
+        ("Functions",     (f"Ghidra: {len(gh_funcs_list)} ({len(decomp)} decompiled)"
+                           f"  ·  R2: {len(r2_funcs_list)} ({len(r2_decomp)} decompiled)")),
+        ("Strings",       (f"Ghidra: {len(strings_data.get('strings', []))}"
+                           f"  ·  R2: {len(r2_strings_data.get('strings', []))}")),
+    ]
+    if gh_imports or r2_imports_list:
+        meta_rows.append(("Imports", _format_import_export_list(gh_imports or r2_imports_list)))
+
+    for label, value in meta_rows:
+        lines.append(f"  {label:<16} {value}")
+    lines.append("")
+
+    # ------------------------------------------------------------------ #
+    # Qiling Dynamic Analysis
+    # ------------------------------------------------------------------ #
     if qiling:
-        q_exec = qiling.get("execution_trace", {})
-        q_sys = qiling.get("syscalls", {})
+        q_exec    = qiling.get("execution_trace", {})
+        q_sys     = qiling.get("syscalls", {})
         q_network = qiling.get("network_activity", {})
         q_evasion = qiling.get("evasion_techniques", {})
 
-        lines.append("-" * 70)
-        lines.append("QILING DYNAMIC ANALYSIS")
-        lines.append("-" * 70)
+        lines += [SEP, "QILING DYNAMIC ANALYSIS", SEP]
         if isinstance(q_exec, dict) and q_exec:
-            lines.append(f"Execution Success: {q_exec.get('success')}")
-            lines.append(f"Architecture:      {q_exec.get('arch', 'unknown')}")
-            lines.append(f"OS:                {q_exec.get('os', 'unknown')}")
-            lines.append(f"Instructions:      {q_exec.get('instructions_executed', 0)}")
-            lines.append(f"Duration (ms):     {q_exec.get('duration_ms', 0)}")
-            lines.append(f"Exit Reason:       {q_exec.get('exit_reason', 'unknown')}")
+            lines += [
+                f"  {'Execution Success':<22} {q_exec.get('success')}",
+                f"  {'Architecture':<22} {q_exec.get('arch', 'unknown')}",
+                f"  {'OS':<22} {q_exec.get('os', 'unknown')}",
+                f"  {'Instructions':<22} {q_exec.get('instructions_executed', 0)}",
+                f"  {'Duration (ms)':<22} {q_exec.get('duration_ms', 0)}",
+                f"  {'Exit Reason':<22} {q_exec.get('exit_reason', 'unknown')}",
+            ]
         if isinstance(q_sys, dict) and q_sys:
-            q_sys_summary = q_sys.get("summary", {})
+            q_sys_sum = q_sys.get("summary", {})
             lines.append(
-                f"Syscalls:          {q_sys_summary.get('total_calls', 0) if isinstance(q_sys_summary, dict) else 0}"
+                f"  {'Syscalls':<22} "
+                f"{q_sys_sum.get('total_calls', 0) if isinstance(q_sys_sum, dict) else 0}"
             )
-            if isinstance(q_sys_summary, dict):
-                lines.append(f"Categories:        {q_sys_summary.get('categories', {})}")
+            if isinstance(q_sys_sum, dict):
+                lines.append(f"  {'Categories':<22} {q_sys_sum.get('categories', {})}")
         if isinstance(q_network, dict) and q_network:
-            indicators = q_network.get("indicators", {})
-            lines.append(f"C2 Candidates:     {indicators.get('c2_candidates', []) if isinstance(indicators, dict) else []}")
-            lines.append(f"Protocols Used:    {indicators.get('protocols_used', []) if isinstance(indicators, dict) else []}")
+            ind_q = q_network.get("indicators", {})
+            lines += [
+                f"  {'C2 Candidates':<22} {ind_q.get('c2_candidates', []) if isinstance(ind_q, dict) else []}",
+                f"  {'Protocols Used':<22} {ind_q.get('protocols_used', []) if isinstance(ind_q, dict) else []}",
+            ]
         if isinstance(q_evasion, dict) and q_evasion:
-            ev_summary = q_evasion.get("summary", {})
-            if isinstance(ev_summary, dict):
+            ev_sum = q_evasion.get("summary", {})
+            if isinstance(ev_sum, dict):
                 lines.append(
-                    f"Evasion:           {ev_summary.get('total_techniques', 0)} "
-                    f"(risk={ev_summary.get('risk_level', 'low')})"
+                    f"  {'Evasion':<22} {ev_sum.get('total_techniques', 0)}"
+                    f" (risk={ev_sum.get('risk_level', 'low')})"
                 )
         if qiling.get("errors"):
-            lines.append(f"Errors:            {qiling.get('errors')}")
+            lines.append(f"  {'Errors':<22} {qiling.get('errors')}")
         lines.append("")
 
-    # Executive summary first (most important for readers)
-    lines.extend([
-        "-" * 70,
-        "EXECUTIVE SUMMARY",
-        "-" * 70,
-        summary,
-        "",
-    ])
+    # ------------------------------------------------------------------ #
+    # LLM Analysis Sections
+    # ------------------------------------------------------------------ #
+    def _append_sec(title: str, body: str) -> None:
+        if not body or not body.strip():
+            return
+        lines.extend(["", SEP, title, SEP, _md_plain(body), ""])
 
+    _append_sec("EXECUTIVE SUMMARY", exec_summary)
+    _append_sec("THREAT INTEL & MITRE ATT&CK", mitre_md)
+    _append_sec("MALWARE CAPABILITIES", capabilities_md)
+    _append_sec("TECHNICAL ANALYSIS", technical_md)
+    _append_sec("FUNCTIONS ANALYSIS", functions_md)
+    _append_sec("EVIDENCE OF MALICIOUS ACTIVITY", evidence_md)
+    _append_sec("OPERATIONAL FLOW", operational_md)
+    if dynamic_md:
+        _append_sec("DYNAMIC ANALYSIS", dynamic_md)
+    _append_sec("CONCLUSION", conclusion_md)
+
+    # ------------------------------------------------------------------ #
+    # Recommendations
+    # ------------------------------------------------------------------ #
+    if recommendations_list:
+        lines += ["", SEP, "RECOMMENDATIONS", SEP]
+        for i, rec in enumerate(recommendations_list, 1):
+            clean = re.sub(r'\*{1,3}(.+?)\*{1,3}', r'\1', rec).strip()
+            lines.append(f"  {i}. {clean}")
+        lines.append("")
+
+    # ------------------------------------------------------------------ #
+    # Indicators of Compromise (IoCs)  --  grouped by type
+    # ------------------------------------------------------------------ #
+    if ioc_list:
+        lines += ["", SEP, "INDICATORS OF COMPROMISE (IoCs)", SEP]
+        ioc_by_type: Dict[str, List[str]] = {}
+        for ioc in ioc_list:
+            ioc_by_type.setdefault(ioc['type'], []).append(ioc['value'])
+        for ioc_type, values in ioc_by_type.items():
+            lines.append(f"  [{ioc_type}]")
+            for v in values:
+                lines.append(f"    {v}")
+            lines.append("")
+
+    # ------------------------------------------------------------------ #
+    # Call Graph & Attack Chains
+    # ------------------------------------------------------------------ #
     def _append_call_graph_text(source: str, analysis: Dict[str, Any]) -> None:
         if not analysis or not analysis.get("ok"):
             return
-        stats = analysis.get("stats", {})
+        stats   = analysis.get("stats", {})
         entries = analysis.get("entries", []) or []
-        chains = analysis.get("chains", []) or []
-        lines.append(f"{source}: nodes={stats.get('nodes', 0)}, edges={stats.get('edges', 0)}, entries={len(entries)}")
+        chains  = analysis.get("chains", []) or []
+        lines.append(f"  {source}:")
+        lines.append(f"    Nodes: {stats.get('nodes', 0)},  Edges: {stats.get('edges', 0)}")
         if entries:
-            lines.append(f"  Entry points: {', '.join(entries[:5])}")
+            lines.append(f"    Entry points: {', '.join(str(e) for e in entries[:5])}")
         if chains:
             deduped = _deduplicate_chains(chains)
-            lines.append(f"  Attack chains ({len(deduped)} unique of {len(chains)} total):")
+            lines.append(f"    Attack chains ({len(deduped)} unique of {len(chains)} total):")
             for chain in deduped:
                 path = " -> ".join(str(p) for p in chain.get("path", []))
-                lines.append(f"    - [{chain.get('category', 'Unknown')}] {path}")
+                lines.append(f"      [{chain.get('category', 'Unknown')}] {path}")
         else:
-            lines.append("  Attack chains: none detected")
+            lines.append("    Attack chains: none detected")
         cycles = analysis.get("cycles", []) or []
         if cycles:
-            lines.append(f"  Cycles (top 5 of {len(cycles)}):")
+            lines.append(f"    Cycles (top 5 of {len(cycles)}):")
             for cycle in cycles[:5]:
-                lines.append(f"    - {' -> '.join(cycle)}")
+                lines.append(f"      {' -> '.join(str(n) for n in cycle)}")
         lines.append("")
 
     if gh_call_graph_analysis.get("ok") or r2_call_graph_analysis.get("ok"):
-        lines.append("-" * 70)
-        lines.append("CALL GRAPH & ATTACK CHAINS")
-        lines.append("-" * 70)
-        _append_call_graph_text("Ghidra", gh_call_graph_analysis)
+        lines += ["", SEP, "CALL GRAPH & ATTACK CHAINS", SEP]
+        _append_call_graph_text("Ghidra",  gh_call_graph_analysis)
         _append_call_graph_text("Radare2", r2_call_graph_analysis)
 
-    # Decompiled code appendix
+    # ------------------------------------------------------------------ #
+    # Appendix: Decompiled Functions
+    # ------------------------------------------------------------------ #
     if decomp:
-        lines.append("-" * 70)
-        lines.append(f"APPENDIX A: GHIDRA DECOMPILED FUNCTIONS ({len(decomp)})")
-        lines.append("-" * 70)
+        lines += [
+            "",
+            SEP,
+            f"APPENDIX A: GHIDRA DECOMPILED FUNCTIONS ({len(decomp)})",
+            SEP,
+        ]
         for name, code in decomp.items():
             lines.append(f"\n--- {name} ---")
             lines.append(code[:4000])
@@ -3739,9 +3899,12 @@ def build_report_text(state: Dict[str, Any]) -> str:
         lines.append("")
 
     if r2_decomp:
-        lines.append("-" * 70)
-        lines.append(f"APPENDIX B: RADARE2 DECOMPILED FUNCTIONS ({len(r2_decomp)})")
-        lines.append("-" * 70)
+        lines += [
+            "",
+            SEP,
+            f"APPENDIX B: RADARE2 DECOMPILED FUNCTIONS ({len(r2_decomp)})",
+            SEP,
+        ]
         for name, code in r2_decomp.items():
             lines.append(f"\n--- {name} ---")
             lines.append(code[:4000])
@@ -3749,10 +3912,6 @@ def build_report_text(state: Dict[str, Any]) -> str:
                 lines.append("/* ... [truncated at 4000 chars] ... */")
         lines.append("")
 
-    lines.extend([
-        "=" * 70,
-        "END OF REPORT",
-        "=" * 70,
-    ])
+    lines += [SEP2, "END OF REPORT", SEP2]
 
     return '\n'.join(lines)

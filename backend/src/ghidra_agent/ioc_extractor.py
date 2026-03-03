@@ -553,6 +553,79 @@ def _extract_llm_verdict(summary: str) -> str | None:
     return None
 
 
+def _extract_llm_malware_type(summary: str) -> str | None:
+    """Extract the malware type/family from the LLM summary.
+
+    Looks for explicit ``**Malware Type: X**`` or ``**Classification: X**``
+    patterns, then falls back to keyword scanning in conclusion / executive
+    summary sections.
+
+    Returns a short label like 'RAT', 'Backdoor', 'Ransomware', 'Trojan',
+    'Dropper', 'Worm', 'Spyware', 'Rootkit', 'Botnet', 'Stealer',
+    'Loader', 'Miner', 'Adware', 'Exploit', or None.
+    """
+    if not summary:
+        return None
+
+    # Canonical type labels, ordered by specificity (most specific first)
+    _TYPE_LABELS = [
+        "RAT", "Backdoor", "Ransomware", "Trojan", "Dropper", "Downloader",
+        "Worm", "Spyware", "Rootkit", "Botnet", "Stealer", "Infostealer",
+        "Loader", "Miner", "Cryptominer", "Adware", "Exploit", "Keylogger",
+        "Banker", "Wipers",
+    ]
+    _type_regex = "|".join(re.escape(t) for t in _TYPE_LABELS)
+
+    # 1. Explicit structured pattern  **Malware Type: RAT** / **Classification: Backdoor**
+    explicit = re.search(
+        rf'\*\*(?:malware\s*type|classification|threat\s*type|malware\s*family):\s*({_type_regex})\b',
+        summary, re.IGNORECASE,
+    )
+    if explicit:
+        return _normalize_type_label(explicit.group(1))
+
+    # 2. Scan conclusion section
+    conclusion_match = re.search(
+        r'(?:##\s*(?:10\.?|11\.?)\s*conclusion)(.*?)(?:##|$)', summary, re.DOTALL | re.IGNORECASE,
+    )
+    conclusion = conclusion_match.group(1) if conclusion_match else ""
+
+    # 3. Also scan executive summary
+    exec_match = re.search(
+        r'(?:##\s*1\.?\s*executive\s*summary)(.*?)(?:##)', summary, re.DOTALL | re.IGNORECASE,
+    )
+    exec_text = exec_match.group(1) if exec_match else ""
+
+    scan_text = (conclusion + " " + exec_text).lower()
+    if not scan_text.strip():
+        scan_text = summary[-3000:].lower()
+
+    # Look for patterns like "identified as a RAT", "this is a backdoor", "classified as ransomware"
+    for label in _TYPE_LABELS:
+        ll = label.lower()
+        patterns = [
+            rf'\b(?:identified|classified|categorized|detected|confirmed)\s+as\s+(?:a\s+)?{ll}\b',
+            rf'\b(?:this\s+(?:binary|sample|malware)\s+is\s+(?:a\s+)?){ll}\b',
+            rf'\b{ll}\s+(?:malware|trojan|binary|sample|implant|agent)\b',
+            rf'\b(?:remote\s+access\s+trojan|rat)\b' if ll == "rat" else rf'(?!)',  # special RAT expansion
+        ]
+        for pat in patterns:
+            if re.search(pat, scan_text):
+                return _normalize_type_label(label)
+
+    return None
+
+
+def _normalize_type_label(raw: str) -> str:
+    """Map variant labels to canonical names."""
+    _MAP = {
+        "infostealer": "Stealer",
+        "cryptominer": "Miner",
+        "wipers": "Wiper",
+    }
+    return _MAP.get(raw.lower(), raw.capitalize() if raw.islower() else raw)
+
+
 _QILING_RISK_POINTS = {
     "low": 4,
     "medium": 8,
@@ -814,3 +887,235 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
         return "Suspicious", "suspicious", indicators, capped
     else:
         return "Clean", "clean", indicators, capped
+
+
+# ---------------------------------------------------------------------------
+# Malware Type Classification
+# ---------------------------------------------------------------------------
+
+# Heuristic behavioral profiles for malware type detection.
+# Each entry is (type_label, required_capability_count, capability_signals).
+# capability_signals are (signal_name, list_of_indicators_in_strings_or_imports).
+_MALWARE_TYPE_PROFILES: List[tuple] = [
+    ("RAT", 3, [
+        ("c2_comms", ["socket", "connect", "recv", "send", "http", "post", "beacon", "poll"]),
+        ("cmd_exec", ["exec", "system", "popen", "shell", "command", "cmd"]),
+        ("recon", ["gethostname", "getifaddrs", "uname", "getpwuid", "getcwd", "getenv", "sysinfo"]),
+        ("file_ops", ["fopen", "fread", "fwrite", "readfile", "writefile", "upload", "download"]),
+        ("persistence", ["cron", "autorun", "startup", "registry", "schedule", "init.d"]),
+    ]),
+    ("Backdoor", 2, [
+        ("c2_comms", ["socket", "connect", "recv", "send", "bind", "listen", "accept"]),
+        ("cmd_exec", ["exec", "system", "popen", "shell", "/bin/sh", "/bin/bash", "cmd.exe"]),
+        ("stealth", ["hidden", "daemon", "fork", "setsid", "detach"]),
+    ]),
+    ("Ransomware", 2, [
+        ("crypto", ["encrypt", "aes", "rsa", "cipher", "chacha", "salsa", "crypto"]),
+        ("file_enum", ["readdir", "opendir", "findfirst", "findnext", "scandir", "glob"]),
+        ("ransom_note", ["ransom", "bitcoin", "btc", "payment", "decrypt", "recover", "wallet", ".onion"]),
+    ]),
+    ("Stealer", 2, [
+        ("credential_access", ["password", "credential", "login", "token", "cookie", "session", "keychain"]),
+        ("exfiltration", ["upload", "post", "send", "exfil", "transfer", "smtp"]),
+        ("browser", ["chrome", "firefox", "safari", "opera", "edge", "browser"]),
+    ]),
+    ("Rootkit", 2, [
+        ("kernel", ["ptrace", "mprotect", "mmap", "dlopen", "dlsym", "ld_preload", "module_init"]),
+        ("hiding", ["hidden", "rootkit", "hook", "intercept", "hijack"]),
+        ("priv_esc", ["privilege", "setuid", "setgid", "capability", "root"]),
+    ]),
+    ("Botnet", 2, [
+        ("c2_comms", ["socket", "connect", "recv", "send", "irc", "http"]),
+        ("ddos", ["flood", "ddos", "syn", "udp", "amplif", "attack"]),
+        ("propagation", ["scan", "brute", "spread", "worm", "propagat"]),
+    ]),
+    ("Miner", 2, [
+        ("mining", ["mine", "miner", "stratum", "pool", "hashrate", "nonce", "monero", "xmr"]),
+        ("crypto_algo", ["cryptonight", "randomx", "sha256", "scrypt", "ethash"]),
+        ("resource", ["cpu", "gpu", "thread", "affinity"]),
+    ]),
+    ("Dropper", 2, [
+        ("download", ["download", "urldownload", "wget", "curl", "http", "fetch"]),
+        ("write_exec", ["writefile", "fwrite", "chmod", "createprocess", "exec", "system"]),
+        ("decode", ["base64", "decode", "decompress", "decrypt", "unpack"]),
+    ]),
+    ("Spyware", 2, [
+        ("surveillance", ["screenshot", "keylog", "clipboard", "microphone", "camera", "webcam", "record"]),
+        ("exfiltration", ["upload", "send", "post", "smtp", "ftp"]),
+        ("stealth", ["hidden", "invisible", "background", "silent"]),
+    ]),
+    ("Keylogger", 1, [
+        ("keylogging", ["keylog", "getasynckeystate", "getkeystate", "setwindowshookex", "keyboard", "keystroke"]),
+    ]),
+    ("Worm", 2, [
+        ("propagation", ["scan", "spread", "propagat", "replicate", "copy"]),
+        ("network", ["socket", "connect", "port", "subnet", "ssh", "smb", "exploit"]),
+        ("self_copy", ["copy", "replicate", "autorun", "usb", "removable"]),
+    ]),
+    ("Exploit", 1, [
+        ("exploit_tech", ["rop", "gadget", "shellcode", "overflow", "bof", "format string", "heap spray", "use-after-free"]),
+    ]),
+]
+
+
+def classify_malware_type(state: Dict[str, Any]) -> tuple:
+    """Classify the malware type/family from analysis data.
+
+    Uses a two-phase approach:
+    1. LLM-derived classification from the summary text (highest priority)
+    2. Heuristic behavioral profiling from strings, imports, and capabilities
+
+    Returns:
+        tuple: (malware_type, confidence, detected_capabilities)
+        - malware_type: str like 'RAT', 'Backdoor', 'Ransomware', or 'Unknown'
+        - confidence: 'high', 'medium', 'low'
+        - detected_capabilities: list of capability tags found
+    """
+    # Phase 1: Try LLM-derived classification
+    summary = state.get("summary", "")
+    llm_type = _extract_llm_malware_type(summary)
+    if llm_type:
+        # LLM explicitly identified the type — high confidence
+        return llm_type, "high", [f"LLM classification: {llm_type}"]
+
+    # Phase 2: Heuristic profiling
+    all_string_vals: List[str] = []
+
+    # Collect strings from Ghidra
+    strings_data = state.get("analysis_results", {}).get("strings", {})
+    if strings_data.get("ok"):
+        all_string_vals.extend([s.get("value", "").lower() for s in strings_data.get("strings", [])])
+
+    # Collect strings from R2
+    r2_strings_data = state.get("r2_analysis_results", {}).get("strings", {})
+    if r2_strings_data.get("ok"):
+        all_string_vals.extend([s.get("value", "").lower() for s in r2_strings_data.get("strings", [])])
+
+    # Collect imports
+    all_imports: List[str] = []
+    gh_binary = state.get("analysis_results", {}).get("binary", {})
+    if gh_binary.get("ok"):
+        all_imports.extend(str(i).lower() for i in gh_binary.get("imports", []))
+    r2_binary = state.get("r2_analysis_results", {}).get("binary", {})
+    if r2_binary.get("ok"):
+        all_imports.extend(str(i).lower() for i in r2_binary.get("imports", []))
+
+    # Collect Qiling syscall/API names
+    qiling_results = state.get("qiling_analysis_results", {})
+    if isinstance(qiling_results, dict):
+        syscalls = qiling_results.get("syscalls", {})
+        if isinstance(syscalls, dict):
+            for call in syscalls.get("syscalls", []) or []:
+                if isinstance(call, dict) and call.get("name"):
+                    all_string_vals.append(str(call["name"]).lower())
+        api_calls = qiling_results.get("api_calls", {})
+        if isinstance(api_calls, dict):
+            for api in api_calls.get("api_calls", []) or []:
+                if isinstance(api, dict) and api.get("name"):
+                    all_string_vals.append(str(api["name"]).lower())
+
+    # Collect decompiled code snippets (function bodies give strong signals)
+    for cache_key in ("decompilation_cache", "r2_decompilation_cache"):
+        cache = state.get(cache_key, {})
+        if isinstance(cache, dict):
+            for code in cache.values():
+                if isinstance(code, str):
+                    all_string_vals.append(code[:2000].lower())
+
+    # Build searchable corpus
+    corpus = " ".join(all_string_vals + all_imports)
+
+    # Score each malware type profile
+    best_type = "Unknown"
+    best_score = 0
+    best_caps: List[str] = []
+
+    for type_label, min_caps, signals in _MALWARE_TYPE_PROFILES:
+        matched_caps: List[str] = []
+        for cap_name, keywords in signals:
+            if any(kw in corpus for kw in keywords):
+                matched_caps.append(cap_name)
+        if len(matched_caps) >= min_caps and len(matched_caps) > best_score:
+            best_type = type_label
+            best_score = len(matched_caps)
+            best_caps = matched_caps
+
+    if best_type == "Unknown":
+        return "Unknown", "low", []
+
+    confidence = "high" if best_score >= 4 else "medium" if best_score >= 2 else "low"
+    return best_type, confidence, best_caps
+
+
+def build_analysis_tags(state: Dict[str, Any]) -> List[str]:
+    """Build descriptive tags from analysis data for UI display.
+
+    Tags describe capabilities, malware type, architecture, and risk
+    indicators — providing at-a-glance context in the UI header.
+    """
+    tags: List[str] = []
+
+    # Architecture tag
+    for src in ("analysis_results", "r2_analysis_results"):
+        binary = state.get(src, {}).get("binary", {})
+        if binary.get("ok"):
+            arch = binary.get("architecture", "")
+            bits = binary.get("bits", "")
+            os_name = binary.get("os", "")
+            if arch:
+                tag = str(arch)
+                if bits:
+                    tag += f"/{bits}"
+                tags.append(tag)
+            if os_name and os_name.lower() != "unknown":
+                tags.append(str(os_name))
+            fmt = binary.get("format", "")
+            if fmt:
+                tags.append(str(fmt).upper())
+            break  # Only need arch from one source
+
+    # Malware type tag
+    mtype, confidence, caps = classify_malware_type(state)
+    if mtype != "Unknown":
+        tags.append(mtype)
+
+    # Capability tags from strings/imports
+    all_string_vals: List[str] = []
+    for src in ("analysis_results", "r2_analysis_results"):
+        sd = state.get(src, {}).get("strings", {})
+        if sd.get("ok"):
+            all_string_vals.extend(s.get("value", "").lower() for s in sd.get("strings", []))
+
+    corpus = " ".join(all_string_vals)
+
+    _CAP_TAGS = [
+        ("Networking", ["socket", "connect", "recv", "send", "bind", "listen"]),
+        ("Crypto", ["encrypt", "aes", "rsa", "cipher", "ssl_", "tls_"]),
+        ("Cmd Exec", ["exec", "system", "popen", "shell"]),
+        ("Persistence", ["cron", "autorun", "startup", "registry", "schedule"]),
+        ("Anti-Debug", ["debugger", "ptrace", "isdebuggerpresent"]),
+        ("Anti-VM", ["vmware", "virtualbox", "sandbox", "qemu", "vbox"]),
+        ("Packed", ["upx", "unpack", "decompress"]),
+    ]
+    for tag_name, keywords in _CAP_TAGS:
+        if any(kw in corpus for kw in keywords):
+            tags.append(tag_name)
+
+    # Qiling dynamic tags
+    qiling = state.get("qiling_analysis_results", {})
+    if isinstance(qiling, dict) and qiling:
+        tags.append("Dynamic")
+        evasion = qiling.get("evasion_techniques", {})
+        if isinstance(evasion, dict):
+            payload = evasion.get("evasion_techniques", evasion)
+            if isinstance(payload, dict) and payload.get("techniques"):
+                tags.append("Evasion")
+
+    # Stripped tag
+    for src in ("analysis_results", "r2_analysis_results"):
+        binary = state.get(src, {}).get("binary", {})
+        if binary.get("ok") and binary.get("stripped") is True:
+            tags.append("Stripped")
+            break
+
+    return tags
