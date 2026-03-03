@@ -24,7 +24,7 @@ export function MainLayout({ children, sidebar, rightPanel }: MainLayoutProps) {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.4, delay: 0.1, ease: [0.4, 0, 0.2, 1] as const }}
-        className="flex-1 flex flex-col min-w-0 overflow-hidden"
+        className="flex-1 flex flex-col min-w-0"
       >
         {children}
       </motion.main>
