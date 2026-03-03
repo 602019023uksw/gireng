@@ -54,6 +54,11 @@ export function UserMenu({ user, onLogout, onAdminPanel }: UserMenuProps) {
         >
           <div className="px-3 py-2 border-b border-white/5">
             <p className="text-xs text-gray-400 truncate">{user.email}</p>
+            {user.quota !== undefined && (
+              <p className="text-[10px] text-gray-500 mt-0.5">
+                Analyses: {user.analysis_count ?? 0}/{user.quota === -1 ? '∞' : user.quota}
+              </p>
+            )}
           </div>
 
           {user.role === 'admin' && onAdminPanel && (

@@ -161,6 +161,8 @@ export interface User {
   role: 'admin' | 'user' | 'guest';
   is_active?: boolean;
   created_at?: string;
+  quota?: number;          // -1 = unlimited
+  analysis_count?: number; // analyses used
 }
 
 export interface AuthState {

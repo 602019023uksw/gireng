@@ -158,6 +158,14 @@ class UpdateRoleRequest(PydanticBaseModel):
     role: str
 
 
+class ResetPasswordRequest(PydanticBaseModel):
+    password: str
+
+
+class UpdateQuotaRequest(PydanticBaseModel):
+    quota: int  # -1 = unlimited
+
+
 # ---------------------------------------------------------------------------
 # Auth endpoints
 # ---------------------------------------------------------------------------
@@ -186,6 +194,8 @@ async def register(req: RegisterRequest) -> JSONResponse:
             "email": user["email"],
             "username": user["username"],
             "role": user["role"],
+            "quota": user.get("quota", 10),
+            "analysis_count": 0,
         },
     })
 
@@ -205,12 +215,15 @@ async def login(req: LoginRequest) -> JSONResponse:
             "email": user["email"],
             "username": user["username"],
             "role": user["role"],
+            "quota": user.get("quota", 10),
+            "analysis_count": await db.get_user_analysis_count(user["id"]),
         },
     })
 
 
 @app.get("/api/auth/me")
 async def auth_me(user: Dict[str, Any] = Depends(get_current_user)) -> JSONResponse:
+    used = await db.get_user_analysis_count(user["id"])
     return JSONResponse({
         "id": user["id"],
         "email": user["email"],
@@ -218,6 +231,8 @@ async def auth_me(user: Dict[str, Any] = Depends(get_current_user)) -> JSONRespo
         "role": user["role"],
         "is_active": user.get("is_active", True),
         "created_at": user.get("created_at", ""),
+        "quota": user.get("quota", 10),
+        "analysis_count": used,
     })
 
 
@@ -249,6 +264,9 @@ async def admin_list_users(
 ) -> JSONResponse:
     users = await db.list_users(limit=limit, offset=offset)
     total = await db.get_user_count()
+    # enrich each user with analysis_count
+    for u in users:
+        u["analysis_count"] = await db.get_user_analysis_count(u["id"])
     return JSONResponse({"items": users, "total": total})
 
 
@@ -296,6 +314,35 @@ async def admin_delete_user(
     return JSONResponse({"ok": True})
 
 
+@app.put("/api/admin/users/{target_user_id}/password")
+async def admin_reset_password(
+    target_user_id: str,
+    req: ResetPasswordRequest,
+    user: Dict[str, Any] = Depends(require_role("admin")),
+) -> JSONResponse:
+    if not req.password or len(req.password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+    hashed = hash_password(req.password)
+    ok = await db.update_user_password(target_user_id, hashed)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+    return JSONResponse({"ok": True})
+
+
+@app.put("/api/admin/users/{target_user_id}/quota")
+async def admin_update_quota(
+    target_user_id: str,
+    req: UpdateQuotaRequest,
+    user: Dict[str, Any] = Depends(require_role("admin")),
+) -> JSONResponse:
+    if req.quota < -1:
+        raise HTTPException(status_code=400, detail="Quota must be -1 (unlimited) or >= 0")
+    ok = await db.update_user_quota(target_user_id, req.quota)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+    return JSONResponse({"ok": True})
+
+
 # ---------------------------------------------------------------------------
 # Auth helper for checking analysis ownership
 # ---------------------------------------------------------------------------
@@ -313,6 +360,21 @@ async def _check_analysis_access(
     state_user = state.get("user_id")
     if state_user and state_user != user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
+
+
+async def _check_quota(user: Dict[str, Any]) -> None:
+    """Raise 403 if user has exceeded their analysis quota."""
+    if is_admin(user):
+        return  # admins are unlimited
+    quota = user.get("quota", 10)
+    if quota == -1:
+        return  # unlimited
+    used = await db.get_user_analysis_count(user["id"])
+    if used >= quota:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Analysis quota exceeded ({used}/{quota}). Contact admin to increase your quota.",
+        )
 
 
 class ConnectionManager:
@@ -350,6 +412,7 @@ async def analyze(
 ) -> SessionCreateResponse:
     if not can_write(user):
         raise HTTPException(status_code=403, detail="Guests cannot start analyses")
+    await _check_quota(user)
     if not request.binary_path:
         raise HTTPException(status_code=400, detail="binary_path required unless using upload")
     state = store.create_session(request.binary_path)
@@ -365,6 +428,7 @@ async def analyze_upload(
 ) -> SessionCreateResponse:
     if not can_write(user):
         raise HTTPException(status_code=403, detail="Guests cannot upload files")
+    await _check_quota(user)
     try:
         shared_root = Path(settings.ghidra_shared_root)
         ensure_directory(shared_root)

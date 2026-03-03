@@ -53,6 +53,7 @@ class Settings(BaseModel):
     admin_password: str = Field(default="admin", alias="ADMIN_PASSWORD")
     admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
     registration_enabled: bool = Field(default=True, alias="REGISTRATION_ENABLED")
+    default_user_quota: int = Field(default=10, alias="DEFAULT_USER_QUOTA")  # -1 = unlimited
 
     class Config:
         populate_by_name = True

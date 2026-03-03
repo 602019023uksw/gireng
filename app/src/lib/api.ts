@@ -111,6 +111,32 @@ export async function apiDeleteUser(userId: string) {
   return res.json();
 }
 
+export async function apiResetPassword(userId: string, password: string) {
+  const res = await authFetch(`${API_BASE}/api/admin/users/${userId}/password`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || 'Failed to reset password');
+  }
+  return res.json();
+}
+
+export async function apiUpdateQuota(userId: string, quota: number) {
+  const res = await authFetch(`${API_BASE}/api/admin/users/${userId}/quota`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ quota }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.detail || 'Failed to update quota');
+  }
+  return res.json();
+}
+
 export interface UploadResponse {
   session_id: string;
 }

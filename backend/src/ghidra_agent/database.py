@@ -57,12 +57,23 @@ async def _init_schema() -> None:
                 password_hash    TEXT NOT NULL,
                 role             TEXT NOT NULL DEFAULT 'user',
                 is_active        BOOLEAN NOT NULL DEFAULT true,
+                quota            INTEGER NOT NULL DEFAULT 10,
                 created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
             )
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
+
+        # Migrate: add quota column if table already exists without it
+        await conn.execute("""
+            DO $$ BEGIN
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS quota INTEGER NOT NULL DEFAULT 10;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """)
+        # Ensure existing admin users get unlimited quota
+        await conn.execute("UPDATE users SET quota = -1 WHERE role = 'admin' AND quota != -1")
 
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS analyses (
@@ -248,8 +259,8 @@ async def _bootstrap_admin(conn: asyncpg.Connection) -> None:
     admin_id = str(uuid.uuid4())
     hashed = _pwd.hash(settings.admin_password)
     await conn.execute(
-        """INSERT INTO users (id, email, username, password_hash, role)
-           VALUES ($1, $2, $3, $4, 'admin')
+        """INSERT INTO users (id, email, username, password_hash, role, quota)
+           VALUES ($1, $2, $3, $4, 'admin', -1)
            ON CONFLICT (email) DO NOTHING""",
         admin_id, settings.admin_email, settings.admin_username, hashed,
     )
@@ -300,7 +311,7 @@ async def list_users(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
     pool = await get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
-            "SELECT id, email, username, role, is_active, created_at, updated_at "
+            "SELECT id, email, username, role, is_active, quota, created_at, updated_at "
             "FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2",
             limit, offset,
         )
@@ -341,6 +352,25 @@ async def update_user_password(user_id: str, password_hash: str) -> bool:
             password_hash, user_id,
         )
     return result.endswith("1")
+
+
+async def update_user_quota(user_id: str, quota: int) -> bool:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE users SET quota = $1, updated_at = now() WHERE id = $2",
+            quota, user_id,
+        )
+    return result.endswith("1")
+
+
+async def get_user_analysis_count(user_id: str) -> int:
+    """Count analyses owned by a user."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval(
+            "SELECT COUNT(*) FROM analyses WHERE user_id = $1", user_id,
+        ) or 0
 
 
 async def delete_user(user_id: str) -> bool:
