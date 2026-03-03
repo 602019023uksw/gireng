@@ -1,8 +1,10 @@
-# Integration Architecture — Dual-Agent Binary Analysis Platform
+# Integration Architecture — Tri-Engine Binary Analysis Platform
 
 ## Overview
 
-gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reverse engineering platform that analyses binaries using **two parallel reverse-engineering backends** — **Ghidra** and **Radare2** — then synthesises their findings via an LLM to produce a comprehensive malware report with MITRE ATT&CK mapping, IOC extraction, call graph analysis, and professional PDF/HTML/text export.
+gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reverse engineering platform that analyses binaries using **three parallel engines** — **Ghidra**, **Radare2**, and **Qiling** — then synthesises their findings via an LLM to produce a comprehensive malware report with MITRE ATT&CK mapping, IOC extraction, call graph analysis, and professional PDF/HTML/text export.
+
+The platform includes **JWT-based authentication** with role-based access control (admin / user / guest), **multitenancy** (users only see their own analyses), and **per-user analysis quotas**.
 
 ```
 ┌──────────────┐    HTTP / WS     ┌──────────────────────────────┐
@@ -55,14 +57,15 @@ gireng (Ghidra and Radare Intelligent Reverse Engineering) is an AI-powered reve
 |---------|-------|---------|------|
 | `ghidra` | `danilid/ireng-runner:2.0.1` (configurable via `$RUNNER_IMAGE`) | Headless Ghidra with PyGhidra. Runs analysis scripts via `docker exec`. | internal |
 | `radare2` | `radare/radare2:latest` | Headless Radare2 with r2ghidra/r2dec plugins. Runs r2 commands via `docker exec`. | internal |
-| `agent` | Built from `backend/Dockerfile` | FastAPI backend + Playwright/Chromium for PDF. Orchestrates both tools, calls LLM, serves API. | **8080** |
+| `qiling` | Built from `backend/Dockerfile.qiling` | Qiling sandbox for dynamic emulation, API/syscall tracing, evasion detection. | internal |
+| `agent` | Built from `backend/Dockerfile` | FastAPI backend + Playwright/Chromium for PDF. Orchestrates all three tools, calls LLM, serves API. | **8080** |
 | `ui` | Built from `app/Dockerfile.ui` | React 19 + Vite frontend. | **4173** |
 | `postgres` | `postgres:16-alpine` | PostgreSQL for analysis history + Langfuse data. | internal |
 | `langfuse` | `langfuse/langfuse:2` | LLM observability and tracing dashboard. | **3100** |
 
-All containers share a Docker volume `ghidra_shared` mounted at `/data/shared`. Binaries are placed here on upload so both Ghidra and R2 can access them.
+All containers share a Docker volume `ghidra_shared` mounted at `/data/shared`. Binaries are placed here on upload so Ghidra, R2, and Qiling can access them.
 
-The `agent` container mounts the host Docker socket (`/var/run/docker.sock`) to issue `docker exec` commands into the sibling Ghidra and R2 containers.
+The `agent` container mounts the host Docker socket (`/var/run/docker.sock`) to issue `docker exec` commands into the sibling Ghidra, R2, and Qiling containers.
 
 ---
 
@@ -116,13 +119,13 @@ Each pipeline writes to **separate state fields** to avoid race conditions:
 | Binary info, functions, strings | `analysis_results` | `r2_analysis_results` |
 | Decompiled code | `decompilation_cache` | `r2_decompilation_cache` |
 
-**R2 failure does not block Ghidra.** The `_safe_r2` wrapper catches all exceptions and logs them; the pipeline continues with Ghidra-only results.
+**R2 / Qiling failure does not block Ghidra.** The `_safe_r2` and `_safe_qiling` wrappers catch all exceptions and log them; the pipeline continues with available results.
 
 #### Auto-decompilation
 Both pipelines automatically decompile the **top 15 functions** ranked by the function priority scorer (cross-reference count + code size + API call detection + suspicious string references), plus the entry-point function.
 
 #### Call Graph Analysis
-Both Ghidra and R2 build call graphs. The `call_graph_analyzer.py` module traces attack chains from entry points (`main`, `_start`, `entry0`) to suspicious sinks:
+Both Ghidra and R2 build call graphs. The `call_graph_analyzer.py` module traces attack chains from entry points (`main`, `_start`, `entry0`) to suspicious sinks. Qiling contributes dynamic behavior data (API calls observed at runtime, network connections, evasion attempts) which enriches the synthesized report.
 
 - **Execution**: `system`, `popen`, `execve`, `dlopen`, ...
 - **Network**: `socket`, `connect`, `send`, `recv`, ...
@@ -148,7 +151,7 @@ Builds a massive context block from **both** Ghidra and R2 results:
 - Cross-reference data
 - Call graph attack chains
 
-Sends the context + `SYSTEM_PROMPT` to the LLM, which produces a structured malware report with MITRE ATT&CK mapping.
+Sends the context + `SYSTEM_PROMPT` to the LLM, which produces a structured malware report with MITRE ATT&CK mapping and automated malware type classification (12 behavioural profiles: RAT, ransomware, rootkit, spyware, etc.).
 
 ### 3. Results, Reporting & Export
 
@@ -173,12 +176,38 @@ Client → WS  /stream/{session_id}                      → real-time events
 
 The PDF template is a completely separate light-mode HTML document with inline CSS (no Tailwind CDN, no JavaScript) optimised for deterministic A4 rendering with 13 numbered sections.
 
-### 4. Persistence & History
+### 4. Persistence, History & Multitenancy
 
-Completed analyses are persisted to PostgreSQL via `database.py` and `storage.py`. The history API supports:
+Completed analyses are persisted to PostgreSQL via `database.py` and `storage.py`. Each analysis is linked to the user who uploaded it. The history API supports:
 - Paginated listing with verdict/hash filtering
+- **Multitenancy** — non-admin users only see their own analyses
 - Session restore (reload into memory for follow-up queries)
 - Cross-binary search (functions, strings, IOCs)
+
+### 5. Authentication & Authorization
+
+The platform uses **JWT-based authentication** (HS256, 24-hour expiry) with three roles:
+
+| Role | Permissions |
+|------|-------------|
+| `admin` | Full access, see all analyses, manage users, unlimited quota |
+| `user` | Upload & analyze (within quota), see own analyses, chat |
+| `guest` | Read-only access to own analyses |
+
+All API routes require a valid JWT token via `Authorization: Bearer <token>` header.
+
+Key auth modules:
+- `auth.py` — `get_current_user()`, `require_role()`, `can_write()`, `hash_password()`, `verify_password()`
+- `database.py` — User CRUD, quota management, analysis count
+
+### 6. User Quotas
+
+Each user has an analysis quota (default: 10, configurable via `DEFAULT_USER_QUOTA` env var):
+- `-1` = unlimited (set automatically for admin users)
+- `0` = blocked from uploading
+- `N` = can upload up to N binaries
+
+Quota is enforced on both `/analyze` and `/analyze/upload` endpoints. Admins can adjust quotas per-user via the Admin Panel or API.
 
 ---
 
@@ -234,16 +263,33 @@ Agent → docker exec radare2 r2 -q -e bin.cache=true -c '<commands>' /data/shar
 
 R2 decompilation uses a fallback chain: `pdg` (r2ghidra) → `pdd` (r2dec) → `pdf` (disassembly).
 
+### Qiling Integration
+
+| Module | File | Responsibility |
+|--------|------|----------------|
+| **Tools** | `qiling_tools.py` | `@tool` functions — `qiling_emulate`, `qiling_trace_api`, `qiling_trace_syscalls`, `qiling_detect_evasion`, `qiling_memory_analysis`, `qiling_network_analysis` |
+| **Runner** | `qiling/runner.py` | `QilingRunner` — `docker exec` into `qiling_emulator` container, sandboxed execution |
+| **Pipeline** | `qiling_graph.py` | Qiling pipeline stages (called from `graph.py`) |
+| **Scripts** | `qiling_scripts/*.py` | 10 emulation scripts: API tracing, syscall tracing, instruction tracing, evasion detection, memory/network analysis, stub DLL creation |
+
+### Authentication & Authorization
+
+| Module | File | Responsibility |
+|--------|------|----------------|
+| **Auth** | `auth.py` | JWT creation/validation, password hashing (bcrypt), role-based middleware: `get_current_user()`, `require_role()`, `can_write()` |
+| **Database (Users)** | `database.py` | User CRUD, quota management, analysis count per user |
+| **Config** | `config.py` | JWT secret, algorithm, expiry, admin bootstrap credentials, quota defaults |
+
 ### API Layer
 
 | Module | File | Responsibility |
 |--------|------|----------------|
-| **API** | `api/main.py` | FastAPI app — 38 REST endpoints + WebSocket streaming |
+| **API** | `api/main.py` | FastAPI app — 50+ REST endpoints + WebSocket streaming |
 | **UI Adapter** | `ui_adapter.py` | Builds structured JSON for `/analyzers` — dual-analyzer details, file tree, reports |
 | **Reporting** | `reporting.py` | HTML, PDF (Playwright/Chromium), text report generation. Dedicated light-mode PDF template |
 | **IOC Extractor** | `ioc_extractor.py` | Multi-type IOC extraction with verdict calculation |
 | **Models** | `models.py` | Pydantic request/response schemas for all endpoints |
-| **Database** | `database.py` | PostgreSQL async connection pool, analysis persistence |
+| **Database** | `database.py` | PostgreSQL async connection pool, analysis persistence, user management, quotas |
 | **Storage** | `storage.py` | Higher-level storage operations for analysis history |
 | **Langfuse** | `langfuse_tracing.py` | LLM call tracing integration |
 
@@ -253,11 +299,32 @@ R2 decompilation uses a fallback chain: `pdg` (r2ghidra) → `pdd` (r2dec) → `
 |--------|------|----------------|
 | **Ghidra Agent** | `agents/ghidra-agent.ts` | Agent definition, capabilities list |
 | **Radare Agent** | `agents/radare-agent.ts` | R2 agent definition with R2-specific capabilities |
-| **API Client** | `lib/api.ts` | REST API client with export URL builders |
+| **API Client** | `lib/api.ts` | REST API client with auth, export URL builders |
+| **Auth Hook** | `hooks/useAuth.tsx` | AuthProvider context, login/logout/register, token management |
+| **Auth Components** | `components/auth/` | AuthPage (login/register), UserMenu (header dropdown), AdminPanel (user management) |
 
 ---
 
-## API Endpoints (38 total)
+## API Endpoints (50+ total)
+
+### Authentication
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/auth/register` | Register new user |
+| `POST` | `/api/auth/login` | Login, receive JWT + user profile |
+| `GET` | `/api/auth/me` | Current user profile (with quota + usage) |
+
+### Admin (requires admin role)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/api/admin/users` | List all users (with quota + analysis count) |
+| `PUT` | `/api/admin/users/{id}/role` | Change user role |
+| `PUT` | `/api/admin/users/{id}/active` | Toggle user active/disabled |
+| `PUT` | `/api/admin/users/{id}/password` | Reset user password |
+| `PUT` | `/api/admin/users/{id}/quota` | Update user analysis quota |
+| `DELETE` | `/api/admin/users/{id}` | Delete user |
 
 ### Session Management
 
@@ -366,6 +433,19 @@ R2 decompilation uses a fallback chain: `pdg` (r2ghidra) → `pdd` (r2dec) → `
 | `LLM_API_KEY` / `ANTHROPIC_API_KEY` | — | API key |
 | `LLM_BASE_URL` / `ANTHROPIC_BASE_URL` | — | API endpoint |
 
+### Authentication & Quotas
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_SECRET` | (auto-generated) | Secret key for JWT signing |
+| `JWT_ALGORITHM` | `HS256` | JWT algorithm |
+| `JWT_EXPIRE_MINUTES` | `1440` | Token expiry (24 hours) |
+| `ADMIN_EMAIL` | `admin@gireng.local` | Bootstrap admin email |
+| `ADMIN_PASSWORD` | `admin` | Bootstrap admin password |
+| `ADMIN_USERNAME` | `admin` | Bootstrap admin username |
+| `REGISTRATION_ENABLED` | `true` | Allow public registration |
+| `DEFAULT_USER_QUOTA` | `10` | Default analysis quota for new users (-1 = unlimited) |
+
 ---
 
 ## State Schema
@@ -459,7 +539,7 @@ radare2 (1-3 min first boot — installs r2ghidra + r2dec plugins, then healthch
 | Volume | Mount Point | Purpose |
 |--------|-------------|---------|
 | `ghidra_projects` | `/data/projects` | Ghidra project databases (persistent across restarts) |
-| `ghidra_shared` | `/data/shared` | **Shared** binary storage — accessed by ghidra, radare2, and agent |
+| `ghidra_shared` | `/data/shared` | **Shared** binary storage — accessed by ghidra, radare2, qiling, and agent |
 | `pgdata` | PostgreSQL data dir | Analysis history persistence |
 
 ### Teardown
@@ -485,6 +565,10 @@ All tests live in `backend/tests/` — **183 tests, all passing**.
 | `test_call_graph_analyzer.py` | Call graph attack chain building |
 | `test_function_priority.py` | Function ranking and library detection |
 | `test_chargen_e2e.py` | Chargen binary end-to-end test |
+| `test_qiling_runner.py` | QilingRunner — emulation, container exec, timeout handling |
+| `test_qiling_tools.py` | Qiling `@tool` functions — emulate, trace API, syscalls, evasion |
+| `test_qiling_graph.py` | Qiling pipeline stages |
+| `test_ioc_verdict_qiling.py` | IOC verdict with Qiling dynamic data |
 
 Run tests:
 ```bash
@@ -497,15 +581,15 @@ python -m pytest tests/ -v
 
 ## Key Design Decisions
 
-1. **Parallel execution** — Ghidra and R2 run concurrently via `asyncio.gather()`, roughly halving discovery time.
+1. **Parallel execution** — Ghidra, R2, and Qiling run concurrently via `asyncio.gather()`, maximising discovery throughput.
 
-2. **Separate state fields** — Each tool writes to its own state keys (`analysis_results` vs `r2_analysis_results`), eliminating race conditions.
+2. **Separate state fields** — Each tool writes to its own state keys (`analysis_results` vs `r2_analysis_results` vs `qiling_results`), eliminating race conditions.
 
-3. **R2 failure isolation** — If R2 crashes or times out, the pipeline continues with Ghidra-only results. The `_safe_r2()` wrapper catches all exceptions.
+3. **Engine failure isolation** — If R2 or Qiling crashes or times out, the pipeline continues with available results. The `_safe_r2()` and `_safe_qiling()` wrappers catch all exceptions.
 
 4. **Docker exec pattern** — The agent uses `docker exec` to send commands to sibling containers, keeping it lightweight and allowing independent tool upgrades.
 
-5. **Shared volume** — All three containers (agent, ghidra, radare2) mount the same `ghidra_shared` volume, avoiding binary copies.
+5. **Shared volume** — All four containers (agent, ghidra, radare2, qiling) mount the same `ghidra_shared` volume, avoiding binary copies.
 
 6. **Decompiler fallback** — R2 tries three decompilers: `pdg` (r2ghidra) → `pdd` (r2dec) → `pdf` (disassembly), auto-detected at runtime.
 
@@ -520,3 +604,7 @@ python -m pytest tests/ -v
 11. **Auto-install & healthcheck** — R2 decompiler plugins install automatically on container start. A Docker healthcheck ensures the agent waits until plugins are compiled.
 
 12. **Retry logic** — `Radare2Runner.run_command()` retries up to 2 times on transient errors with a 1.5s delay. Permanent errors abort immediately.
+
+13. **JWT auth + RBAC** — All routes gated with `Depends(get_current_user)`. Three roles (admin/user/guest) with different permission levels. Multitenancy ensures data isolation between users.
+
+14. **Per-user quotas** — Configurable analysis limits prevent resource abuse. Enforced at upload time. Admins get unlimited by default.

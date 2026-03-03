@@ -66,11 +66,17 @@
 
 - **Tri-engine analysis** — Ghidra, Radare2, and Qiling run in parallel via `asyncio.gather()`
 - **Hybrid static + dynamic synthesis** — Cross-references static disassembly with runtime behavior traces
+- **Dynamic emulation** — Qiling-based sandboxed execution with API tracing, syscall monitoring, evasion detection, and memory/network analysis
 - **MITRE ATT&CK mapping** — Automatically maps observed behaviours to ATT&CK techniques
 - **IOC extraction** — IPs, URLs, domains, file paths, emails, registry keys, mutexes, crypto materials
 - **Call graph analysis** — Builds attack chains from entry points to suspicious sinks
 - **Function priority scoring** — Ranks functions by xref count, size, API calls, and suspicious strings
+- **Malware classification** — Automated behavioural profiling into 12 malware types (RAT, ransomware, rootkit, etc.)
 - **Professional reports** — Export as interactive HTML, A4 PDF (Playwright), or plain text
+- **Authentication & RBAC** — JWT-based auth with three roles: admin, user, guest
+- **Multitenancy** — Users can only see their own analyses; admins see everything
+- **Per-user quotas** — Configurable analysis limits per user (-1 = unlimited)
+- **Admin panel** — Manage users, roles, quotas, and reset passwords from the UI
 - **Analysis history** — PostgreSQL-backed persistence with full-text search across binaries
 - **Real-time streaming** — WebSocket events for live analysis progress
 - **React UI** — Modern dark-themed SPA with chat interface, code viewer, and analysis dashboard
@@ -179,7 +185,7 @@ python analyze.py sample-binary/chargen
 
 ```
  ┌────────────────────────────────────────────────────────────┐
- │                     Docker Services (6)                    │
+ │                     Docker Services (7)                    │
  ├────────────┬──────────────────────────┬────────┬───────────┤
  │  Service   │  Image                   │  Port  │  Purpose  │
  ├────────────┼──────────────────────────┼────────┼───────────┤
@@ -187,6 +193,7 @@ python analyze.py sample-binary/chargen
  │  agent     │  backend/Dockerfile      │  8080  │  FastAPI  │
  │  ghidra    │  danilid/ireng-runner    │  ----  │  Ghidra   │
  │  radare2   │  radare/radare2          │  ----  │  Radare2  │
+ │  qiling    │  backend/Dockerfile.qiling│ ----  │  Qiling   │
  │  postgres  │  postgres:16-alpine      │  ----  │  Database │
  │  langfuse  │  langfuse/langfuse:2     │  3100  │  Tracing  │
  └────────────┴──────────────────────────┴────────┴───────────┘
@@ -196,16 +203,19 @@ python analyze.py sample-binary/chargen
 
 | Component | Location | Description |
 |-----------|----------|-------------|
-| **Agent Core** | `backend/src/ghidra_agent/` | LangGraph pipeline, LLM orchestration (22 modules) |
+| **Agent Core** | `backend/src/ghidra_agent/` | LangGraph pipeline, LLM orchestration (25+ modules) |
+| **Auth & RBAC** | `backend/src/ghidra_agent/auth.py` | JWT authentication, role-based access control |
 | **Ghidra Tools** | `backend/src/ghidra_agent/tools.py` | 10 Ghidra tool functions |
 | **Radare2 Tools** | `backend/src/ghidra_agent/r2_tools.py` | 7 Radare2 tool functions |
+| **Qiling Tools** | `backend/src/ghidra_agent/qiling_tools.py` | Dynamic emulation, API/syscall tracing, evasion detection |
 | **Ghidra Scripts** | `backend/ghidra_scripts/` | 11 PyGhidra headless scripts |
+| **Qiling Scripts** | `backend/qiling_scripts/` | 10 emulation scripts (trace, network, memory, evasion) |
 | **Call Graph** | `backend/src/ghidra_agent/call_graph_analyzer.py` | Attack chain discovery |
 | **IOC Extractor** | `backend/src/ghidra_agent/ioc_extractor.py` | Multi-type IOC extraction |
 | **Function Priority** | `backend/src/ghidra_agent/function_priority.py` | Smart function ranking |
 | **Reporting** | `backend/src/ghidra_agent/reporting.py` | HTML, PDF (Playwright), text reports |
-| **API Layer** | `backend/src/ghidra_agent/api/main.py` | 38 REST + WebSocket endpoints |
-| **Database** | `backend/src/ghidra_agent/database.py` | PostgreSQL persistence layer |
+| **API Layer** | `backend/src/ghidra_agent/api/main.py` | 50+ REST + WebSocket endpoints |
+| **Database** | `backend/src/ghidra_agent/database.py` | PostgreSQL persistence layer (users, analyses, quotas) |
 | **Frontend** | `app/src/` | React 19 + TypeScript SPA |
 
 ### Project Structure
@@ -213,27 +223,31 @@ python analyze.py sample-binary/chargen
 ```
 gireng/
 ├── .env.template          # Environment config template
-├── docker-compose.yml     # All 6 services
+├── docker-compose.yml     # All 7 services
 ├── analyze.py             # CLI helper: upload + poll
 ├── run.py                 # Docker management script
 ├── init-multi-db.sh       # PostgreSQL multi-DB init
 ├── ARCHITECTURE.md        # Detailed architecture docs
 ├── DEPLOY.md              # Deployment & API guide
-├── tech-spec.md           # Frontend tech spec
 │
 ├── backend/
 │   ├── Dockerfile         # Agent image (includes Playwright/Chromium)
+│   ├── Dockerfile.qiling  # Qiling emulator image
 │   ├── pyproject.toml
 │   ├── ghidra_scripts/    # 11 PyGhidra headless scripts
-│   └── src/ghidra_agent/  # Python package (22 modules)
-│       ├── api/main.py    #   FastAPI app (38 endpoints)
+│   ├── qiling_scripts/    # 10 emulation scripts
+│   └── src/ghidra_agent/  # Python package (25+ modules)
+│       ├── api/main.py    #   FastAPI app (50+ endpoints)
+│       ├── auth.py        #   JWT auth + RBAC
 │       ├── graph.py       #   LangGraph pipeline
 │       ├── tools.py       #   Ghidra @tool functions
 │       ├── r2_tools.py    #   Radare2 @tool functions
+│       ├── qiling_tools.py #  Qiling @tool functions
 │       ├── r2_graph.py    #   R2 pipeline stages
+│       ├── qiling_graph.py #  Qiling pipeline stages
 │       ├── llm.py         #   LiteLLM wrapper
 │       ├── sessions.py    #   Session management
-│       ├── database.py    #   PostgreSQL persistence
+│       ├── database.py    #   PostgreSQL persistence (users, analyses, quotas)
 │       ├── reporting.py   #   HTML/PDF/text reports
 │       ├── ioc_extractor.py    # IOC extraction
 │       ├── call_graph_analyzer.py  # Attack chains
@@ -241,6 +255,7 @@ gireng/
 │       ├── storage.py     #   Analysis history storage
 │       ├── ghidra/        #   GhidraHeadlessRunner
 │       ├── radare/        #   Radare2Runner
+│       ├── qiling/        #   QilingRunner
 │       └── ...
 │
 ├── app/
@@ -250,7 +265,7 @@ gireng/
 │       ├── App.tsx
 │       ├── components/    # ~30 custom + ~50 shadcn/ui components
 │       ├── agents/        # Agent configs (ghidra, radare)
-│       ├── hooks/
+│       ├── hooks/         # useAuth, useMobile
 │       ├── lib/           # API client, utilities
 │       └── types/
 │
@@ -259,7 +274,26 @@ gireng/
 
 ## API Endpoints
 
-### Core Analysis
+### Authentication & Users
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/auth/register` | Register a new user |
+| `POST` | `/api/auth/login` | Login and receive JWT token |
+| `GET` | `/api/auth/me` | Get current user profile (with quota + usage) |
+
+### Admin (requires admin role)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/admin/users` | List all users (with quota + analysis count) |
+| `PUT` | `/api/admin/users/{id}/role` | Change user role |
+| `PUT` | `/api/admin/users/{id}/active` | Toggle user active/disabled |
+| `PUT` | `/api/admin/users/{id}/password` | Reset user password |
+| `PUT` | `/api/admin/users/{id}/quota` | Update user analysis quota |
+| `DELETE` | `/api/admin/users/{id}` | Delete user |
+
+### Core Analysis (requires user/admin role)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -292,7 +326,7 @@ gireng/
 | `GET` | `/api/query/strings` | Full-text string search |
 | `GET` | `/api/query/iocs` | Search IOCs across all binaries |
 
-See [DEPLOY.md](DEPLOY.md) for full API documentation (38 endpoints) and examples.
+See [DEPLOY.md](DEPLOY.md) for full API documentation (50+ endpoints) and examples.
 
 ## Report Formats
 

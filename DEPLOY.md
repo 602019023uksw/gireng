@@ -11,10 +11,11 @@ Complete guide for deploying Gireng on **Windows** and **Linux**.
 3. [Deploy with Docker (Recommended)](#3-deploy-with-docker-recommended)
 4. [Management Script (`run.py`)](#4-management-script-runpy)
 5. [Local Development (Without Docker)](#5-local-development-without-docker)
-6. [Upload & Analyze a Binary](#6-upload--analyze-a-binary)
-7. [API Reference](#7-api-reference)
-8. [Report Export](#8-report-export)
-9. [Troubleshooting](#9-troubleshooting)
+6. [Authentication & Users](#6-authentication--users)
+7. [Upload & Analyze a Binary](#7-upload--analyze-a-binary)
+8. [API Reference](#8-api-reference)
+9. [Report Export](#9-report-export)
+10. [Troubleshooting](#10-troubleshooting)
 
 ---
 
@@ -144,6 +145,11 @@ Edit `.env` and fill in the required variables:
 | `ANTHROPIC_API_KEY` | yes | LLM API key | `sk-abc123...` |
 | `ANTHROPIC_BASE_URL` | yes | LLM API endpoint | `https://api.anthropic.com` |
 | `POSTGRES_PASSWORD` | no | Database password (default: `ireng_secret`) | `strong_password` |
+| `JWT_SECRET` | no | JWT signing secret (auto-generated if unset) | `your-secret-key` |
+| `ADMIN_EMAIL` | no | Bootstrap admin email (default: `admin@gireng.local`) | `admin@yourco.com` |
+| `ADMIN_PASSWORD` | no | Bootstrap admin password (default: `admin`) | `strong_password` |
+| `DEFAULT_USER_QUOTA` | no | Default analysis quota for new users (default: 10, -1 = unlimited) | `20` |
+| `REGISTRATION_ENABLED` | no | Allow public registration (default: `true`) | `false` |
 | `LANGFUSE_PUBLIC_KEY` | no | Langfuse public key (for tracing) | `pk-lf-...` |
 | `LANGFUSE_SECRET_KEY` | no | Langfuse secret key (for tracing) | `sk-lf-...` |
 
@@ -178,7 +184,8 @@ python run.py rebuild
 |---------|-------|------|-------------|
 | `ghidra` | `danilid/ireng-runner:2.0.1` | (internal) | Headless Ghidra runner with PyGhidra. First boot takes ~2-3 min. |
 | `radare2` | `radare/radare2` | (internal) | Radare2 with r2ghidra/r2dec decompiler plugins. |
-| `postgres` | `postgres:16-alpine` | (internal) | PostgreSQL database for sessions, history & Langfuse. |
+| `qiling` | Built from `backend/Dockerfile.qiling` | (internal) | Qiling sandbox for dynamic emulation, API/syscall tracing. |
+| `postgres` | `postgres:16-alpine` | (internal) | PostgreSQL database for users, sessions, history & Langfuse. |
 | `langfuse` | `langfuse/langfuse:2` | **`${LANGFUSE_PORT}`** (default `3100`) | LLM observability dashboard. |
 | `agent` | Built from `backend/Dockerfile` | **`${API_PORT}`** (default `8080`) | FastAPI backend + Playwright/Chromium for PDF. |
 | `ui` | Built from `app/Dockerfile.ui` | **`${UI_PORT}`** (default `4173`) | React frontend (Vite preview server). |
@@ -281,12 +288,76 @@ cd app && npm run lint
 
 ---
 
-## 6. Upload & Analyze a Binary
+## 6. Authentication & Users
 
-### 6.1 Upload
+The platform uses **JWT-based authentication** with role-based access control.
+
+### 6.1 First Login
+
+On first startup, an admin account is automatically created:
+- **Email:** `admin@gireng.local` (or `$ADMIN_EMAIL`)
+- **Password:** `admin` (or `$ADMIN_PASSWORD`)
+
+> **Important:** Change the default admin password immediately via the Admin Panel or API.
+
+### 6.2 Register a New User
+
+```bash
+curl -X POST http://localhost:8080/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email": "analyst@example.com", "username": "analyst", "password": "securepass"}'
+```
+
+### 6.3 Login
+
+```bash
+curl -X POST http://localhost:8080/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "analyst@example.com", "password": "securepass"}'
+```
+
+Response includes a JWT token. Use it in subsequent requests:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8080/api/auth/me
+```
+
+### 6.4 Roles
+
+| Role | Permissions |
+|------|-------------|
+| `admin` | Full access, see all analyses, manage users, unlimited quota |
+| `user` | Upload & analyze (within quota), see own analyses only |
+| `guest` | Read-only access to own analyses |
+
+### 6.5 Quotas
+
+Each user has an analysis quota (default: 10). Set via env var `DEFAULT_USER_QUOTA` or per-user in Admin Panel.
+
+- `-1` = unlimited (admins get this automatically)
+- `0` = blocked from uploading
+- `N` = can submit up to N analyses
+
+### 6.6 Admin Panel
+
+Accessible from the UI header menu (admin users only). Allows:
+- View all users with quota usage
+- Change user roles
+- Activate / deactivate users
+- Reset passwords
+- Adjust per-user quotas
+
+---
+
+## 7. Upload & Analyze a Binary
+
+### 7.1 Upload
+
+All analysis endpoints require a valid JWT token:
 
 ```bash
 curl -X POST http://localhost:8080/analyze/upload \
+  -H "Authorization: Bearer <token>" \
   -F "file=@./sample-binary/chargen"
 ```
 
@@ -296,7 +367,7 @@ Response:
 {"session_id": "a1b2c3d4-..."}
 ```
 
-### 6.2 Check Status
+### 7.2 Check Status
 
 ```bash
 curl http://localhost:8080/status/{session_id}
@@ -304,15 +375,16 @@ curl http://localhost:8080/status/{session_id}
 
 Status values: `initialized` → `completed` (or `error`).
 
-### 6.3 Query the Agent
+### 7.3 Query the Agent
 
 ```bash
 curl -X POST http://localhost:8080/query \
+  -H "Authorization: Bearer <token>" \
   -H "Content-Type: application/json" \
   -d '{"session_id": "SESSION_ID", "query": "Find buffer overflow vulnerabilities"}'
 ```
 
-### 6.4 WebSocket (Real-Time Events)
+### 7.4 WebSocket (Real-Time Events)
 
 ```
 ws://localhost:8080/stream/{session_id}
@@ -325,7 +397,7 @@ ws://localhost:8080/stream/{session_id}
 | `analysis:completed` | Analysis finished |
 | `analysis:error` | Analysis failed |
 
-### 6.5 Results by Hash
+### 7.5 Results by Hash
 
 ```bash
 curl http://localhost:8080/api/analysis/{program_hash}
@@ -335,9 +407,28 @@ curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 
 ---
 
-## 7. API Reference
+## 8. API Reference
 
-### 7.1 Core Analysis (7 endpoints)
+### 8.1 Authentication (3 endpoints)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/auth/register` | Register new user |
+| `POST` | `/api/auth/login` | Login and receive JWT token |
+| `GET` | `/api/auth/me` | Get current user profile (quota + usage) |
+
+### 8.2 Admin (6 endpoints, requires admin role)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/admin/users` | List all users (with quota + analysis count) |
+| `PUT` | `/api/admin/users/{id}/role` | Change user role |
+| `PUT` | `/api/admin/users/{id}/active` | Toggle user active/disabled |
+| `PUT` | `/api/admin/users/{id}/password` | Reset user password |
+| `PUT` | `/api/admin/users/{id}/quota` | Update user analysis quota |
+| `DELETE` | `/api/admin/users/{id}` | Delete user |
+
+### 8.3 Core Analysis (7 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -349,7 +440,7 @@ curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 | `POST` | `/write_mode/confirm` | Approve pending write actions |
 | `WS` | `/stream/{session_id}` | Real-time event stream |
 
-### 7.2 Analysis Results (10 endpoints)
+### 8.4 Analysis Results (10 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -364,7 +455,7 @@ curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 | `GET` | `/api/analysis/{hash}/results/ghidra` | Raw Ghidra results |
 | `GET` | `/api/analysis/{hash}/results/radare2` | Raw Radare2 results |
 
-### 7.3 Export (7 endpoints)
+### 8.5 Export (7 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -376,7 +467,7 @@ curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 | `GET` | `/export/session/{session_id}/pdf` | Export session PDF (convenience) |
 | `GET` | `/export/session/{session_id}/agent/{agent}` | Export per-agent report |
 
-### 7.4 Analysis History (5 endpoints)
+### 8.6 Analysis History (5 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -386,7 +477,7 @@ curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 | `POST` | `/api/history/{session_id}/restore` | Restore past session into memory |
 | `DELETE` | `/api/history/{session_id}` | Delete past analysis |
 
-### 7.5 Cross-Binary Search (7 endpoints)
+### 8.7 Cross-Binary Search (7 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -398,7 +489,7 @@ curl http://localhost:8080/api/analysis/{program_hash}/reports/summary
 | `GET` | `/api/binary/{hash}/iocs` | IOCs for a specific binary |
 | `GET` | `/api/binary/{hash}/attack-chains` | Attack chains for a binary |
 
-### 7.6 Utility (2 endpoints)
+### 8.8 Utility (2 endpoints)
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -409,9 +500,9 @@ Full interactive documentation available at: `http://localhost:8080/docs` (Swagg
 
 ---
 
-## 8. Report Export
+## 9. Report Export
 
-### 8.1 Formats
+### 9.1 Formats
 
 | Format | Endpoint | Description |
 |--------|----------|-------------|
@@ -419,7 +510,7 @@ Full interactive documentation available at: `http://localhost:8080/docs` (Swagg
 | **PDF** | `/api/analysis/{hash}/export/pdf` | Professional white-background A4 report generated via Playwright/Chromium |
 | **Text** | `/api/analysis/{hash}/export/text` | Plain text report for scripting and archival |
 
-### 8.2 PDF Report
+### 9.2 PDF Report
 
 The PDF uses a dedicated light-mode HTML template (`_build_pdf_html`) — completely separate from the dark-themed web HTML — with:
 
@@ -429,7 +520,7 @@ The PDF uses a dedicated light-mode HTML template (`_build_pdf_html`) — comple
 - Rendered via Playwright headless Chromium at 1100px viewport, scale 0.82
 - Deterministic output — no CDN, no JavaScript
 
-### 8.3 UI Export
+### 9.3 UI Export
 
 The React frontend provides export buttons in:
 - **Analysis Completed card** (chat) — HTML + PDF download buttons
@@ -437,7 +528,7 @@ The React frontend provides export buttons in:
 
 ---
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 | Problem | Fix |
 |---------|-----|
