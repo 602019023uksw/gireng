@@ -4,7 +4,7 @@
 
 ```
  ┌─────────────────────────────────────────────────────────────────────────────────┐
- │              gireng — Ghidra and Radare Intelligent Reverse Engineering          │
+ │       gireng — Ghidra, Radare, and Qiling Intelligent Reverse Engineering        │
  └─────────────────────────────────────────────────────────────────────────────────┘
 
     ┌──────────────┐         upload binary          ┌──────────────────────────┐
@@ -21,35 +21,37 @@
                                                      │  2. initialize          │
                                                      │  3. discovery ──┐       │
                                                      │     (parallel)  │       │
-                                                     │  ┌──────────────┤       │
-                                                     │  │              │       │
-                                                     │  ▼              ▼       │
-                                                     │ ┌─────────┐ ┌────────┐ │
-                                                     │ │ Ghidra  │ │Radare2 │ │
-                                                     │ │ Agent   │ │ Agent  │ │
-                                                     │ └────┬────┘ └───┬────┘ │
-                                                     │      │          │      │
-                                                     │      └────┬─────┘      │
-                                                     │           ▼            │
-                                                     │  4. focus_analysis     │
-                                                     │  5. cross_reference    │
-                                                     │  6. synthesize (LLM)   │
-                                                     │  7. report ──► PDF/HTML│
+                                                     │  ┌─────────────┬┤       │
+                                                     │  │             ││       │
+                                                     │  ▼             ▼▼       │
+                                                     │ ┌───────┐┌───────┐┌───────┐
+                                                     │ │Ghidra ││Radare2││Qiling │
+                                                     │ │Static ││Static ││Dynamic│
+                                                     │ └──┬────┘└──┬────┘└──┬────┘
+                                                     │    │        │        │  │
+                                                     │    └────┬───┴────┬───┘  │
+                                                     │         ▼        ▼      │
+                                                     │  4. focus_analysis      │
+                                                     │  5. cross_reference     │
+                                                     │  6. synthesize (LLM)    │
+                                                     │  7. report ──► PDF/HTML │
                                                      └─────────────────────────┘
                                                                   │
-                                       ┌──────────────────────────┼──────────────────────────┐
-                                       │                          │                          │
-                              docker exec                docker exec              shared volume
-                                       │                          │              /data/shared
-                                       ▼                          ▼                          │
-                              ┌─────────────────┐      ┌──────────────────┐                  │
-                              │  Ghidra         │      │  Radare2         │                  │
-                              │  Container      │      │  Container       │                  │
-                              │                 │      │                  │                  │
-                              │  • PyGhidra     │      │  • r2ghidra      │                  │
-                              │  • Decompiler   │ ◄──► │  • r2dec         │ ◄────────────────┘
-                              │  • 11 scripts   │      │  • 7 tools       │
-                              └─────────────────┘      └──────────────────┘
+                       ┌──────────────────────────┬───────────────┼───────────────┐
+                       │                          │               │               │
+              docker exec                docker exec         docker exec   shared volume
+                       │                          │               │        /data/shared
+                       ▼                          ▼               ▼               │
+              ┌─────────────────┐      ┌──────────────────┐ ┌──────────────┐      │
+              │  Ghidra         │      │  Radare2         │ │  Qiling      │      │
+              │  Container      │      │  Container       │ │  Container   │      │
+              │                 │      │                  │ │              │      │
+              │  • PyGhidra     │      │  • r2ghidra      │ │  • API trace │      │
+              │  • Decompiler   │ ◄──► │  • r2dec         │ │  • Syscalls  │ ◄────┘
+              │  • 11 scripts   │      │  • 7 tools       │ │  • Evasion   │
+              └─────────────────┘      └──────────────────┘ │  • Memory    │
+                                                            │  • Network   │
+                                                            └──────────────┘
 
  ┌─────────────────────────────────────────────────────────────────────────────────┐
  │  Supporting Services                                                            │
@@ -87,20 +89,22 @@
   Upload ELF/PE ──► Copy to shared volume ──► Run LangGraph pipeline
         │
         ▼
-  ┌─────────┐    ┌──────────┐    ┌───────────────────────────────────┐
-  │ parse   │───►│ init     │───►│ discovery (asyncio.gather)        │
-  │ intent  │    │          │    │                                   │
-  └─────────┘    └──────────┘    │  ┌─────────────┐ ┌─────────────┐ │
-                                 │  │ Ghidra      │ │ Radare2     │ │
-                                 │  │ • functions │ │ • functions │ │
-                                 │  │ • strings   │ │ • strings   │ │
-                                 │  │ • xrefs     │ │ • imports   │ │
-                                 │  │ • decompile │ │ • decompile │ │
-                                 │  │ • call graph│ │ • call graph│ │
-                                 │  └─────────────┘ └─────────────┘ │
-                                 └──────────────┬────────────────────┘
-                                                │
-        ┌───────────────────────────────────────┘
+  ┌─────────┐    ┌──────────┐    ┌─────────────────────────────────────────────────┐
+  │ parse   │───►│ init     │───►│ discovery (asyncio.gather — 3 engines parallel) │
+  │ intent  │    │          │    │                                                 │
+  └─────────┘    └──────────┘    │  ┌─────────────┐ ┌─────────────┐ ┌───────────┐ │
+                                 │  │ Ghidra      │ │ Radare2     │ │ Qiling    │ │
+                                 │  │ (static)    │ │ (static)    │ │ (dynamic) │ │
+                                 │  │ • functions │ │ • functions │ │ • API     │ │
+                                 │  │ • strings   │ │ • strings   │ │   trace   │ │
+                                 │  │ • xrefs     │ │ • imports   │ │ • syscalls│ │
+                                 │  │ • decompile │ │ • decompile │ │ • evasion │ │
+                                 │  │ • call graph│ │ • call graph│ │ • network │ │
+                                 │  └─────────────┘ └─────────────┘ │ • memory  │ │
+                                 │                                  └───────────┘ │
+                                 └────────────────────────┬────────────────────────┘
+                                                          │
+        ┌─────────────────────────────────────────────────┘
         ▼
   ┌───────────┐    ┌───────────────┐    ┌─────────────┐    ┌─────────┐
   │ focus     │───►│ cross         │───►│ synthesize  │───►│ report  │
@@ -108,7 +112,7 @@
   │           │    │               │    │             │    │ HTML    │
   │ Deep-dive │    │ Correlate     │    │ Threat      │    │ PDF     │
   │ priority  │    │ Ghidra + R2   │    │ assessment  │    │ Text    │
-  │ functions │    │ findings      │    │ MITRE map   │    │         │
+  │ functions │    │ + Qiling      │    │ MITRE map   │    │         │
   └───────────┘    └───────────────┘    └─────────────┘    └─────────┘
 ```
 
