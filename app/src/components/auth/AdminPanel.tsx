@@ -27,7 +27,7 @@ export function AdminPanel({ onBack, currentUserId }: AdminPanelProps) {
     setError('');
     try {
       const data = await apiGetUsers();
-      setUsers(data);
+      setUsers(Array.isArray(data) ? data : data.items ?? []);
     } catch (e: any) {
       setError(e.message || 'Failed to load users');
     } finally {
