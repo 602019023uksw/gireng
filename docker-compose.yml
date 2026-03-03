@@ -185,6 +185,13 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_HOST: ${LANGFUSE_HOST:-http://langfuse:3000}
       LANGFUSE_ENABLED: "true"
+      JWT_SECRET: ${JWT_SECRET:-changeme-gireng-jwt-secret-key}
+      JWT_ALGORITHM: HS256
+      JWT_EXPIRE_MINUTES: "1440"
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@gireng.local}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin}
+      REGISTRATION_ENABLED: "true"
     volumes:
       - ghidra_projects:/data/projects
       - ghidra_shared:/data/shared

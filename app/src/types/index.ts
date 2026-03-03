@@ -147,4 +147,24 @@ export interface AgentMention {
   agentName: string;
   startIndex: number;
   endIndex: number;
+
+}
+
+// ---------------------------------------------------------------------------
+// Auth types
+// ---------------------------------------------------------------------------
+
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  role: 'admin' | 'user' | 'guest';
+  is_active?: boolean;
+  created_at?: string;
+}
+
+export interface AuthState {
+  user: User | null;
+  token: string | null;
+  isAuthenticated: boolean;
 }

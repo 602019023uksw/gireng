@@ -45,6 +45,14 @@ class Settings(BaseModel):
     langfuse_secret_key: str = Field(default="", alias="LANGFUSE_SECRET_KEY")
     langfuse_host: str = Field(default="http://langfuse:3000", alias="LANGFUSE_HOST")
     langfuse_enabled: bool = Field(default=True, alias="LANGFUSE_ENABLED")
+    # Auth / JWT
+    jwt_secret: str = Field(default="changeme-gireng-jwt-secret-key", alias="JWT_SECRET")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_expire_minutes: int = Field(default=1440, alias="JWT_EXPIRE_MINUTES")  # 24h
+    admin_email: str = Field(default="admin@gireng.local", alias="ADMIN_EMAIL")
+    admin_password: str = Field(default="admin", alias="ADMIN_PASSWORD")
+    admin_username: str = Field(default="admin", alias="ADMIN_USERNAME")
+    registration_enabled: bool = Field(default=True, alias="REGISTRATION_ENABLED")
 
     class Config:
         populate_by_name = True

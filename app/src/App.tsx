@@ -2,6 +2,11 @@ import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PanelRight, ArrowLeft } from 'lucide-react';
 
+import { useAuth } from '@/hooks/useAuth';
+import { AuthPage } from '@/components/auth/AuthPage';
+import { UserMenu } from '@/components/auth/UserMenu';
+import { AdminPanel } from '@/components/auth/AdminPanel';
+
 import { Sidebar } from '@/components/layout/Sidebar';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { ResizablePanel } from '@/components/layout/ResizablePanel';
@@ -58,7 +63,7 @@ import type { Message, Analyzer, FileNode, CodeFile, Report, Analysis, ToolCall 
 import { QilingResultsView } from '@/components/analysis/QilingResultsView';
 import type { AnalyzerRawResults } from '@/lib/api';
 
-type ViewState = 'welcome' | 'chat' | 'analysis';
+type ViewState = 'welcome' | 'chat' | 'analysis' | 'admin';
 type RightPanelTab = 'resources' | 'code' | 'report' | 'dynamic';
 type CallGraphPanel = {
   source: 'Ghidra' | 'Radare2';
@@ -67,7 +72,7 @@ type CallGraphPanel = {
 };
 type AnalyzerPhaseElapsed = Partial<Record<AnalyzerId, number>>;
 
-const currentUser = { name: '' };
+// currentUser is now provided by useAuth()
 
 function getErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
@@ -234,6 +239,7 @@ function deriveAnalyzerToolCalls(
 }
 
 function App() {
+  const { user, isAuthenticated, isLoading, isAdmin, login, register, logout } = useAuth();
   const [viewState, setViewState] = useState<ViewState>('welcome');
   const [selectedModelId, setSelectedModelId] = useState('glm-4.7');
   const [messages, setMessages] = useState<Message[]>([]);
@@ -867,6 +873,36 @@ function App() {
       }))
     : [];
 
+  // Auth loading spinner
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg-primary">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400" />
+      </div>
+    );
+  }
+
+  // Auth gate: show login/register if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-bg-primary">
+        <div className="fixed inset-0 pointer-events-none">
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `
+                radial-gradient(ellipse at 20% 20%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse at 80% 80%, rgba(34, 211, 238, 0.04) 0%, transparent 50%),
+                linear-gradient(180deg, #0a0a0f 0%, #0d0d14 100%)
+              `,
+            }}
+          />
+        </div>
+        <AuthPage onLogin={login} onRegister={register} />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-bg-primary">
       {/* Background gradients */}
@@ -939,7 +975,15 @@ function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2" />
+          <div className="flex items-center gap-2">
+            {user && (
+              <UserMenu
+                user={user}
+                onLogout={logout}
+                onAdminPanel={isAdmin ? () => setViewState('admin') : undefined}
+              />
+            )}
+          </div>
         </header>
 
         {/* Main Content Area */}
@@ -955,7 +999,7 @@ function App() {
                 className="h-full relative"
               >
                 <WelcomeScreen
-                  userName={currentUser.name}
+                  userName={user?.username ?? ''}
                   selectedModelId={selectedModelId}
                   quickActions={mockQuickActions}
                   onModelSelect={setSelectedModelId}
@@ -1075,6 +1119,22 @@ function App() {
                     )}
                   </div>
                 </div>
+              </motion.div>
+            )}
+
+            {viewState === 'admin' && isAdmin && (
+              <motion.div
+                key="admin"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+                className="h-full"
+              >
+                <AdminPanel
+                  onBack={() => setViewState('welcome')}
+                  currentUserId={user?.id ?? ''}
+                />
               </motion.div>
             )}
           </AnimatePresence>

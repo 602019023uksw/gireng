@@ -3,13 +3,24 @@ import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
+from pydantic import BaseModel as PydanticBaseModel, EmailStr, Field as PydanticField
 
 from ghidra_agent import database as db
+from ghidra_agent.auth import (
+    can_write,
+    create_access_token,
+    get_current_user,
+    get_optional_user,
+    hash_password,
+    is_admin,
+    require_role,
+    verify_password,
+)
 from ghidra_agent.config import settings
 from ghidra_agent.ioc_extractor import calculate_verdict, classify_malware_type, build_analysis_tags, extract_iocs_from_state, format_iocs_for_report
 from ghidra_agent.langfuse_tracing import create_standalone_trace_metadata
@@ -123,6 +134,187 @@ async def health() -> JSONResponse:
     return JSONResponse({"status": "ok", "sessions": len(store.sessions)})
 
 
+# ---------------------------------------------------------------------------
+# Auth request / response models
+# ---------------------------------------------------------------------------
+
+class RegisterRequest(PydanticBaseModel):
+    email: str
+    username: str
+    password: str
+
+
+class LoginRequest(PydanticBaseModel):
+    email: str
+    password: str
+
+
+class UpdateProfileRequest(PydanticBaseModel):
+    username: str | None = None
+    password: str | None = None
+
+
+class UpdateRoleRequest(PydanticBaseModel):
+    role: str
+
+
+# ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+@app.post("/api/auth/register")
+async def register(req: RegisterRequest) -> JSONResponse:
+    if not settings.registration_enabled:
+        raise HTTPException(status_code=403, detail="Registration is disabled")
+    if not req.email or not req.username or not req.password:
+        raise HTTPException(status_code=400, detail="All fields required")
+    if len(req.password) < 4:
+        raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+    existing = await db.get_user_by_email(req.email)
+    if existing:
+        raise HTTPException(status_code=409, detail="Email already registered")
+    existing_name = await db.get_user_by_username(req.username)
+    if existing_name:
+        raise HTTPException(status_code=409, detail="Username already taken")
+    hashed = hash_password(req.password)
+    user = await db.create_user(req.email, req.username, hashed, role="user")
+    token = create_access_token({"sub": user["id"], "role": user["role"]})
+    return JSONResponse({
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "username": user["username"],
+            "role": user["role"],
+        },
+    })
+
+
+@app.post("/api/auth/login")
+async def login(req: LoginRequest) -> JSONResponse:
+    user = await db.get_user_by_email(req.email)
+    if not user or not verify_password(req.password, user["password_hash"]):
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user.get("is_active", True):
+        raise HTTPException(status_code=403, detail="Account disabled")
+    token = create_access_token({"sub": user["id"], "role": user["role"]})
+    return JSONResponse({
+        "token": token,
+        "user": {
+            "id": user["id"],
+            "email": user["email"],
+            "username": user["username"],
+            "role": user["role"],
+        },
+    })
+
+
+@app.get("/api/auth/me")
+async def auth_me(user: Dict[str, Any] = Depends(get_current_user)) -> JSONResponse:
+    return JSONResponse({
+        "id": user["id"],
+        "email": user["email"],
+        "username": user["username"],
+        "role": user["role"],
+        "is_active": user.get("is_active", True),
+        "created_at": user.get("created_at", ""),
+    })
+
+
+@app.put("/api/auth/me")
+async def update_profile(
+    req: UpdateProfileRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    if req.username:
+        existing = await db.get_user_by_username(req.username)
+        if existing and existing["id"] != user["id"]:
+            raise HTTPException(status_code=409, detail="Username already taken")
+    if req.password:
+        if len(req.password) < 4:
+            raise HTTPException(status_code=400, detail="Password must be at least 4 characters")
+        await db.update_user_password(user["id"], hash_password(req.password))
+    return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/api/admin/users")
+async def admin_list_users(
+    limit: int = 100,
+    offset: int = 0,
+    user: Dict[str, Any] = Depends(require_role("admin")),
+) -> JSONResponse:
+    users = await db.list_users(limit=limit, offset=offset)
+    total = await db.get_user_count()
+    return JSONResponse({"items": users, "total": total})
+
+
+@app.put("/api/admin/users/{target_user_id}/role")
+async def admin_update_role(
+    target_user_id: str,
+    req: UpdateRoleRequest,
+    user: Dict[str, Any] = Depends(require_role("admin")),
+) -> JSONResponse:
+    if req.role not in ("admin", "user", "guest"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    if target_user_id == user["id"] and req.role != "admin":
+        raise HTTPException(status_code=400, detail="Cannot demote yourself")
+    ok = await db.update_user_role(target_user_id, req.role)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+    return JSONResponse({"ok": True})
+
+
+@app.put("/api/admin/users/{target_user_id}/active")
+async def admin_toggle_active(
+    target_user_id: str,
+    user: Dict[str, Any] = Depends(require_role("admin")),
+) -> JSONResponse:
+    target = await db.get_user_by_id(target_user_id)
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target_user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot disable yourself")
+    new_active = not target.get("is_active", True)
+    await db.update_user_active(target_user_id, new_active)
+    return JSONResponse({"ok": True, "is_active": new_active})
+
+
+@app.delete("/api/admin/users/{target_user_id}")
+async def admin_delete_user(
+    target_user_id: str,
+    user: Dict[str, Any] = Depends(require_role("admin")),
+) -> JSONResponse:
+    if target_user_id == user["id"]:
+        raise HTTPException(status_code=400, detail="Cannot delete yourself")
+    ok = await db.delete_user(target_user_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="User not found")
+    return JSONResponse({"ok": True})
+
+
+# ---------------------------------------------------------------------------
+# Auth helper for checking analysis ownership
+# ---------------------------------------------------------------------------
+
+async def _check_analysis_access(
+    state: Optional[Dict[str, Any]],
+    user: Dict[str, Any],
+    program_hash: str,
+) -> None:
+    """Raise 403 if user doesn't own the analysis and isn't admin."""
+    if state is None:
+        return  # Will be handled as 404 by caller
+    if is_admin(user):
+        return
+    state_user = state.get("user_id")
+    if state_user and state_user != user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+
 class ConnectionManager:
     def __init__(self) -> None:
         self.connections: Dict[str, List[WebSocket]] = {}
@@ -152,16 +344,27 @@ manager = ConnectionManager()
 
 
 @app.post("/analyze", response_model=SessionCreateResponse)
-async def analyze(request: SessionCreateRequest) -> SessionCreateResponse:
+async def analyze(
+    request: SessionCreateRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> SessionCreateResponse:
+    if not can_write(user):
+        raise HTTPException(status_code=403, detail="Guests cannot start analyses")
     if not request.binary_path:
         raise HTTPException(status_code=400, detail="binary_path required unless using upload")
     state = store.create_session(request.binary_path)
+    state["user_id"] = user["id"]
     _create_tracked_task(_run_with_events(state))
     return SessionCreateResponse(session_id=state["session_id"])
 
 
 @app.post("/analyze/upload", response_model=SessionCreateResponse)
-async def analyze_upload(file: UploadFile = File(...)) -> SessionCreateResponse:
+async def analyze_upload(
+    file: UploadFile = File(...),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> SessionCreateResponse:
+    if not can_write(user):
+        raise HTTPException(status_code=403, detail="Guests cannot upload files")
     try:
         shared_root = Path(settings.ghidra_shared_root)
         ensure_directory(shared_root)
@@ -186,28 +389,39 @@ async def analyze_upload(file: UploadFile = File(...)) -> SessionCreateResponse:
             detail=f"Failed to save uploaded file: {exc}",
         )
     state = store.create_session(str(target_path))
+    state["user_id"] = user["id"]
     _create_tracked_task(_run_with_events(state))
     return SessionCreateResponse(session_id=state["session_id"])
 
 
 @app.get("/status/{session_id}", response_model=StatusResponse)
-async def status(session_id: str) -> StatusResponse:
+async def status(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> StatusResponse:
     try:
         state = store.get_session(session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Session not found: {session_id}")
+    await _check_analysis_access(state, user, "")
     response_state = dict(state)
     response_state.pop("progress_callback", None)
     return StatusResponse(session_id=session_id, status=state["status"], state=response_state)
 
 
 @app.post("/query")
-async def query(request: QueryRequest) -> JSONResponse:
+async def query(
+    request: QueryRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Answer follow-up questions using existing analysis context (no re-analysis)."""
+    if not can_write(user):
+        raise HTTPException(status_code=403, detail="Guests cannot query")
     try:
         state = store.get_session(request.session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Session not found: {request.session_id}")
+    await _check_analysis_access(state, user, "")
 
     if state.get("status") != "completed":
         return JSONResponse(
@@ -398,27 +612,48 @@ INSTRUCTIONS:
 
 
 @app.post("/write_mode")
-async def write_mode(request: WriteModeRequest) -> JSONResponse:
+async def write_mode(
+    request: WriteModeRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    if not can_write(user):
+        raise HTTPException(status_code=403, detail="Guests cannot toggle write mode")
     try:
         state = store.get_session(request.session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Session not found: {request.session_id}")
+    await _check_analysis_access(state, user, "")
     state["write_mode_enabled"] = request.enabled
     return JSONResponse({"ok": True, "write_mode_enabled": request.enabled})
 
 
 @app.post("/write_mode/confirm")
-async def write_mode_confirm(request: WriteModeRequest) -> JSONResponse:
+async def write_mode_confirm(
+    request: WriteModeRequest,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    if not can_write(user):
+        raise HTTPException(status_code=403, detail="Guests cannot confirm write mode")
     try:
         state = store.get_session(request.session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Session not found: {request.session_id}")
+    await _check_analysis_access(state, user, "")
     state["review_approved"] = request.enabled
     return JSONResponse({"ok": True, "review_approved": request.enabled})
 
 
 @app.websocket("/stream/{session_id}")
 async def stream(session_id: str, websocket: WebSocket) -> None:
+    # Validate JWT from query param (optional — allow unauthenticated for backward compat)
+    token = websocket.query_params.get("token")
+    if token:
+        try:
+            from ghidra_agent.auth import decode_token
+            decode_token(token)
+        except Exception:
+            await websocket.close(code=4001, reason="Invalid token")
+            return
     await manager.connect(session_id, websocket)
     try:
         while True:
@@ -555,12 +790,18 @@ def _pick_best_in_memory(candidates: List[Dict[str, Any]]) -> Dict[str, Any] | N
     return candidates[0]
 
 
-async def _resolve_by_hash(program_hash: str) -> Dict[str, Any] | None:
-    """Find the best session for a hash, preferring completed DB sessions."""
+async def _resolve_by_hash(program_hash: str, user: Optional[Dict[str, Any]] = None) -> Dict[str, Any] | None:
+    """Find the best session for a hash, preferring completed DB sessions.
+    
+    If user is provided and not admin, only return sessions owned by that user.
+    """
     candidates = [
         s for s in store.sessions.values()
         if s.get("program_hash") == program_hash
     ]
+    # Filter by user ownership (admin sees all)
+    if user and not is_admin(user):
+        candidates = [s for s in candidates if s.get("user_id") == user["id"]]
     best_in_memory = _pick_best_in_memory(candidates)
     if best_in_memory is not None and best_in_memory.get("status") == "completed":
         return best_in_memory
@@ -596,8 +837,11 @@ async def _resolve_by_hash(program_hash: str) -> Dict[str, Any] | None:
 
 
 @app.get("/api/analysis/{program_hash}")
-async def analysis_status(program_hash: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_status(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse({"hash": program_hash, "status": "not_found"}, status_code=404)
     duration_secs = state.get("duration_seconds", 0)
@@ -646,8 +890,11 @@ async def analysis_status(program_hash: str) -> JSONResponse:
 
 
 @app.get("/api/analysis/{program_hash}/analyzers")
-async def analysis_analyzers(program_hash: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_analyzers(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse([], status_code=404)
     analyzers = [build_analyzer_response(state, "ghidra")]
@@ -659,57 +906,81 @@ async def analysis_analyzers(program_hash: str) -> JSONResponse:
 
 
 @app.get("/api/analysis/{program_hash}/analyzers/{analyzer_id}")
-async def analysis_analyzer_detail(program_hash: str, analyzer_id: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_analyzer_detail(
+    program_hash: str,
+    analyzer_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None or analyzer_id not in ("ghidra", "radare2", "qiling"):
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse(build_analyzer_response(state, analyzer_id))
 
 
 @app.get("/api/analysis/{program_hash}/files")
-async def analysis_files(program_hash: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_files(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse(build_file_tree(state))
 
 
 @app.get("/api/analysis/{program_hash}/files/{file_id}")
-async def analysis_file_content(program_hash: str, file_id: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_file_content(
+    program_hash: str,
+    file_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse(build_code_file(state, file_id))
 
 
 @app.get("/api/analysis/{program_hash}/reports")
-async def analysis_reports(program_hash: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_reports(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse([], status_code=404)
     return JSONResponse(build_reports(state))
 
 
 @app.get("/api/analysis/{program_hash}/reports/{report_id}")
-async def analysis_report_content(program_hash: str, report_id: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_report_content(
+    program_hash: str,
+    report_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse(build_report_content(state, report_id))
 
 
 @app.get("/api/analysis/{program_hash}/similar")
-async def analysis_similar(program_hash: str) -> JSONResponse:
-    state = await _resolve_by_hash(program_hash)
+async def analysis_similar(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse([], status_code=404)
     return JSONResponse(build_similar_files(state))
 
 
 @app.get("/api/analysis/{program_hash}/results/ghidra")
-async def ghidra_results(program_hash: str) -> JSONResponse:
+async def ghidra_results(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Return raw Ghidra analysis results (functions, strings, binary info, decompiled code)."""
-    state = await _resolve_by_hash(program_hash)
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     gh = state.get("analysis_results", {})
@@ -725,9 +996,12 @@ async def ghidra_results(program_hash: str) -> JSONResponse:
 
 
 @app.get("/api/analysis/{program_hash}/results/radare2")
-async def radare2_results(program_hash: str) -> JSONResponse:
+async def radare2_results(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Return raw Radare2 analysis results (functions, strings, binary info, decompiled code)."""
-    state = await _resolve_by_hash(program_hash)
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     r2 = state.get("r2_analysis_results", {})
@@ -745,9 +1019,12 @@ async def radare2_results(program_hash: str) -> JSONResponse:
 
 
 @app.get("/api/analysis/{program_hash}/results/qiling")
-async def qiling_results(program_hash: str) -> JSONResponse:
+async def qiling_results(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Return raw Qiling dynamic analysis results."""
-    state = await _resolve_by_hash(program_hash)
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     qiling = state.get("qiling_analysis_results", {})
@@ -772,9 +1049,12 @@ async def models() -> JSONResponse:
 
 
 @app.get("/api/analysis/{program_hash}/export/html")
-async def export_html(program_hash: str) -> HTMLResponse:
+async def export_html(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> HTMLResponse:
     """Export analysis report as HTML."""
-    state = await _resolve_by_hash(program_hash)
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return HTMLResponse("<h1>Report not found</h1>", status_code=404)
     html = build_report_html(state)
@@ -784,9 +1064,12 @@ async def export_html(program_hash: str) -> HTMLResponse:
 
 
 @app.get("/api/analysis/{program_hash}/export/text")
-async def export_text(program_hash: str) -> PlainTextResponse:
+async def export_text(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> PlainTextResponse:
     """Export analysis report as plain text."""
-    state = await _resolve_by_hash(program_hash)
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return PlainTextResponse("Report not found", status_code=404)
     text = build_report_text(state)
@@ -796,7 +1079,10 @@ async def export_text(program_hash: str) -> PlainTextResponse:
 
 
 @app.get("/export/session/{session_id}/html")
-async def export_session_html(session_id: str) -> HTMLResponse:
+async def export_session_html(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> HTMLResponse:
     """Export session report as HTML (convenience endpoint)."""
     try:
         state = store.get_session(session_id)
@@ -810,7 +1096,11 @@ async def export_session_html(session_id: str) -> HTMLResponse:
 
 
 @app.get("/export/session/{session_id}/agent/{agent}")
-async def export_session_agent_html(session_id: str, agent: str) -> HTMLResponse:
+async def export_session_agent_html(
+    session_id: str,
+    agent: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> HTMLResponse:
     """Export per-agent report (ghidra, r2/radare2, or qiling)."""
     if agent.lower() not in ("ghidra", "r2", "radare2", "qiling"):
         return HTMLResponse("<h1>Invalid agent. Use 'ghidra', 'r2', or 'qiling'.</h1>", status_code=400)
@@ -826,7 +1116,10 @@ async def export_session_agent_html(session_id: str, agent: str) -> HTMLResponse
 
 
 @app.get("/export/session/{session_id}/text")
-async def export_session_text(session_id: str) -> PlainTextResponse:
+async def export_session_text(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> PlainTextResponse:
     """Export session report as plain text (convenience endpoint)."""
     try:
         state = store.get_session(session_id)
@@ -840,9 +1133,12 @@ async def export_session_text(session_id: str) -> PlainTextResponse:
 
 
 @app.get("/api/analysis/{program_hash}/export/pdf")
-async def export_pdf(program_hash: str) -> Response:
+async def export_pdf(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> Response:
     """Export analysis report as A4 PDF."""
-    state = await _resolve_by_hash(program_hash)
+    state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return PlainTextResponse("Report not found", status_code=404)
     try:
@@ -858,7 +1154,10 @@ async def export_pdf(program_hash: str) -> Response:
 
 
 @app.get("/export/session/{session_id}/pdf")
-async def export_session_pdf(session_id: str) -> Response:
+async def export_session_pdf(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> Response:
     """Export session report as A4 PDF (convenience endpoint)."""
     try:
         state = store.get_session(session_id)
@@ -887,17 +1186,21 @@ async def list_history(
     offset: int = 0,
     status: str = "",
     search: str = "",
+    user: Dict[str, Any] = Depends(get_current_user),
 ) -> JSONResponse:
     """List past analyses with pagination and optional filters."""
+    uid = None if is_admin(user) else user["id"]
     analyses = await db.list_analyses(
         limit=min(limit, 200),
         offset=offset,
         status=status or None,
         search=search or None,
+        user_id=uid,
     )
     total = await db.get_analysis_count(
         status=status or None,
         search=search or None,
+        user_id=uid,
     )
     return JSONResponse({
         "items": analyses,
@@ -908,7 +1211,10 @@ async def list_history(
 
 
 @app.get("/api/history/{session_id}")
-async def get_history_item(session_id: str) -> JSONResponse:
+async def get_history_item(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Get a single past analysis summary (without full state)."""
     item = await db.get_analysis_by_id(session_id)
     if item is None:
@@ -919,14 +1225,20 @@ async def get_history_item(session_id: str) -> JSONResponse:
 
 
 @app.get("/api/history/{session_id}/qa")
-async def get_history_qa(session_id: str) -> JSONResponse:
+async def get_history_qa(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Get Q&A history for a past analysis session."""
     qa = await db.get_qa_history(session_id)
     return JSONResponse(qa)
 
 
 @app.post("/api/history/{session_id}/restore")
-async def restore_session(session_id: str) -> JSONResponse:
+async def restore_session(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Restore a past session into memory so it can be queried again."""
     # Check if already in memory
     if session_id in store.sessions:
@@ -950,8 +1262,13 @@ async def restore_session(session_id: str) -> JSONResponse:
 
 
 @app.delete("/api/history/{session_id}")
-async def delete_history_item(session_id: str) -> JSONResponse:
+async def delete_history_item(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Delete a past analysis from the database."""
+    if not can_write(user):
+        raise HTTPException(status_code=403, detail="Guests cannot delete analyses")
     deleted = await db.delete_analysis(session_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Analysis not found")
@@ -965,7 +1282,12 @@ async def delete_history_item(session_id: str) -> JSONResponse:
 # ---------------------------------------------------------------------------
 
 @app.get("/api/query/functions")
-async def query_functions(name: str = "", analyzer: str = "", limit: int = 100) -> JSONResponse:
+async def query_functions(
+    name: str = "",
+    analyzer: str = "",
+    limit: int = 100,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Search functions across all analyzed binaries."""
     results = await db.search_functions(
         name_pattern=name or None,
@@ -976,7 +1298,11 @@ async def query_functions(name: str = "", analyzer: str = "", limit: int = 100) 
 
 
 @app.get("/api/query/strings")
-async def query_strings(pattern: str = "", limit: int = 100) -> JSONResponse:
+async def query_strings(
+    pattern: str = "",
+    limit: int = 100,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Full-text search strings across all binaries."""
     if not pattern:
         return JSONResponse({"items": [], "total": 0})
@@ -985,7 +1311,12 @@ async def query_strings(pattern: str = "", limit: int = 100) -> JSONResponse:
 
 
 @app.get("/api/query/iocs")
-async def query_iocs(ioc_type: str = "", value: str = "", limit: int = 100) -> JSONResponse:
+async def query_iocs(
+    ioc_type: str = "",
+    value: str = "",
+    limit: int = 100,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Search IOCs across all binaries."""
     results = await db.search_iocs(
         ioc_type=ioc_type or None,
@@ -996,28 +1327,42 @@ async def query_iocs(ioc_type: str = "", value: str = "", limit: int = 100) -> J
 
 
 @app.get("/api/binary/{program_hash}/functions")
-async def binary_functions(program_hash: str, analyzer: str = "") -> JSONResponse:
+async def binary_functions(
+    program_hash: str,
+    analyzer: str = "",
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Get all functions for a specific binary."""
     results = await db.get_binary_functions(program_hash, analyzer=analyzer or None)
     return JSONResponse({"items": results, "total": len(results)})
 
 
 @app.get("/api/binary/{program_hash}/decompilations")
-async def binary_decompilations(program_hash: str, analyzer: str = "") -> JSONResponse:
+async def binary_decompilations(
+    program_hash: str,
+    analyzer: str = "",
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Get all decompiled functions for a specific binary."""
     results = await db.get_binary_decompilations(program_hash, analyzer=analyzer or None)
     return JSONResponse({"items": results, "total": len(results)})
 
 
 @app.get("/api/binary/{program_hash}/iocs")
-async def binary_iocs(program_hash: str) -> JSONResponse:
+async def binary_iocs(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Get IOCs for a specific binary."""
     results = await db.get_binary_iocs(program_hash)
     return JSONResponse({"items": results, "total": len(results)})
 
 
 @app.get("/api/binary/{program_hash}/attack-chains")
-async def binary_attack_chains(program_hash: str) -> JSONResponse:
+async def binary_attack_chains(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
     """Get attack chains for a specific binary."""
     results = await db.get_binary_attack_chains(program_hash)
     return JSONResponse({"items": results, "total": len(results)})

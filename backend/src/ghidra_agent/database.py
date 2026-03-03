@@ -8,6 +8,7 @@ attack chains, and IOCs in dedicated tables for cross-analysis querying.
 """
 
 import json
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -47,6 +48,22 @@ async def close_db() -> None:
 async def _init_schema() -> None:
     pool = await get_pool()
     async with pool.acquire() as conn:
+        # -- Users ----------------------------------------------------------
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id               TEXT PRIMARY KEY,
+                email            TEXT UNIQUE NOT NULL,
+                username         TEXT UNIQUE NOT NULL,
+                password_hash    TEXT NOT NULL,
+                role             TEXT NOT NULL DEFAULT 'user',
+                is_active        BOOLEAN NOT NULL DEFAULT true,
+                created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+                updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)")
+
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS analyses (
                 id               TEXT PRIMARY KEY,
@@ -63,12 +80,23 @@ async def _init_schema() -> None:
                 duration_seconds DOUBLE PRECISION,
                 created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
                 updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-                state_json       TEXT
+                state_json       TEXT,
+                user_id          TEXT REFERENCES users(id) ON DELETE SET NULL
             )
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_analyses_hash ON analyses(program_hash)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_analyses_status ON analyses(status)")
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_analyses_created ON analyses(created_at DESC)")
+
+        # Migrate: add user_id column if table already exists without it
+        await conn.execute("""
+            DO $$ BEGIN
+                ALTER TABLE analyses ADD COLUMN IF NOT EXISTS user_id TEXT REFERENCES users(id) ON DELETE SET NULL;
+            EXCEPTION WHEN others THEN NULL;
+            END $$;
+        """)
+
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_analyses_user ON analyses(user_id)")
 
         # -- Binaries (deduplicated by hash) --------------------------------
         await conn.execute("""
@@ -195,6 +223,142 @@ async def _init_schema() -> None:
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_qa_session ON qa_history(session_id)")
 
+        # -- User-Binary ownership (many-to-many) --------------------------
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_binaries (
+                user_id          TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                program_hash     TEXT NOT NULL,
+                uploaded_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+                PRIMARY KEY (user_id, program_hash)
+            )
+        """)
+
+        # -- Bootstrap admin user -------------------------------------------
+        await _bootstrap_admin(conn)
+
+
+async def _bootstrap_admin(conn: asyncpg.Connection) -> None:
+    """Create the default admin user if no admin exists yet."""
+    from ghidra_agent.config import settings
+    row = await conn.fetchrow("SELECT id FROM users WHERE role = 'admin' LIMIT 1")
+    if row is not None:
+        return
+    from passlib.context import CryptContext
+    _pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+    admin_id = str(uuid.uuid4())
+    hashed = _pwd.hash(settings.admin_password)
+    await conn.execute(
+        """INSERT INTO users (id, email, username, password_hash, role)
+           VALUES ($1, $2, $3, $4, 'admin')
+           ON CONFLICT (email) DO NOTHING""",
+        admin_id, settings.admin_email, settings.admin_username, hashed,
+    )
+    logger.info("admin_bootstrapped", email=settings.admin_email)
+
+
+# ---------------------------------------------------------------------------
+# User CRUD
+# ---------------------------------------------------------------------------
+
+async def create_user(
+    email: str, username: str, password_hash: str, role: str = "user",
+) -> Dict[str, Any]:
+    pool = await get_pool()
+    user_id = str(uuid.uuid4())
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO users (id, email, username, password_hash, role)
+               VALUES ($1, $2, $3, $4, $5)""",
+            user_id, email, username, password_hash, role,
+        )
+        row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+    return _row_to_dict(row)
+
+
+async def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE email = $1", email)
+    return _row_to_dict(row) if row else None
+
+
+async def get_user_by_id(user_id: str) -> Optional[Dict[str, Any]]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE id = $1", user_id)
+    return _row_to_dict(row) if row else None
+
+
+async def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT * FROM users WHERE username = $1", username)
+    return _row_to_dict(row) if row else None
+
+
+async def list_users(limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT id, email, username, role, is_active, created_at, updated_at "
+            "FROM users ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+            limit, offset,
+        )
+    return [_row_to_dict(r) for r in rows]
+
+
+async def get_user_count() -> int:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchval("SELECT COUNT(*) FROM users") or 0
+
+
+async def update_user_role(user_id: str, role: str) -> bool:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE users SET role = $1, updated_at = now() WHERE id = $2",
+            role, user_id,
+        )
+    return result.endswith("1")
+
+
+async def update_user_active(user_id: str, is_active: bool) -> bool:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE users SET is_active = $1, updated_at = now() WHERE id = $2",
+            is_active, user_id,
+        )
+    return result.endswith("1")
+
+
+async def update_user_password(user_id: str, password_hash: str) -> bool:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2",
+            password_hash, user_id,
+        )
+    return result.endswith("1")
+
+
+async def delete_user(user_id: str) -> bool:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+    return result.endswith("1")
+
+
+async def link_user_binary(user_id: str, program_hash: str) -> None:
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """INSERT INTO user_binaries (user_id, program_hash)
+               VALUES ($1, $2) ON CONFLICT DO NOTHING""",
+            user_id, program_hash,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -245,8 +409,8 @@ async def save_analysis(state: Dict[str, Any]) -> None:
         await conn.execute("""
             INSERT INTO analyses (
                 id, program_hash, binary_path, status, intent, user_query,
-                summary, started_at, completed_at, duration_seconds, state_json, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+                summary, started_at, completed_at, duration_seconds, state_json, updated_at, user_id
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now(), $12)
             ON CONFLICT (id) DO UPDATE SET
                 status           = EXCLUDED.status,
                 intent           = EXCLUDED.intent,
@@ -269,6 +433,7 @@ async def save_analysis(state: Dict[str, Any]) -> None:
             _parse_iso_to_datetime(state.get("completed_at_iso")),
             state.get("duration_seconds"),
             state_json,
+            state.get("user_id"),
         )
 
 
@@ -342,12 +507,17 @@ async def list_analyses(
     offset: int = 0,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     pool = await get_pool()
     conditions: list[str] = []
     params: list[Any] = []
     idx = 1
 
+    if user_id:
+        conditions.append(f"user_id = ${idx}")
+        params.append(user_id)
+        idx += 1
     if status:
         conditions.append(f"status = ${idx}")
         params.append(status)
@@ -379,12 +549,17 @@ async def list_analyses(
 async def get_analysis_count(
     status: Optional[str] = None,
     search: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> int:
     pool = await get_pool()
     conditions: list[str] = []
     params: list[Any] = []
     idx = 1
 
+    if user_id:
+        conditions.append(f"user_id = ${idx}")
+        params.append(user_id)
+        idx += 1
     if status:
         conditions.append(f"status = ${idx}")
         params.append(status)
