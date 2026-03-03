@@ -930,7 +930,7 @@ function App() {
       >
         {/* Top Header - Glass Terminal Style */}
         <header
-          className="h-14 flex items-center justify-between px-4 flex-shrink-0 backdrop-blur-xl relative z-10"
+          className="h-14 flex items-center justify-between px-4 flex-shrink-0 backdrop-blur-xl relative z-30"
           style={{
             background: 'rgba(8, 8, 14, 0.85)',
             borderBottom: '1px solid rgba(100, 100, 150, 0.1)',
