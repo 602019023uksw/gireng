@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from langchain.tools import tool
 
+from ghidra_agent.config import settings
 from ghidra_agent.radare.runner import Radare2Runner
 
 # Shared runner instance — use get_runner() for lazy access with verification
@@ -67,6 +68,20 @@ def _to_hex(value: Any) -> str:
     if parsed is not None:
         return hex(parsed)
     return str(value).strip() if value is not None else ""
+
+
+def _is_decompilation_failure(raw: str) -> bool:
+    """Detect r2 error-only output so we can try the next decompiler."""
+    lowered = raw.lower()
+    markers = (
+        "cannot find function",
+        "no function at this offset",
+        "no data available",
+        "please analyze the function/binary first",
+        "unknown command",
+        "invalid command",
+    )
+    return any(marker in lowered for marker in markers)
 
 
 # ---------------------------------------------------------------------------
@@ -280,19 +295,28 @@ async def r2_decompile_function(
     runner = get_runner()
 
     # Determine seek target
-    seek = function_name or address or "main"
+    seek = address or function_name or "main"
 
     # Use detected decompiler chain (cached after first probe)
     decompiler_chain = await runner.detect_decompilers()
+    decomp_timeout = max(5, min(int(settings.r2_timeout), int(settings.max_decompilation_time)))
 
     for cmd_suffix in decompiler_chain:
-        cmd = f"aaa;s {seek};{cmd_suffix}"  # aaa needed per fresh r2 process
-        result = await runner.run_command(bp, cmd)
+        # Avoid per-function full "aaa" to prevent runaway CPU/time on large binaries.
+        cmd = f"s {seek};{cmd_suffix}"
+        result = await runner.run_command(
+            bp,
+            cmd,
+            timeout=decomp_timeout,
+            max_retries=0,  # Fast-fail per decompiler to keep pipeline bounded.
+        )
         if result.ok and result.payload.get("raw", "").strip():
             raw = result.payload["raw"].strip()
             # Strip ANSI escape codes for clean downstream use
             import re as _re
             raw = _re.sub(r'\x1b\[[0-9;]*m', '', raw)
+            if _is_decompilation_failure(raw):
+                continue
             return {
                 "ok": True,
                 "c": raw,

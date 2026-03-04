@@ -25,6 +25,7 @@ class Settings(BaseModel):
     r2_container_name: str = Field(default="radare2", alias="R2_CONTAINER_NAME")
     r2_shared_root: str = Field(default="/data/shared", alias="R2_SHARED_ROOT")
     r2_timeout: int = Field(default=90, alias="R2_TIMEOUT")
+    r2_pipeline_timeout: int = Field(default=420, alias="R2_PIPELINE_TIMEOUT")
     enable_r2: bool = Field(default=True, alias="ENABLE_R2")
     # Qiling settings
     qiling_container_name: str = Field(default="qiling_emulator", alias="QILING_CONTAINER_NAME")

@@ -488,6 +488,14 @@ def extract_iocs_from_state(state: Dict[str, Any]) -> IOCs:
                     if isinstance(params, dict):
                         for v in params.values():
                             all_strings.append({"value": str(v)})
+            dynamic_rows = api_calls.get("dynamic_imports", [])
+            if isinstance(dynamic_rows, list):
+                for item in dynamic_rows:
+                    if not isinstance(item, dict):
+                        continue
+                    resolved = str(item.get("name", ""))
+                    if resolved:
+                        all_strings.append({"value": resolved})
 
     if not all_strings:
         return IOCs()
@@ -779,6 +787,14 @@ def calculate_verdict(iocs: IOCs, state: Dict[str, Any]) -> tuple:
                         all_string_vals.extend(str(v).lower() for v in list(args.values())[:8])
                     elif isinstance(args, list):
                         all_string_vals.extend(str(v).lower() for v in args[:8])
+            dynamic_rows = api_calls.get("dynamic_imports", [])
+            if isinstance(dynamic_rows, list):
+                for item in dynamic_rows:
+                    if not isinstance(item, dict):
+                        continue
+                    resolved = str(item.get("name", "")).lower()
+                    if resolved:
+                        all_string_vals.append(resolved)
 
     score = 0
     indicators = []
@@ -1013,6 +1029,9 @@ def classify_malware_type(state: Dict[str, Any]) -> tuple:
             for api in api_calls.get("api_calls", []) or []:
                 if isinstance(api, dict) and api.get("name"):
                     all_string_vals.append(str(api["name"]).lower())
+            for item in api_calls.get("dynamic_imports", []) or []:
+                if isinstance(item, dict) and item.get("name"):
+                    all_string_vals.append(str(item["name"]).lower())
 
     # Collect decompiled code snippets (function bodies give strong signals)
     for cache_key in ("decompilation_cache", "r2_decompilation_cache"):

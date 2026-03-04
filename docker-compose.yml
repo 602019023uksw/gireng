@@ -69,6 +69,10 @@ services:
         tail -f /dev/null
     volumes:
       - ghidra_shared:/data/shared
+    # Limit Radare2 resource usage to avoid host saturation.
+    cpus: "${R2_CPU_LIMIT:-2.0}"
+    mem_limit: "${R2_MEM_LIMIT:-2g}"
+    memswap_limit: "${R2_MEMSWAP_LIMIT:-2g}"
     healthcheck:
       test: [ "CMD", "cat", "/tmp/.r2_ready" ]
       interval: 5s
@@ -172,7 +176,8 @@ services:
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL}
       R2_CONTAINER_NAME: radare2
       R2_SHARED_ROOT: /data/shared
-      R2_TIMEOUT: "60"
+      R2_TIMEOUT: "${R2_TIMEOUT:-60}"
+      R2_PIPELINE_TIMEOUT: "${R2_PIPELINE_TIMEOUT:-420}"
       ENABLE_R2: "true"
       QILING_CONTAINER_NAME: qiling_emulator
       QILING_SHARED_ROOT: /data/shared

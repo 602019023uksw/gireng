@@ -1404,10 +1404,16 @@ def _render_qiling_dynamic_section(qiling: Dict[str, Any]) -> str:
     if isinstance(api_calls, dict) and api_calls:
         api_summary = api_calls.get("summary", {})
         api_list = api_calls.get("api_calls", [])
+        dynamic_imports = api_calls.get("dynamic_imports", [])
         if isinstance(api_summary, dict):
             api_total = api_summary.get("total_calls", len(api_list) if isinstance(api_list, list) else 0)
             modules = api_summary.get("modules_used", [])
             suspicious_apis = api_summary.get("suspicious_apis", [])
+            dynamic_total = (
+                api_summary.get("dynamic_imports_count", len(dynamic_imports))
+                if isinstance(dynamic_imports, list)
+                else 0
+            )
 
             # Module badges
             mod_html = ""
@@ -1441,13 +1447,37 @@ def _render_qiling_dynamic_section(qiling: Dict[str, Any]) -> str:
                         f'<div class="space-y-1.5">{"".join(sus_rows)}</div></div>'
                     )
 
+            dynamic_html = ""
+            if isinstance(dynamic_imports, list) and dynamic_imports:
+                dyn_items = []
+                for item in dynamic_imports[:24]:
+                    if not isinstance(item, dict):
+                        continue
+                    name = escape(str(item.get("name", "")))
+                    if not name:
+                        continue
+                    dyn_items.append(
+                        '<span class="px-2 py-0.5 rounded-full bg-indigo-900/30 border border-indigo-700/50 '
+                        'text-xs text-indigo-300 font-mono">'
+                        f"{name}</span>"
+                    )
+                if dyn_items:
+                    dynamic_html = (
+                        '<div class="mt-4">'
+                        '<div class="text-xs font-bold text-indigo-300 uppercase tracking-wider mb-2">'
+                        '<i class="fas fa-link mr-1"></i>Dynamically Resolved APIs</div>'
+                        f'<div class="flex flex-wrap gap-1.5">{"".join(dyn_items)}</div>'
+                        f'<div class="text-[11px] text-slate-500 mt-2">{int(dynamic_total):,} resolved entries</div>'
+                        '</div>'
+                    )
+
             cards.append(
                 '<div class="bg-[#0B1324] rounded-xl border border-[#131e36] overflow-hidden hover:shadow-[0_0_15px_rgba(0,240,255,0.15)] transition-all duration-200">'
                 '<div class="flex items-center gap-3 px-5 py-3 bg-[#060B14] border-b border-[#131e36]">'
                 '<div class="w-7 h-7 rounded-lg bg-emerald-900/30 text-emerald-400 flex items-center justify-center flex-shrink-0 text-xs"><i class="fas fa-plug"></i></div>'
                 '<h3 class="font-bold text-white text-sm">Win32 API Calls</h3>'
                 f'<span class="ml-auto px-2 py-0.5 rounded-full bg-emerald-900/30 text-emerald-400 text-xs font-mono">{api_total:,} calls</span></div>'
-                f'<div class="p-5">{mod_html}{sus_api_html}</div></div>'
+                f'<div class="p-5">{mod_html}{sus_api_html}{dynamic_html}</div></div>'
             )
 
     # ── 5. Network Activity Card ────────────────────────────────────────

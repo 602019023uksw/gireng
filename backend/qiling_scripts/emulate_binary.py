@@ -74,8 +74,16 @@ def _run_emulation(binary_path: str, timeout_sec: int, rootfs_base: str, max_ins
         result["exit_code"] = 0
     except Exception as exc:
         msg = str(exc)
-        if "timeout" in msg.lower():
+        lowered = msg.lower()
+        if "timeout" in lowered:
             result["exit_reason"] = "timeout"
+        elif "directory_entry_import" in lowered:
+            # Malformed/truncated PE files can miss import tables; treat as
+            # unsupported for dynamic emulation instead of a hard pipeline failure.
+            result["ok"] = True
+            result["success"] = False
+            result["exit_reason"] = "unsupported_pe"
+            msg = "Unsupported PE for emulation: missing/corrupt import directory"
         elif instruction_count > 0:
             # Partial execution: binary ran some instructions before crashing.
             # Mark as ok so the pipeline continues with whatever data we have.
@@ -127,4 +135,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

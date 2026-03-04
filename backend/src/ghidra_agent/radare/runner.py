@@ -118,11 +118,33 @@ class Radare2Runner:
         # Always use POSIX paths since the container runs Linux
         return str(PurePosixPath(self.shared_root) / name)
 
+    async def _cleanup_timeout_processes(self, container_bin: str) -> None:
+        """Best-effort cleanup for orphaned r2 processes after a timeout."""
+        target_name = Path(container_bin).name
+        if not target_name:
+            return
+        try:
+            cleanup = await asyncio.create_subprocess_exec(
+                settings.docker_cli_path,
+                "exec",
+                self.container,
+                "sh",
+                "-lc",
+                f"pkill -f 'r2 .*{target_name}' || true",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(cleanup.communicate(), timeout=15)
+            logger.warning("r2_timeout_cleanup", binary=container_bin)
+        except Exception as exc:
+            logger.warning("r2_timeout_cleanup_failed", binary=container_bin, error=str(exc))
+
     async def run_command(
         self,
         binary_path: Path,
         r2_commands: str,
         timeout: Optional[int] = None,
+        max_retries: Optional[int] = None,
     ) -> R2TaskResult:
         """Execute one or more r2 commands and return parsed output.
 
@@ -147,7 +169,9 @@ class Radare2Runner:
 
         last_error: Optional[str] = None
 
-        for attempt in range(1, self.MAX_RETRIES + 2):  # 1-based, +1 for initial
+        retry_budget = self.MAX_RETRIES if max_retries is None else max(0, int(max_retries))
+
+        for attempt in range(1, retry_budget + 2):  # 1-based, +1 for initial
             logger.info(
                 "r2_task_start",
                 commands=r2_commands,
@@ -167,16 +191,22 @@ class Radare2Runner:
                     timeout=effective_timeout,
                 )
             except asyncio.TimeoutError:
+                try:
+                    process.kill()
+                    await process.communicate()
+                except Exception:
+                    pass
+                await self._cleanup_timeout_processes(container_bin)
                 last_error = f"Radare2 command timeout after {effective_timeout}s"
                 logger.warning("r2_task_timeout", commands=r2_commands, attempt=attempt)
-                if attempt <= self.MAX_RETRIES:
+                if attempt <= retry_budget:
                     await asyncio.sleep(self.RETRY_DELAY)
                     continue
                 return R2TaskResult(ok=False, payload={}, error=last_error)
             except Exception as exc:
                 last_error = str(exc)
                 logger.warning("r2_task_exec_failed", error=last_error, attempt=attempt)
-                if attempt <= self.MAX_RETRIES:
+                if attempt <= retry_budget:
                     await asyncio.sleep(self.RETRY_DELAY)
                     continue
                 return R2TaskResult(ok=False, payload={}, error=last_error)
@@ -210,12 +240,13 @@ class Radare2Runner:
         binary_path: Path,
         r2_commands: str,
         timeout: Optional[int] = None,
+        max_retries: Optional[int] = None,
     ) -> R2TaskResult:
         """Run r2 commands that produce JSON output (e.g. ``aflj``, ``izj``).
 
         Attempts to parse the raw stdout as JSON.  Falls back to raw text on failure.
         """
-        result = await self.run_command(binary_path, r2_commands, timeout)
+        result = await self.run_command(binary_path, r2_commands, timeout, max_retries=max_retries)
         if not result.ok:
             return result
 

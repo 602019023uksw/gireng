@@ -120,6 +120,26 @@ class GhidraHeadlessRunner:
                 continue
             shutil.copy2(script, destination)
 
+    async def _cleanup_project_processes(self, project_name: str) -> None:
+        """Best-effort cleanup for stale headless processes that hold project locks."""
+        if not project_name:
+            return
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                settings.docker_cli_path,
+                "exec",
+                settings.ghidra_volume_container,
+                "sh",
+                "-lc",
+                f"pkill -f '{project_name}' || true",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=20)
+            logger.warning("ghidra_lock_cleanup", project=project_name)
+        except Exception as exc:
+            logger.warning("ghidra_lock_cleanup_failed", project=project_name, error=str(exc))
+
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
     async def run_task(
         self,
@@ -142,6 +162,7 @@ class GhidraHeadlessRunner:
         payload["binary_path"] = str(binary_path) if binary_path else None
         write_json(input_path, payload)
         args = self._container_args(program_hash, session_id, task_root, binary_path, script_name, allow_write)
+        project_name = self._project_path(program_hash, session_id).name
         logger.info("ghidra_task_start", script=script_name, args=args)
         process = await asyncio.create_subprocess_exec(
             *args,
@@ -156,12 +177,25 @@ class GhidraHeadlessRunner:
                 timeout=settings.default_analysis_timeout,
             )
         except asyncio.TimeoutError:
-            process.kill()
+            try:
+                process.kill()
+                await process.communicate()
+            except Exception:
+                pass
+            await self._cleanup_project_processes(project_name)
             return GhidraTaskResult(ok=False, payload={}, logs=[], error="Ghidra task timeout")
+        stdout_text = stdout.decode("utf-8", errors="ignore")
+        stderr_text = stderr.decode("utf-8", errors="ignore")
+
+        combined_lower = f"{stdout_text}\n{stderr_text}".lower()
+        if "unable to lock project" in combined_lower:
+            await self._cleanup_project_processes(project_name)
+            raise RuntimeError(f"Ghidra project lock detected for {project_name}")
+
         if stdout:
-            logger.info("ghidra_task_stdout", output=stdout.decode("utf-8", errors="ignore"))
+            logger.info("ghidra_task_stdout", output=stdout_text)
         if stderr:
-            logger.warning("ghidra_task_stderr", output=stderr.decode("utf-8", errors="ignore"))
+            logger.warning("ghidra_task_stderr", output=stderr_text)
         output = read_json(output_path)
         ok = process.returncode == 0 and output.get("ok", False)
         error = output.get("error") if not ok else None

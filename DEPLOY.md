@@ -152,6 +152,9 @@ Edit `.env` and fill in the required variables:
 | `REGISTRATION_ENABLED` | no | Allow public registration (default: `true`) | `false` |
 | `LANGFUSE_PUBLIC_KEY` | no | Langfuse public key (for tracing) | `pk-lf-...` |
 | `LANGFUSE_SECRET_KEY` | no | Langfuse secret key (for tracing) | `sk-lf-...` |
+| `R2_CPU_LIMIT` | no | Radare2 CPU core limit | `2.0` |
+| `R2_MEM_LIMIT` | no | Radare2 memory limit | `2g` |
+| `R2_MEMSWAP_LIMIT` | no | Radare2 memory+swap limit | `2g` |
 
 Optional explicit overrides:
 

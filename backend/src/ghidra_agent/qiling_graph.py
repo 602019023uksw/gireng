@@ -63,6 +63,15 @@ def _is_windows_binary(execution_trace: Dict[str, Any]) -> bool:
     return "windows" in os_name or binary_format == "pe"
 
 
+def _is_unsupported_qiling_sample(execution_trace: Dict[str, Any]) -> bool:
+    if not isinstance(execution_trace, dict):
+        return False
+    if str(execution_trace.get("exit_reason", "")).lower() == "unsupported_pe":
+        return True
+    err = str(execution_trace.get("error", "")).lower()
+    return "directory_entry_import" in err
+
+
 def _normalize_nested_section(
     payload: Dict[str, Any],
     nested_key: str,
@@ -129,6 +138,17 @@ async def run_qiling_pipeline(state: AgentState) -> AgentState:
     exec_instructions = 0
     if isinstance(execution_trace, dict):
         exec_instructions = int(execution_trace.get("instructions_executed", 0) or 0)
+
+    if _is_unsupported_qiling_sample(execution_trace) and exec_instructions == 0:
+        if execution_trace.get("error"):
+            errors.append(str(execution_trace["error"]))
+        results["errors"] = errors
+        results["skipped"] = True
+        results["skip_reason"] = "unsupported_pe_for_emulation"
+        state["qiling_analysis_results"] = results
+        state["reasoning_trace"].append("qiling_discovery_completed")
+        await _emit_qiling_progress(state, progress=100, step="qiling_emulation_skipped", status="completed")
+        return state
 
     if not _is_success(execution_trace) and exec_instructions == 0:
         if execution_trace.get("error"):

@@ -25,7 +25,7 @@ from ghidra_agent.state import AgentState
 
 R2_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 R2_AUTO_DECOMPILE_MIN = 10         # Floor: always decompile at least this many
-R2_AUTO_DECOMPILE_MAX = 40         # Ceiling: cap decompilation to avoid runaway on large binaries
+R2_AUTO_DECOMPILE_MAX = 20         # Keep R2 decompile bounded on large binaries
 
 
 def _ensure_analyzer_maps(state: AgentState) -> None:
@@ -244,7 +244,7 @@ async def _r2_auto_decompile(
     top_fill = [f for f in sorted_funcs if f.get("name", "") not in seen_names][:remaining_slots]
     funcs_to_decompile = must_have + top_fill
 
-    sem = asyncio.Semaphore(5)
+    sem = asyncio.Semaphore(3)
     total_funcs = len(funcs_to_decompile)
 
     async def _decompile_one(func: Dict[str, Any], idx: int) -> int:

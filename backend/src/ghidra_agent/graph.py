@@ -376,7 +376,15 @@ async def _safe_r2_pipeline(state: AgentState) -> None:
     """Run R2 pipeline safely — failures don't block Ghidra results."""
     try:
         from ghidra_agent.r2_graph import run_r2_pipeline
-        await run_r2_pipeline(state)
+        await asyncio.wait_for(
+            run_r2_pipeline(state),
+            timeout=max(30, int(settings.r2_pipeline_timeout)),
+        )
+    except asyncio.TimeoutError:
+        timeout = max(30, int(settings.r2_pipeline_timeout))
+        logger.error("r2_pipeline_timeout", timeout_seconds=timeout)
+        state["reasoning_trace"].append(f"r2_error:timeout_after_{timeout}s")
+        _set_analyzer_progress(state, "radare2", status="failed", step="pipeline_timeout")
     except Exception as exc:
         logger.error("r2_pipeline_failed", error=str(exc))
         state["reasoning_trace"].append(f"r2_error:{exc}")
@@ -909,6 +917,12 @@ def _summarize_qiling_api_calls(api_calls: Dict[str, Any]) -> str:
     summary = api_calls.get("summary", {}) if isinstance(api_calls, dict) else {}
     modules = _safe_sequence(summary.get("modules_used", [])) if isinstance(summary, dict) else []
     suspicious = _safe_sequence(summary.get("suspicious_apis", [])) if isinstance(summary, dict) else []
+    dynamic_imports = _safe_sequence(api_calls.get("dynamic_imports", [])) if isinstance(api_calls, dict) else []
+    dynamic_sample = [
+        item.get("name", "unknown")
+        for item in dynamic_imports[:10]
+        if isinstance(item, dict)
+    ]
     suspicious_names = [
         s.get("name", "unknown")
         for s in suspicious[:10]
@@ -918,7 +932,8 @@ def _summarize_qiling_api_calls(api_calls: Dict[str, Any]) -> str:
         "Qiling API Calls: "
         f"total={summary.get('total_calls', len(calls)) if isinstance(summary, dict) else len(calls)}, "
         f"modules={modules[:10]}, "
-        f"suspicious={suspicious_names}"
+        f"suspicious={suspicious_names}, "
+        f"dynamic_imports={dynamic_sample}"
     )
 
 
