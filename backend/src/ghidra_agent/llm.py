@@ -1,6 +1,7 @@
 import asyncio
+import json
 import os
-from typing import Any, Dict
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import litellm
 from litellm import acompletion
@@ -49,59 +50,252 @@ def _init_langfuse() -> None:
 _init_langfuse()
 
 
-async def _single_llm_call(prompt: str, timeout: int, metadata: Dict[str, Any] | None = None) -> str:
-    """Attempt a single LLM call with the given timeout."""
+async def _single_llm_call(
+    prompt: str,
+    timeout: int,
+    metadata: Dict[str, Any] | None = None,
+    messages: List[Dict[str, Any]] | None = None,
+    tools: List[Dict[str, Any]] | None = None,
+    tool_choice: str = "auto",
+) -> Dict[str, Any]:
+    """Attempt a single LLM call with the given timeout.
+
+    Args:
+        prompt: The user prompt (used if messages is None)
+        timeout: Request timeout in seconds
+        metadata: Optional metadata for tracing
+        messages: Optional conversation history (overrides prompt)
+        tools: Optional list of tools for function calling
+        tool_choice: Tool choice strategy ("auto", "none", or specific tool)
+
+    Returns dict with:
+        - 'content': The response content
+        - 'reasoning_content': Deep thinking reasoning (if available)
+        - 'tool_calls': List of function calls requested by the model
+    """
     api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
     api_base = os.environ.get("LLM_BASE_URL", "")
     model_name = settings.llm_model_name
-    litellm_model = model_name if "/" in model_name else f"openai/{model_name}"
+    # Z.AI API is OpenAI-compatible - use openai/ prefix with custom api_base
+    if "/" in model_name:
+        litellm_model = model_name
+    else:
+        litellm_model = f"openai/{model_name}"
+
+    # Use provided messages or create from prompt
+    request_messages = messages if messages is not None else [{"role": "user", "content": prompt}]
+
+    # GLM-5 parameters for deep reasoning
+    # Enable deep thinking for complex analysis tasks (binary analysis, reverse engineering)
+    extra_body = {
+        "thinking": {"type": "enabled", "clear_thinking": False},  # Preserved thinking for multi-turn context
+        "temperature": 1.0,  # GLM-5 default
+        "top_p": 0.95,  # GLM-5 default - only use one of temperature/top_p
+    }
+
+    # Add function calling parameters
+    kwargs: Dict[str, Any] = {
+        "model": litellm_model,
+        "messages": request_messages,
+        "api_base": api_base or None,
+        "api_key": api_key or None,
+        "timeout": timeout,
+        "metadata": metadata or {},
+        **extra_body,
+    }
+
+    if tools:
+        kwargs["tools"] = tools
+        kwargs["tool_choice"] = tool_choice
 
     response = await asyncio.wait_for(
-        acompletion(
-            model=litellm_model,
-            messages=[{"role": "user", "content": prompt}],
-            api_base=api_base or None,
-            api_key=api_key or None,
-            timeout=timeout,
-            metadata=metadata or {},
-        ),
+        acompletion(**kwargs),
         timeout=timeout,
     )
 
     choices = response.get("choices") or []
     if not choices:
         raise ValueError("no choices returned")
-    return choices[0]["message"]["content"]
+
+    message = choices[0].get("message", {})
+    result = {
+        "content": message.get("content", ""),
+        "reasoning_content": message.get("reasoning_content", ""),
+        "tool_calls": message.get("tool_calls"),
+    }
+    return result
 
 
-async def call_llm(prompt: str, metadata: Dict[str, Any] | None = None) -> str:
+async def call_llm(
+    prompt: str,
+    metadata: Dict[str, Any] | None = None,
+    conversation_history: list[Dict[str, Any]] | None = None,
+    tools: List[Dict[str, Any]] | None = None,
+    tool_executor: Optional[Callable[[str, Dict[str, Any]], Any]] = None,
+    max_tool_iterations: int = 5,
+) -> Dict[str, Any]:
+    """Call LLM with deep reasoning and optional function calling support.
+
+    Args:
+        prompt: The user prompt
+        metadata: Optional metadata for tracing
+        conversation_history: Optional conversation history for multi-turn context.
+            Should include messages with 'role', 'content', and optionally 'reasoning_content'.
+        tools: Optional list of tools for function calling in GLM format
+        tool_executor: Optional async function to execute tools. Signature:
+            async def tool_executor(name: str, arguments: dict) -> dict
+        max_tool_iterations: Maximum number of tool call iterations
+
+    Returns:
+        Dict with:
+            - 'content': The response content
+            - 'reasoning_content': Deep thinking reasoning (if available)
+            - 'tool_calls': List of tool calls made and their results
+            - 'tool_results': List of tool execution results
+    """
     api_base = os.environ.get("LLM_BASE_URL", "")
     model_name = settings.llm_model_name
-    litellm_model = model_name if "/" in model_name else f"openai/{model_name}"
+    # Z.AI API is OpenAI-compatible - use openai/ prefix with custom api_base
+    if "/" in model_name:
+        litellm_model = model_name
+    else:
+        litellm_model = f"openai/{model_name}"
 
-    logger.info("llm_call_start", model=litellm_model, api_base=api_base, prompt_len=len(prompt))
+    logger.info("llm_call_start", model=litellm_model, api_base=api_base, prompt_len=len(prompt), has_tools=tools is not None)
+
+    # Build initial messages
+    messages: List[Dict[str, Any]] = []
+    if conversation_history:
+        messages.extend(conversation_history)
+
+    # If no history or last message is not user, add prompt
+    if not messages or messages[-1].get("role") != "user":
+        messages.append({"role": "user", "content": prompt})
+
+    # Track tool calls and results
+    tool_calls_made: List[Dict[str, Any]] = []
+    tool_results: List[Dict[str, Any]] = []
 
     last_error = ""
-    for attempt in range(1, LLM_MAX_RETRIES + 1):
-        try:
-            result = await _single_llm_call(prompt, LLM_TIMEOUT_SECONDS, metadata=metadata)
-            logger.info("llm_call_complete", attempt=attempt)
-            return result
-        except asyncio.TimeoutError:
-            last_error = f"timed out after {LLM_TIMEOUT_SECONDS}s"
-            logger.warning("llm_call_timeout", timeout=LLM_TIMEOUT_SECONDS, attempt=attempt)
-            # On retry: aggressively truncate prompt to reduce token count
-            if attempt < LLM_MAX_RETRIES and len(prompt) > 15000:
-                prompt = _truncate_prompt(prompt)
-                logger.info("llm_retry_truncated", new_prompt_len=len(prompt), attempt=attempt + 1)
-        except Exception as exc:
-            last_error = str(exc)
-            logger.warning("llm_call_failed", error=last_error, attempt=attempt)
-            if attempt < LLM_MAX_RETRIES:
-                await asyncio.sleep(2)
+    for iteration in range(max_tool_iterations + 1):
+        if iteration > 0:
+            logger.info("llm_tool_iteration", iteration=iteration)
 
-    logger.error("llm_call_exhausted", retries=LLM_MAX_RETRIES, last_error=last_error)
-    return f"[LLM error: {last_error}]"
+        for attempt in range(1, LLM_MAX_RETRIES + 1):
+            try:
+                result = await _single_llm_call(
+                    "",  # Prompt already in messages
+                    LLM_TIMEOUT_SECONDS,
+                    metadata=metadata,
+                    messages=messages,
+                    tools=tools if iteration == 0 else None,  # Only pass tools on first iteration
+                )
+                logger.info("llm_call_complete", attempt=attempt, iteration=iteration)
+                break
+            except asyncio.TimeoutError:
+                last_error = f"timed out after {LLM_TIMEOUT_SECONDS}s"
+                logger.warning("llm_call_timeout", timeout=LLM_TIMEOUT_SECONDS, attempt=attempt, iteration=iteration)
+                # On retry: aggressively truncate prompt to reduce token count
+                if attempt < LLM_MAX_RETRIES and messages:
+                    # Truncate the last user message
+                    for msg in reversed(messages):
+                        if msg.get("role") == "user" and len(msg.get("content", "")) > 15000:
+                            msg["content"] = _truncate_prompt(msg["content"])
+                            logger.info("llm_retry_truncated", new_prompt_len=len(msg["content"]), attempt=attempt + 1)
+                            break
+            except Exception as exc:
+                last_error = str(exc)
+                logger.warning("llm_call_failed", error=last_error, attempt=attempt, iteration=iteration)
+                if attempt < LLM_MAX_RETRIES:
+                    await asyncio.sleep(2)
+        else:
+            # All retries exhausted
+            logger.error("llm_call_exhausted", retries=LLM_MAX_RETRIES, last_error=last_error)
+            return {
+                "content": f"[LLM error: {last_error}]",
+                "reasoning_content": "",
+                "tool_calls": tool_calls_made,
+                "tool_results": tool_results,
+            }
+
+        # Add assistant message to conversation
+        assistant_msg = {
+            "role": "assistant",
+            "content": result.get("content", ""),
+        }
+        if result.get("reasoning_content"):
+            assistant_msg["reasoning_content"] = result["reasoning_content"]
+        if result.get("tool_calls"):
+            assistant_msg["tool_calls"] = result["tool_calls"]
+
+        messages.append(assistant_msg)
+
+        # Check if model wants to call tools
+        if result.get("tool_calls") and tool_executor:
+            for tool_call in result["tool_calls"]:
+                function = tool_call.get("function", {})
+                tool_name = function.get("name")
+                arguments_str = function.get("arguments", "{}")
+
+                try:
+                    arguments = json.loads(arguments_str) if isinstance(arguments_str, str) else arguments_str
+
+                    logger.info("llm_tool_call", name=tool_name, arguments=arguments)
+                    tool_calls_made.append({
+                        "id": tool_call.get("id"),
+                        "name": tool_name,
+                        "arguments": arguments,
+                    })
+
+                    # Execute the tool
+                    tool_result = await tool_executor(tool_name, arguments)
+
+                    # Add tool result message
+                    messages.append({
+                        "role": "tool",
+                        "content": json.dumps(tool_result, ensure_ascii=False),
+                        "tool_call_id": tool_call.get("id"),
+                    })
+
+                    tool_results.append({
+                        "name": tool_name,
+                        "arguments": arguments,
+                        "result": tool_result,
+                    })
+
+                except Exception as e:
+                    logger.error("tool_execution_error", name=tool_name, error=str(e))
+                    # Add error as tool result
+                    messages.append({
+                        "role": "tool",
+                        "content": json.dumps({"ok": False, "error": str(e)}, ensure_ascii=False),
+                        "tool_call_id": tool_call.get("id"),
+                    })
+                    tool_results.append({
+                        "name": tool_name,
+                        "arguments": arguments,
+                        "error": str(e),
+                    })
+
+            # Continue loop to get final response after tool execution
+            continue
+
+        # No tool calls or no executor, we're done
+        return {
+            "content": result.get("content", ""),
+            "reasoning_content": result.get("reasoning_content", ""),
+            "tool_calls": tool_calls_made,
+            "tool_results": tool_results,
+        }
+
+    # Max iterations reached
+    logger.warning("llm_max_iterations_reached", max_iterations=max_tool_iterations)
+    return {
+        "content": result.get("content", "") + "\n\n[Note: Maximum tool iterations reached]",
+        "reasoning_content": result.get("reasoning_content", ""),
+        "tool_calls": tool_calls_made,
+        "tool_results": tool_results,
+    }
 
 
 def _truncate_prompt(prompt: str) -> str:
@@ -151,3 +345,51 @@ def _truncate_prompt(prompt: str) -> str:
         _flush_block()
 
     return "\n".join(out)
+
+
+# ---------------------------------------------------------------------------
+# Function Calling Support
+# ---------------------------------------------------------------------------
+
+def create_tool_executor():
+    """Create a tool executor function from the global tool registry.
+
+    Returns an async function that can be passed as tool_executor to call_llm.
+
+    Example:
+        executor = create_tool_executor()
+        result = await call_llm(
+            prompt="Analyze this binary",
+            tools=get_tool_registry().to_glm_tools_list(),
+            tool_executor=executor,
+        )
+    """
+    from ghidra_agent.glm_function_tools import get_tool_registry
+
+    registry = get_tool_registry()
+
+    async def executor(tool_name: str, arguments: Dict[str, Any]) -> Any:
+        """Execute a tool by name with arguments."""
+        return await registry.execute_tool(tool_name, arguments)
+
+    return executor
+
+
+def get_function_calling_tools() -> List[Dict[str, Any]]:
+    """Get all registered tools in GLM function calling format.
+
+    Initializes and registers all radare2 tools on first call.
+
+    Returns:
+        List of tool definitions in GLM format.
+    """
+    from ghidra_agent.glm_function_tools import get_tool_registry, register_all_radare2_tools, register_utility_tools
+
+    registry = get_tool_registry()
+
+    # Register tools on first call
+    if not registry.get_all_tools():
+        register_all_radare2_tools()
+        register_utility_tools()
+
+    return registry.to_glm_tools_list()

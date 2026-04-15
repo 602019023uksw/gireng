@@ -166,12 +166,13 @@ services:
       GHIDRA_HEADLESS_SCRIPT_PATH: /usr/share/ghidra/support/pyghidraRun
       GHIDRA_INSTALL_PATH: /usr/share/ghidra
       DOCKER_CLI_PATH: /usr/bin/docker
-      LLM_MODEL_NAME: glm-5
+      LLM_MODEL_NAME: ${ANTHROPIC_MODEL:-glm-5}
       LLM_PROVIDER: openai
       MAX_DECOMPILATION_TIME: "30"
       DEFAULT_ANALYSIS_TIMEOUT: "120"
       LLM_API_KEY: ${ANTHROPIC_API_KEY}
-      LLM_BASE_URL: https://api.z.ai/api/coding/paas/v4/
+      # LLM_BASE_URL: https://api.z.ai/api/coding/paas/v4/
+      LLM_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.z.ai/api/coding/paas/v4/}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
       ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL}
       R2_CONTAINER_NAME: radare2
@@ -183,8 +184,8 @@ services:
       QILING_SHARED_ROOT: /data/shared
       QILING_SCRIPTS_ROOT: /opt/qiling/scripts
       QILING_ROOTFS_BASE: /opt/qiling/rootfs
-      QILING_TIMEOUT: "60"
-      ENABLE_QILING: "true"
+      QILING_TIMEOUT: "${QILING_TIMEOUT:-60}"
+      ENABLE_QILING: "${ENABLE_QILING:-true}"
       DATABASE_URL: postgresql://ireng:${POSTGRES_PASSWORD:-ireng_secret}@postgres:5432/ireng
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
