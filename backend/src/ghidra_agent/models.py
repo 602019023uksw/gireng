@@ -81,6 +81,7 @@ class Report(BaseModel):
 class SessionCreateRequest(BaseModel):
     binary_path: Optional[str] = None
     upload_name: Optional[str] = None
+    model: Optional[str] = None
 
 
 class SessionCreateResponse(BaseModel):
@@ -90,11 +91,7 @@ class SessionCreateResponse(BaseModel):
 class QueryRequest(BaseModel):
     session_id: str
     query: str
-
-
-class WriteModeRequest(BaseModel):
-    session_id: str
-    enabled: bool
+    model: Optional[str] = None
 
 
 class StatusResponse(BaseModel):

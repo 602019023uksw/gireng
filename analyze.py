@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Upload a binary and poll until analysis completes."""
+import argparse
 import sys
 import time
 import requests
@@ -8,24 +9,41 @@ from datetime import datetime
 API = "http://localhost:8080"
 
 
+def get_token(args) -> str | None:
+    if args.token:
+        return args.token
+    if args.email and args.password:
+        resp = requests.post(
+            f"{args.api}/api/auth/login",
+            json={"email": args.email, "password": args.password},
+        )
+        resp.raise_for_status()
+        return resp.json().get("token")
+    return None
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python analyze.py <binary-file>")
-        print("  e.g. python analyze.py sample-binary/chargen")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Upload a binary and poll until analysis completes.")
+    parser.add_argument("filepath", help="Path to the binary file to analyze")
+    parser.add_argument("--api", default=API, help=f"Base API URL (default: {API})")
+    parser.add_argument("--token", help="JWT bearer token for authenticated requests")
+    parser.add_argument("--email", help="Login email (requires --password)")
+    parser.add_argument("--password", help="Login password (requires --email)")
+    args = parser.parse_args()
 
-    filepath = sys.argv[1]
+    token = get_token(args)
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
 
-    print(f"==> Uploading: {filepath}")
-    with open(filepath, "rb") as f:
-        resp = requests.post(f"{API}/analyze/upload", files={"file": f})
+    print(f"==> Uploading: {args.filepath}")
+    with open(args.filepath, "rb") as f:
+        resp = requests.post(f"{args.api}/analyze/upload", files={"file": f}, headers=headers)
     resp.raise_for_status()
     sid = resp.json()["session_id"]
     print(f"==> Session: {sid}")
 
     print("==> Polling status...")
     while True:
-        data = requests.get(f"{API}/status/{sid}").json()
+        data = requests.get(f"{args.api}/status/{sid}", headers=headers).json()
         status = data["status"]
         print(f"{datetime.now():%H:%M:%S} {status}")
 

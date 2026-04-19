@@ -5,6 +5,7 @@ from typing import Any, Dict
 
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.config import settings
+from ghidra_agent.decompile_planner import plan_decompilation
 from ghidra_agent.function_priority import (
     apply_priority_to_result,
     build_interesting_callers_set,
@@ -42,29 +43,6 @@ def _set_r2_progress(state: AgentState, progress: int, step: str, status: str = 
     state["analyzer_status"]["radare2"] = status
     if status == "completed":
         state["analyzer_progress"]["radare2"] = 100
-
-
-def _to_num(value: Any) -> float:
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            return 0.0
-    return 0.0
-
-
-def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, str]:
-    score = _to_num(func.get("priority_score"))
-    if score <= 0.0:
-        score = _to_num(func.get("xrefs")) * 100.0 + _to_num(func.get("size"))
-    return (
-        score,
-        _to_num(func.get("xrefs")),
-        _to_num(func.get("size")),
-        str(func.get("name", "")),
-    )
 
 
 async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
@@ -189,7 +167,7 @@ async def r2_discovery(state: AgentState) -> AgentState:
     else:
         _set_r2_progress(state, progress=100, step="r2_discovery_completed", status="completed")
 
-    state["reasoning_trace"].append("r2_discovery_completed")
+    state["r2_trace"].append("r2_discovery_completed")
     return state
 
 
@@ -203,46 +181,13 @@ async def _r2_auto_decompile(
         return
 
     func_list = functions["functions"]
-
-    # Filter out trivial PLT/import stubs (size <= 6 bytes).
-    meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
-
-    # Prefer composite priority score (xrefs + size), with legacy fallback.
-    sorted_funcs = sorted(
-        meaningful_funcs,
-        key=_function_priority_key,
-        reverse=True,
+    funcs_to_decompile, _, _ = plan_decompilation(
+        func_list,
+        min_funcs=R2_AUTO_DECOMPILE_MIN,
+        max_funcs=R2_AUTO_DECOMPILE_MAX,
+        percent=R2_AUTO_DECOMPILE_PERCENT,
+        include_entry_point=False,
     )
-
-    # Percentage-based limit: decompile 75% of meaningful functions, min 10, max 40
-    decompile_target = min(
-        R2_AUTO_DECOMPILE_MAX,
-        max(
-            R2_AUTO_DECOMPILE_MIN,
-            int(len(meaningful_funcs) * R2_AUTO_DECOMPILE_PERCENT),
-        ),
-    )
-
-    # Collect must-decompile functions (interesting callers, string-ref, main-like)
-    seen_names: set[str] = set()
-    must_have: list[dict] = []
-    for f in sorted_funcs:
-        fname = f.get("name", "")
-        if fname in seen_names:
-            continue
-        if (fname or "").lower() in {"main", "_start", "entry0"}:
-            must_have.append(f)
-            seen_names.add(fname)
-            continue
-        if f.get("is_interesting_caller") or f.get("has_suspicious_strings"):
-            must_have.append(f)
-            seen_names.add(fname)
-            continue
-
-    # Fill remaining slots from top ranked
-    remaining_slots = max(0, decompile_target - len(must_have))
-    top_fill = [f for f in sorted_funcs if f.get("name", "") not in seen_names][:remaining_slots]
-    funcs_to_decompile = must_have + top_fill
 
     sem = asyncio.Semaphore(3)
     total_funcs = len(funcs_to_decompile)
@@ -276,7 +221,7 @@ async def _r2_auto_decompile(
     decompiled = sum(await asyncio.gather(*[_decompile_one(func, idx) for idx, func in enumerate(funcs_to_decompile)]))
 
     if decompiled:
-        state["reasoning_trace"].append(f"r2_auto_decompiled:{decompiled}_functions")
+        state["r2_trace"].append(f"r2_auto_decompiled:{decompiled}_functions")
 
 
 async def r2_focus_analysis(state: AgentState) -> AgentState:
@@ -318,7 +263,7 @@ async def r2_focus_analysis(state: AgentState) -> AgentState:
     else:
         state["r2_analysis_results"]["focus"] = {"ok": False, "error": "No focus target"}
 
-    state["reasoning_trace"].append("r2_focus_completed")
+    state["r2_trace"].append("r2_focus_completed")
     return state
 
 
@@ -337,7 +282,7 @@ async def r2_cross_reference(state: AgentState) -> AgentState:
             xrefs = {"ok": False, "error": str(exc)}
         state["r2_analysis_results"]["xrefs"] = xrefs
 
-    state["reasoning_trace"].append("r2_xref_completed")
+    state["r2_trace"].append("r2_xref_completed")
     return state
 
 

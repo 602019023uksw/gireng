@@ -444,3 +444,31 @@ async def r2_syscall_analysis(
             })
 
     return {"ok": True, "syscalls": syscalls}
+
+
+@tool
+async def r2_search_bytes(
+    session_id: str,
+    program_hash: str,
+    binary_path: Optional[str] = None,
+    pattern: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search for a hex byte pattern in the binary using Radare2."""
+    bp = _bin(binary_path)
+    runner = get_runner()
+    if not pattern:
+        return {"ok": False, "error": "pattern is required"}
+    cmd = f"aaa;/xj {pattern}"
+    result = await runner.run_json_command(bp, cmd)
+    if not result.ok:
+        return {"ok": False, "error": result.error}
+    hits = result.payload.get("json", [])
+    matches: List[Dict[str, Any]] = []
+    if isinstance(hits, list):
+        for h in hits:
+            matches.append({
+                "address": hex(h.get("offset", 0)),
+                "size": h.get("size", 0),
+                "type": h.get("type", ""),
+            })
+    return {"ok": True, "matches": matches, "count": len(matches)}

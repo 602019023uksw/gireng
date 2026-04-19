@@ -148,7 +148,7 @@ def build_analyzer_response(state: AgentState, analyzer_id: str = "ghidra") -> D
 def _r2_analyzer_details(state: AgentState) -> Dict[str, Any]:
     """Build details payload from Radare2 analysis results."""
     findings = state.get("r2_analysis_results", {})
-    logs = [l for l in state.get("reasoning_trace", []) if "r2" in l.lower()]
+    logs = [l for l in state.get("r2_trace", []) if "r2" in l.lower()]
 
     iocs = extract_iocs_from_state(state)
     iocs_text = format_iocs_for_report(iocs) if not iocs.is_empty() else "No IOCs extracted."
@@ -228,7 +228,7 @@ def _r2_analyzer_details(state: AgentState) -> Dict[str, Any]:
 def _qiling_analyzer_details(state: AgentState) -> Dict[str, Any]:
     """Build details payload from Qiling dynamic analysis results."""
     findings = state.get("qiling_analysis_results", {})
-    logs = [l for l in state.get("reasoning_trace", []) if "qiling" in l.lower()]
+    logs = [l for l in state.get("qiling_trace", []) if "qiling" in l.lower()]
 
     iocs = extract_iocs_from_state(state)
     iocs_text = format_iocs_for_report(iocs) if not iocs.is_empty() else "No IOCs extracted."
@@ -637,11 +637,29 @@ def _build_qiling_report_markdown(state: AgentState) -> str:
     return "\n".join(parts)
 
 
-def build_similar_files(state: AgentState) -> list[Dict[str, Any]]:
-    return []
+async def build_similar_files(state: AgentState) -> list[Dict[str, Any]]:
+    program_hash = state.get("program_hash", "")
+    if not program_hash:
+        return []
+    from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state
+    from ghidra_agent import database as db
+    iocs = extract_iocs_from_state(state)
+    verdict, _, _, _ = calculate_verdict(iocs, state)
+    if not verdict:
+        return []
+    rows = await db.find_similar_analyses(program_hash, verdict, limit=10)
+    return [
+        {
+            "hash": r.get("program_hash", ""),
+            "labels": [r.get("verdict", "Unknown")]
+            + ([f"score:{r.get('threat_score')}"] if r.get("threat_score") is not None else []),
+        }
+        for r in rows
+    ]
 
 
 def build_model_list() -> list[Dict[str, Any]]:
     return [
-        {"id": "glm-4.7", "name": "GLM 4.7", "icon": "circle", "type": "other", "isSelected": True},
+        {"id": "glm-5", "name": "GLM 5", "icon": "circle", "type": "other", "isSelected": True},
+        {"id": "glm-4.7", "name": "GLM 4.7", "icon": "circle", "type": "other", "isSelected": False},
     ]

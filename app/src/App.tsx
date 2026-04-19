@@ -48,6 +48,7 @@ import {
   getGhidraResults,
   getRadare2Results,
   getQilingResults,
+  getSimilarFiles,
   getExportHtmlUrl,
   type CallGraphAnalysis,
   type CallGraphRaw,
@@ -56,10 +57,9 @@ import {
 import {
   mockQuickActions,
   mockAnalysisResult,
-  mockSimilarFiles,
 } from '@/data/mockData';
 
-import type { Message, Analyzer, FileNode, CodeFile, Report, Analysis, ToolCall } from '@/types';
+import type { Message, Analyzer, FileNode, CodeFile, Report, Analysis, ToolCall, SimilarFile } from '@/types';
 import { QilingResultsView } from '@/components/analysis/QilingResultsView';
 import type { AnalyzerRawResults } from '@/lib/api';
 
@@ -241,7 +241,7 @@ function deriveAnalyzerToolCalls(
 function App() {
   const { user, isAuthenticated, isLoading, isAdmin, login, register, logout } = useAuth();
   const [viewState, setViewState] = useState<ViewState>('welcome');
-  const [selectedModelId, setSelectedModelId] = useState('glm-4.7');
+  const [selectedModelId, setSelectedModelId] = useState('glm-5');
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'analyzers' | 'callgraph' | 'dynamic'>('overview');
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
@@ -258,9 +258,13 @@ function App() {
   const [activeReport, setActiveReport] = useState<Report | null>(null);
   const [callGraphPanels, setCallGraphPanels] = useState<CallGraphPanel[]>([]);
   const [qilingResults, setQilingResults] = useState<AnalyzerRawResults | null>(null);
+  const [similarFiles, setSimilarFiles] = useState<SimilarFile[]>([]);
 
   // Track current session
   const sessionRef = useRef<{ id: string; hash: string } | null>(null);
+  // Track active upload resources for cancellation
+  const activeStreamRef = useRef<WebSocket | null>(null);
+  const activeUploadAbortRef = useRef<AbortController | null>(null);
 
   // Fetch report content when a report is selected
   const handleReportSelect = useCallback(async (reportId: string) => {
@@ -280,7 +284,7 @@ function App() {
   // Returns the number of analyzers fetched
   const fetchAnalysisData = useCallback(async (hash: string): Promise<number> => {
     try {
-      const [analysisInfo, analyzersData, filesData, reportsData, ghidraResults, radare2Results, qilingResults] = await Promise.all([
+      const [analysisInfo, analyzersData, filesData, reportsData, ghidraResults, radare2Results, qilingResults, similarFilesData] = await Promise.all([
         getAnalysis(hash),
         getAnalyzers(hash),
         getFiles(hash),
@@ -288,6 +292,7 @@ function App() {
         getGhidraResults(hash),
         getRadare2Results(hash),
         getQilingResults(hash),
+        getSimilarFiles(hash),
       ]);
       setAnalyzers(analyzersData || []);
       if (filesData?.children) {
@@ -356,6 +361,11 @@ function App() {
       // Store Qiling dynamic analysis results
       setQilingResults(qilingResults);
 
+      // Store similar files
+      setSimilarFiles(
+        (similarFilesData || []).map((s) => ({ id: s.hash, hash: s.hash, labels: s.labels }))
+      );
+
       const analyzerTags = (analyzersData || []).map((a: Analyzer) => a.name.split(' ')[0].toLowerCase());
       const hasQilingPayload =
         Boolean(qilingResults?.execution_trace) ||
@@ -383,6 +393,21 @@ function App() {
 
   // Handle file upload (drag-and-drop or file picker)
   const handleFileUpload = useCallback(async (file: File) => {
+    // Cancel any previous upload
+    if (activeUploadAbortRef.current) {
+      activeUploadAbortRef.current.abort();
+      activeUploadAbortRef.current = null;
+    }
+    if (activeStreamRef.current) {
+      try {
+        activeStreamRef.current.close();
+      } catch {
+        // no-op
+      }
+      activeStreamRef.current = null;
+    }
+    activeUploadAbortRef.current = new AbortController();
+
     let stream: WebSocket | null = null;
 
     const uploadMsg: Message = {
@@ -395,7 +420,7 @@ function App() {
     setViewState('chat');
 
     try {
-      const { session_id } = await uploadBinary(file);
+      const { session_id } = await uploadBinary(file, selectedModelId);
       const analyzingMsg: Message = {
         id: (Date.now() + 1).toString(),
         content:
@@ -539,6 +564,7 @@ function App() {
       };
 
       stream = connectStream(session_id, (event) => {
+        if (activeUploadAbortRef.current?.signal.aborted) return;
         const evt = asRecord(event);
         const evtType = asString(evt.type);
         const payload = asRecord(evt.payload);
@@ -567,12 +593,18 @@ function App() {
         }
       });
 
-      const result = await pollStatus(session_id, (statusUpdate) => {
-        const state = asRecord(statusUpdate.state);
-        const step = asString(state.current_step, statusUpdate.status || 'analyzing');
-        const rawProgress = Number(state.progress ?? 0);
-        updateAnalyzingMessage(step, rawProgress, statusUpdate.status, state);
-      });
+      const result = await pollStatus(
+        session_id,
+        (statusUpdate) => {
+          const state = asRecord(statusUpdate.state);
+          const step = asString(state.current_step, statusUpdate.status || 'analyzing');
+          const rawProgress = Number(state.progress ?? 0);
+          updateAnalyzingMessage(step, rawProgress, statusUpdate.status, state);
+        },
+        2000,
+        1200,
+        activeUploadAbortRef.current?.signal,
+      );
 
       const state = asRecord(result.state);
       const hash = asString(state.program_hash);
@@ -657,8 +689,10 @@ function App() {
           // no-op
         }
       }
+      activeStreamRef.current = null;
+      activeUploadAbortRef.current = null;
     }
-  }, [fetchAnalysisData]);
+  }, [fetchAnalysisData, selectedModelId]);
 
   const handleSendMessage = useCallback(async (content: string, agentId?: string) => {
     const userMessage: Message = {
@@ -712,7 +746,7 @@ function App() {
     setMessages(prev => [...prev, thinkingMsg]);
 
     try {
-      const queryResult = await sendQuery(sessionRef.current.id, content);
+      const queryResult = await sendQuery(sessionRef.current.id, content, selectedModelId);
 
       const answer = queryResult.answer || 'No answer returned.';
       const responseMsg: Message = {
@@ -801,9 +835,16 @@ function App() {
 
   const handleQuickAction = useCallback((actionId: string) => {
     const action = mockQuickActions.find(a => a.id === actionId);
-    if (action) {
-      handleSendMessage(action.label);
-    }
+    if (!action) return;
+    const prompts: Record<string, string> = {
+      cves: 'Search for known vulnerable API usage (e.g., strcpy, sprintf, gets) in this binary and map them to CVE patterns.',
+      deobfuscate: 'Identify obfuscation techniques used in this binary and attempt to reconstruct the original logic.',
+      workflows: 'Outline the execution workflows and behavior chains observed in this binary, including entry points and key decision branches.',
+      apt: 'Generate an APT-style threat report focusing on TTPs and MITRE mapping for this binary.',
+      hash: 'Research any cryptographic hashes, checksums, or hash-based API usage in this binary and assess their purpose.',
+    };
+    const prompt = prompts[actionId] || action.label;
+    handleSendMessage(prompt);
   }, [handleSendMessage]);
 
   const handleViewAnalysis = () => {
@@ -850,8 +891,8 @@ function App() {
   ];
 
   // Similar files table rows - populated from API: GET /api/analysis/:hash/similar
-  const similarFilesRows = mockSimilarFiles.length > 0 
-    ? mockSimilarFiles.map((file) => ({
+  const similarFilesRows = similarFiles.length > 0
+    ? similarFiles.map((file) => ({
         hash: <span className="text-sm font-mono text-text-secondary">{file.hash}</span>,
         labels: (
           <div className="flex flex-wrap gap-1">
@@ -1058,7 +1099,7 @@ function App() {
                         transition={{ duration: 0.3 }}
                       >
                         {/* Similar Files Section - Only show if data exists */}
-                        {mockSimilarFiles.length > 0 && (
+                        {similarFiles.length > 0 && (
                           <AnalysisSection title="Similar Files Found">
                             <p className="text-sm text-text-secondary mb-4">
                               Similar files found during analysis.

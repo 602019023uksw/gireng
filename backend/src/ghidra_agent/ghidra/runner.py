@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from tenacity import retry, stop_after_attempt, wait_fixed
+from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_fixed
 
 from ghidra_agent.config import settings
 from ghidra_agent.logging import logger
@@ -140,7 +140,11 @@ class GhidraHeadlessRunner:
         except Exception as exc:
             logger.warning("ghidra_lock_cleanup_failed", project=project_name, error=str(exc))
 
-    @retry(stop=stop_after_attempt(3), wait=wait_fixed(2))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_fixed(2),
+        retry=retry_if_not_exception_type((asyncio.TimeoutError,)),
+    )
     async def run_task(
         self,
         session_id: str,

@@ -78,7 +78,7 @@ For each capability, use this exact structure:
 - **Capability**: [Concise behavior description]
   - **Evidence**: `function_name` @ `0xADDRESS` — `short snippet proving behavior`
 
-Include all major capabilities and keep each item evidence-backed.
+List each distinct behavioral technique as a separate capability, even if multiple techniques appear in the same function or attack chain. Do not merge related behaviors into a single bullet — e.g., VirtualProtectEx, WriteProcessMemory, and CreateRemoteThread should each be their own capability if evidence supports them. Include all major capabilities and keep each item evidence-backed.
 
 ### 4. Technical Analysis
 Create multiple component cards using this structure:
@@ -190,6 +190,46 @@ Do NOT default to "Malware" just because the binary contains networking function
 - [ ] Error messages and format strings quoted verbatim where relevant
 """.strip()
 
+
+PLANNER_PROMPT = """You are an expert malware analysis planner using a BREAKPOINT approach.
+
+Your job is to decide the NEXT SINGLE function, address, or cross-reference to investigate, OR to stop because you already have enough evidence.
+
+You will be given:
+1. A LIGHT summary of the binary (architecture, top functions, strings, IOCs, attack chains).
+2. The results of any previous investigation steps you requested.
+
+## Output Format
+Respond ONLY with a JSON object in this exact format (no markdown, no prose):
+
+{
+  "action": "investigate" | "stop",
+  "step": {"tool": "decompile", "target": "FUN_00401234", "reason": "Contains C2 connection logic"},
+  "rationale": "Need to confirm the socket setup logic before writing the report"
+}
+
+## Available Tools
+- `decompile`: Decompile a function by name (e.g., `FUN_00401234`, `main`, `entry0`).
+- `disassemble`: Disassemble at a specific address (e.g., `0x401234`).
+- `find_xrefs`: Find cross-references to an address or function name.
+- `function_graph`: Get the internal function graph (basic blocks) for a function.
+
+## Breakpoint Rules
+1. Output ONLY valid JSON. Do not wrap in markdown code blocks.
+2. You may request ONLY ONE step at a time (`step` is a single object, not a list).
+3. Use `action: "stop"` as soon as you have enough concrete evidence to write a complete report. Do NOT keep investigating just because you can.
+4. Use `action: "investigate"` ONLY when there is a clear gap in evidence (e.g., you see a suspicious string but don't know which function uses it, or a high-priority function hasn't been decompiled yet).
+5. Prefer functions that are: entry points, have high priority scores, reference suspicious strings, or sit in the middle of attack chains.
+6. Prefer addresses that reference IOCs (C2 strings, config paths, auth tokens).
+7. If the binary is tiny or the data is sparse, stop immediately (`action: "stop"`).
+8. If previous investigation results already reveal the malware's core behavior (C2, commands, persistence), you MAY stop — but ONLY after you have verified the auxiliary indicators below.
+9. BEFORE emitting `action: "stop"`, verify you have investigated (or have explicit evidence for) the following that appear in the light summary:
+   - **Self-deletion / cleanup**: strings like `/c DEL`, `cmd.exe /c`, `remove`, `unlink`, or file-deletion API references
+   - **Environment reconnaissance**: `GetEnvironmentVariableW`, `getenv`, `getcwd`, `gethostname`, `uname`, `getifaddrs`
+   - **Export obfuscation**: unusually named exports (random strings, non-semantic names) or multiple unexpected exports
+   - **Config-driven execution**: conditional behavior controlled by a global data structure (e.g., flags at offsets in a config blob)
+   If any of these indicators are present but you have NOT yet targeted them with an investigation step, request ONE more step instead of stopping. If you have already verified at least one auxiliary indicator and the core behavior is well-documented, you MAY stop.
+"""
 
 # Simpler prompt for focused queries
 FOCUSED_ANALYSIS_PROMPT = """The user asked: {question}

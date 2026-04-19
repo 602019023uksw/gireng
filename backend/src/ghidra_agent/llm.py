@@ -9,8 +9,8 @@ from litellm import acompletion
 from ghidra_agent.config import settings
 from ghidra_agent.logging import logger
 
-# Configurable via env; default bumped from 300→600 to accommodate large prompts
-LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT", "630"))
+# Configurable via env; default 1200s (20 min) to accommodate large prompts with deep thinking
+LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT", "1200"))
 LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
 
 # ---------------------------------------------------------------------------
@@ -57,6 +57,7 @@ async def _single_llm_call(
     messages: List[Dict[str, Any]] | None = None,
     tools: List[Dict[str, Any]] | None = None,
     tool_choice: str = "auto",
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Attempt a single LLM call with the given timeout.
 
@@ -75,7 +76,7 @@ async def _single_llm_call(
     """
     api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
     api_base = os.environ.get("LLM_BASE_URL", "")
-    model_name = settings.llm_model_name
+    model_name = model or settings.llm_model_name
     # Z.AI API is OpenAI-compatible - use openai/ prefix with custom api_base
     if "/" in model_name:
         litellm_model = model_name
@@ -133,6 +134,8 @@ async def call_llm(
     tools: List[Dict[str, Any]] | None = None,
     tool_executor: Optional[Callable[[str, Dict[str, Any]], Any]] = None,
     max_tool_iterations: int = 5,
+    model: Optional[str] = None,
+    timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Call LLM with deep reasoning and optional function calling support.
 
@@ -154,7 +157,7 @@ async def call_llm(
             - 'tool_results': List of tool execution results
     """
     api_base = os.environ.get("LLM_BASE_URL", "")
-    model_name = settings.llm_model_name
+    model_name = model or settings.llm_model_name
     # Z.AI API is OpenAI-compatible - use openai/ prefix with custom api_base
     if "/" in model_name:
         litellm_model = model_name
@@ -183,18 +186,20 @@ async def call_llm(
 
         for attempt in range(1, LLM_MAX_RETRIES + 1):
             try:
+                call_timeout = timeout if timeout is not None else LLM_TIMEOUT_SECONDS
                 result = await _single_llm_call(
                     "",  # Prompt already in messages
-                    LLM_TIMEOUT_SECONDS,
+                    call_timeout,
                     metadata=metadata,
                     messages=messages,
                     tools=tools if iteration == 0 else None,  # Only pass tools on first iteration
+                    model=model,
                 )
                 logger.info("llm_call_complete", attempt=attempt, iteration=iteration)
                 break
             except asyncio.TimeoutError:
-                last_error = f"timed out after {LLM_TIMEOUT_SECONDS}s"
-                logger.warning("llm_call_timeout", timeout=LLM_TIMEOUT_SECONDS, attempt=attempt, iteration=iteration)
+                last_error = f"timed out after {call_timeout}s"
+                logger.warning("llm_call_timeout", timeout=call_timeout, attempt=attempt, iteration=iteration)
                 # On retry: aggressively truncate prompt to reduce token count
                 if attempt < LLM_MAX_RETRIES and messages:
                     # Truncate the last user message

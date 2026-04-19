@@ -62,8 +62,20 @@ def mock_store():
         yield mock_s
 
 
+@pytest.fixture
+def mock_auth():
+    with patch("ghidra_agent.api.main.get_current_user", return_value={
+        "id": "test-user",
+        "username": "test",
+        "email": "test@example.com",
+        "role": "admin",
+        "is_active": True,
+    }) as m:
+        yield m
+
+
 @pytest_asyncio.fixture
-async def client(mock_store):
+async def client(mock_store, mock_auth):
     from ghidra_agent.api.main import app
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:

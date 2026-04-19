@@ -39,7 +39,7 @@ class TestQilingPipeline:
         assert "memory_events" not in result["qiling_analysis_results"]["memory_events"]
         assert "techniques" in result["qiling_analysis_results"]["evasion_techniques"]
         assert "evasion_techniques" not in result["qiling_analysis_results"]["evasion_techniques"]
-        assert "qiling_discovery_completed" in result["reasoning_trace"]
+        assert "qiling_discovery_completed" in result["qiling_trace"]
 
     @pytest.mark.asyncio
     async def test_emulation_failure_short_circuits(self, base_state: AgentState):

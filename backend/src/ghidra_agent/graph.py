@@ -1,4 +1,5 @@
 import asyncio
+import json
 import re
 from typing import Any, Dict, List
 
@@ -6,6 +7,8 @@ from langgraph.graph import END, StateGraph
 
 from ghidra_agent.call_graph_analyzer import analyze_call_graph
 from ghidra_agent.config import settings
+from ghidra_agent.context_builder import build_analysis_context, build_light_context
+from ghidra_agent.decompile_planner import plan_decompilation
 from ghidra_agent.function_priority import (
     apply_priority_to_result,
     build_interesting_callers_set,
@@ -15,10 +18,11 @@ from ghidra_agent.ioc_extractor import calculate_verdict, classify_malware_type,
 from ghidra_agent.langfuse_tracing import get_trace_metadata
 from ghidra_agent.llm import call_llm
 from ghidra_agent.logging import logger
-from ghidra_agent.prompts import SYSTEM_PROMPT
+from ghidra_agent.memory import get_memory_manager
+from ghidra_agent.prompts import PLANNER_PROMPT, SYSTEM_PROMPT
+from ghidra_agent.ranking_utils import _function_priority_key
 from ghidra_agent.state import AgentState
 from ghidra_agent.tools import (
-    add_comment,
     analyze_binary_structure,
     build_call_graph,
     decompile_function,
@@ -27,19 +31,14 @@ from ghidra_agent.tools import (
     find_xrefs,
     get_function_graph,
     list_functions,
-    rename_symbol,
     search_bytes,
 )
 
 GHIDRA_AUTO_DECOMPILE_PERCENT = 0.75  # Decompile 75% of meaningful (non-stub) functions
 GHIDRA_AUTO_DECOMPILE_MIN = 10       # Floor: always decompile at least this many
-GHIDRA_AUTO_DECOMPILE_MAX = 40       # Ceiling: cap decompilation to avoid runaway on large binaries
-LLM_GHIDRA_DECOMP_LIMIT = 25
-LLM_R2_DECOMP_LIMIT = 25
-LLM_DECOMP_SNIPPET_CHARS = 4000
-LLM_DECOMP_SNIPPET_CHARS_HIGH = 10000  # Larger budget for top-priority functions
-LLM_HIGH_PRIORITY_COUNT = 5            # How many top functions get the larger budget
+GHIDRA_AUTO_DECOMPILE_MAX = 25       # Ceiling: cap decompilation to avoid runaway on large binaries
 LLM_STRING_LIMIT = 120                 # How many strings to send (up from 75)
+MAX_INVESTIGATION_ITERATIONS = 10
 
 
 def _ensure_analyzer_maps(state: AgentState) -> None:
@@ -75,16 +74,24 @@ def _ghidra_progress_from_global(pct: int) -> int:
     return max(0, min(100, scaled))
 
 
-def _smart_truncate(code: str, limit: int = LLM_DECOMP_SNIPPET_CHARS) -> str:
-    """Truncate decompiled code keeping 100% head.
-
-    Keeps from the beginning of the function up to the character limit so
-    the LLM sees the full setup, declarations, and as much logic as fits.
-    """
-    if len(code) <= limit:
-        return code
-    marker = "\n/* ... [truncated at %d chars] ... */" % limit
-    return code[:limit] + marker
+def _extract_breakpoint_decision(text: str) -> Dict[str, Any]:
+    """Extract the breakpoint decision JSON from LLM output."""
+    text = text.strip()
+    if "```" in text:
+        match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
+        if match:
+            text = match.group(1).strip()
+    try:
+        data = json.loads(text)
+        if isinstance(data, dict):
+            return {
+                "action": data.get("action", "stop"),
+                "step": data.get("step", {}),
+                "rationale": data.get("rationale", ""),
+            }
+    except Exception:
+        logger.warning("failed_to_parse_breakpoint_json", text=text[:500])
+    return {"action": "stop", "step": {}, "rationale": "parse_error"}
 
 
 BYTE_SIGNATURE_PATTERNS = [
@@ -92,33 +99,6 @@ BYTE_SIGNATURE_PATTERNS = [
     {"id": "x86_execve_binsh", "pattern": "31 C0 50 68 2F 2F 73 68"},
     {"id": "nop_sled_16", "pattern": "90 90 90 90 90 90 90 90 90 90 90 90 90 90 90 90"},
 ]
-
-
-
-def _to_num(value: Any) -> float:
-    """Best-effort numeric conversion for ranking metadata fields."""
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            return 0.0
-    return 0.0
-
-
-def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, str]:
-    """Sort by composite score first, with deterministic tie-breakers."""
-    score = _to_num(func.get("priority_score"))
-    if score <= 0.0:
-        # Backward compatible fallback when score isn't present.
-        score = _to_num(func.get("xrefs")) * 100.0 + _to_num(func.get("size"))
-    return (
-        score,
-        _to_num(func.get("xrefs")),
-        _to_num(func.get("size")),
-        str(func.get("name", "")),
-    )
 
 
 async def _emit_progress(state: AgentState, step: str, pct: int) -> None:
@@ -174,7 +154,7 @@ async def parse_intent(state: AgentState) -> AgentState:
     if func_match:
         func_name = func_match.group(1)
         state["current_function"] = func_name
-        state["reasoning_trace"].append(f"target_function:{func_name}")
+        state["ghidra_trace"].append(f"target_function:{func_name}")
 
         # B2 FIX: Also extract address from FUN_xxx name for fallback
         if func_name.startswith("FUN_"):
@@ -182,28 +162,28 @@ async def parse_intent(state: AgentState) -> AgentState:
             if addr_match:
                 addr = "0x" + addr_match.group(0).lower()
                 state["current_address"] = addr
-                state["reasoning_trace"].append(f"target_address:{addr}")
+                state["ghidra_trace"].append(f"target_address:{addr}")
 
     # Extract hex addresses (0x...) from the query (only if not already set from FUN_xxx)
     addr_match = re.search(r'\b(0x[0-9a-fA-F]+)\b', query)
     if addr_match and not state.get("current_address"):
         state["current_address"] = addr_match.group(1)
-        state["reasoning_trace"].append(f"target_address:{addr_match.group(1)}")
+        state["ghidra_trace"].append(f"target_address:{addr_match.group(1)}")
 
-    state["reasoning_trace"].append(f"intent:{intent}")
+    state["ghidra_trace"].append(f"intent:{intent}")
     return state
 
 
 async def initialize_ghidra(state: AgentState) -> AgentState:
     # Skip re-initialization on follow-up queries
-    if "ghidra_initialized" in state.get("reasoning_trace", []):
+    if "ghidra_initialized" in state.get("ghidra_trace", []):
         logger.info("skipping_reinit", reason="already_initialized")
         await _emit_progress(state, "initialize_skipped", 5)
         return state
 
     await _emit_progress(state, "initializing_ghidra", 4)
     state["status"] = "initialized"
-    state["reasoning_trace"].append("ghidra_initialized")
+    state["ghidra_trace"].append("ghidra_initialized")
     _set_analyzer_progress(state, "ghidra", progress=0, status="running", step="initializing_ghidra")
 
     # Verify R2 container if enabled
@@ -212,14 +192,14 @@ async def initialize_ghidra(state: AgentState) -> AgentState:
             from ghidra_agent.radare.runner import Radare2Runner
             runner = Radare2Runner()
             if await runner.verify_container():
-                state["reasoning_trace"].append("r2_initialized")
+                state["r2_trace"].append("r2_initialized")
                 _set_analyzer_progress(state, "radare2", progress=0, status="pending", step="waiting_discovery")
             else:
-                state["reasoning_trace"].append("r2_unavailable")
+                state["r2_trace"].append("r2_unavailable")
                 _set_analyzer_progress(state, "radare2", status="failed", step="unavailable")
         except Exception as exc:
             logger.warning("r2_init_check_failed", error=str(exc))
-            state["reasoning_trace"].append("r2_unavailable")
+            state["r2_trace"].append("r2_unavailable")
             _set_analyzer_progress(state, "radare2", status="failed", step="init_failed")
 
     # Verify Qiling container if enabled
@@ -228,14 +208,14 @@ async def initialize_ghidra(state: AgentState) -> AgentState:
             from ghidra_agent.qiling.runner import QilingRunner
             runner = QilingRunner()
             if await runner.verify_container():
-                state["reasoning_trace"].append("qiling_initialized")
+                state["qiling_trace"].append("qiling_initialized")
                 _set_analyzer_progress(state, "qiling", progress=0, status="pending", step="waiting_discovery")
             else:
-                state["reasoning_trace"].append("qiling_unavailable")
+                state["qiling_trace"].append("qiling_unavailable")
                 _set_analyzer_progress(state, "qiling", status="failed", step="unavailable")
         except Exception as exc:
             logger.warning("qiling_init_check_failed", error=str(exc))
-            state["reasoning_trace"].append("qiling_unavailable")
+            state["qiling_trace"].append("qiling_unavailable")
             _set_analyzer_progress(state, "qiling", status="failed", step="init_failed")
 
     await _emit_progress(state, "initialization_completed", 5)
@@ -254,10 +234,10 @@ async def discovery(state: AgentState) -> AgentState:
 
     # Run static and dynamic analyzers concurrently when available.
     tasks = [_ghidra_discovery(state)]
-    if settings.enable_r2 and "r2_initialized" in state.get("reasoning_trace", []):
+    if settings.enable_r2 and "r2_initialized" in state.get("r2_trace", []):
         _set_analyzer_progress(state, "radare2", status="running", step="r2_discovery_starting")
         tasks.append(_safe_r2_pipeline(state))
-    if settings.enable_qiling and "qiling_initialized" in state.get("reasoning_trace", []):
+    if settings.enable_qiling and "qiling_initialized" in state.get("qiling_trace", []):
         _set_analyzer_progress(state, "qiling", status="running", step="qiling_discovery_starting")
         tasks.append(_safe_qiling_pipeline(state))
 
@@ -269,7 +249,7 @@ async def discovery(state: AgentState) -> AgentState:
     if state.get("analysis_results", {}).get("binary", {}).get("ok"):
         _set_analyzer_progress(state, "ghidra", status="completed", step="ghidra_discovery_completed")
 
-    state["reasoning_trace"].append("discovery_completed")
+    state["ghidra_trace"].append("discovery_completed")
     return state
 
 
@@ -383,11 +363,11 @@ async def _safe_r2_pipeline(state: AgentState) -> None:
     except asyncio.TimeoutError:
         timeout = max(30, int(settings.r2_pipeline_timeout))
         logger.error("r2_pipeline_timeout", timeout_seconds=timeout)
-        state["reasoning_trace"].append(f"r2_error:timeout_after_{timeout}s")
+        state["r2_trace"].append(f"r2_error:timeout_after_{timeout}s")
         _set_analyzer_progress(state, "radare2", status="failed", step="pipeline_timeout")
     except Exception as exc:
         logger.error("r2_pipeline_failed", error=str(exc))
-        state["reasoning_trace"].append(f"r2_error:{exc}")
+        state["r2_trace"].append(f"r2_error:{exc}")
         _set_analyzer_progress(state, "radare2", status="failed", step="pipeline_error")
 
 
@@ -398,7 +378,7 @@ async def _safe_qiling_pipeline(state: AgentState) -> None:
         await run_qiling_pipeline(state)
     except Exception as exc:
         logger.error("qiling_pipeline_failed", error=str(exc))
-        state["reasoning_trace"].append(f"qiling_error:{exc}")
+        state["qiling_trace"].append(f"qiling_error:{exc}")
         _set_analyzer_progress(state, "qiling", status="failed", step="pipeline_error")
 
 
@@ -429,7 +409,7 @@ async def _run_byte_signature_scan(state: AgentState, tool_args: Dict[str, Any])
 
     state["analysis_results"]["byte_signatures"] = {"ok": True, "signatures": matches}
     hit_count = sum(1 for m in matches if m["count"] > 0)
-    state["reasoning_trace"].append(f"byte_signature_hits:{hit_count}")
+    state["ghidra_trace"].append(f"byte_signature_hits:{hit_count}")
 
 
 def _refresh_ioc_context(state: AgentState) -> None:
@@ -449,7 +429,7 @@ def _refresh_ioc_context(state: AgentState) -> None:
         "indicators": indicators,
     }
     total_ioc_items = sum(len(v) for v in ioc_dict.values())
-    state["reasoning_trace"].append(f"iocs_extracted:{total_ioc_items}")
+    state["ghidra_trace"].append(f"iocs_extracted:{total_ioc_items}")
 
 
 async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, functions: Dict) -> None:
@@ -461,82 +441,23 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
     if not func_list:
         return
 
-    # Filter out trivial PLT/GOT stubs (size <= 6 bytes) — they decompile to
-    # a single indirect-jump and waste decompilation slots.
-    meaningful_funcs = [f for f in func_list if f.get("size", 0) > 6]
-
-    # Prefer composite priority score (xrefs + size + behavioral boosts), with legacy fallback.
-    sorted_funcs = sorted(
-        meaningful_funcs,
-        key=_function_priority_key,
-        reverse=True,
+    funcs_to_decompile, entry_func_name, entry_addr = plan_decompilation(
+        func_list,
+        binary_info=binary_info,
+        min_funcs=GHIDRA_AUTO_DECOMPILE_MIN,
+        max_funcs=GHIDRA_AUTO_DECOMPILE_MAX,
+        percent=GHIDRA_AUTO_DECOMPILE_PERCENT,
+        include_entry_point=True,
     )
-
-    # Percentage-based limit: decompile 75% of meaningful functions, min 10, max 40
-    decompile_target = min(
-        GHIDRA_AUTO_DECOMPILE_MAX,
-        max(
-            GHIDRA_AUTO_DECOMPILE_MIN,
-            int(len(meaningful_funcs) * GHIDRA_AUTO_DECOMPILE_PERCENT),
-        ),
-    )
+    if entry_func_name and entry_addr:
+        state["current_function"] = entry_func_name
+        state["current_address"] = entry_addr
 
     logger.info(
         "auto_decompile_plan",
         total_functions=len(func_list),
-        meaningful_functions=len(meaningful_funcs),
-        decompile_target=decompile_target,
+        decompile_target=len(funcs_to_decompile),
     )
-
-    # Select functions to decompile: entry point first, then must-haves, then top ranked
-    funcs_to_decompile: list[Dict] = []
-    seen_names: set[str] = set()
-    entry_point = None
-
-    # Try to find entry point from binary info
-    if binary_info.get("ok") and binary_info.get("entry_points"):
-        entry_points = binary_info.get("entry_points", [])
-        if entry_points:
-            entry_point = entry_points[0]
-
-    # Add entry point function first (B3 fix)
-    if entry_point:
-        for f in func_list:
-            if f.get("address") == entry_point:
-                funcs_to_decompile.append(f)
-                seen_names.add(f.get("name", ""))
-                state["current_function"] = f.get("name")
-                state["current_address"] = entry_point
-                break
-
-    # Collect must-decompile functions: main, interesting callers, string-ref functions
-    must_have: list[Dict] = []
-    for f in meaningful_funcs:
-        fname = f.get("name", "")
-        if fname in seen_names:
-            continue
-        # Always include main-like functions
-        if (fname or "").lower() in {"main", "_start", "entry0"}:
-            must_have.append(f)
-            seen_names.add(fname)
-            continue
-        # Always include functions that call security-relevant APIs
-        if f.get("is_interesting_caller"):
-            must_have.append(f)
-            seen_names.add(fname)
-            continue
-        # Always include functions that reference suspicious strings
-        if f.get("has_suspicious_strings"):
-            must_have.append(f)
-            seen_names.add(fname)
-            continue
-
-    funcs_to_decompile.extend(must_have)
-
-    # Add top ranked functions to reach the percentage-based target.
-    remaining_slots = max(0, decompile_target - len(funcs_to_decompile))
-    top_funcs = [f for f in sorted_funcs if f.get("name", "") not in seen_names][:remaining_slots]
-    funcs_to_decompile.extend(top_funcs)
 
     # Decompile selected functions
     total_decompile = len(funcs_to_decompile)
@@ -567,7 +488,7 @@ async def _auto_decompile_key_functions(state: AgentState, binary_info: Dict, fu
             logger.error("auto_decompile_failed", function=func_name, error=str(exc))
 
     if decompiled_count > 0:
-        state["reasoning_trace"].append(f"auto_decompiled:{decompiled_count}_functions")
+        state["ghidra_trace"].append(f"auto_decompiled:{decompiled_count}_functions")
 
 
 async def focus_analysis(state: AgentState) -> AgentState:
@@ -618,7 +539,7 @@ async def focus_analysis(state: AgentState) -> AgentState:
         state["analysis_results"]["focus"] = disasm
     else:
         state["analysis_results"]["focus"] = {"ok": False, "error": "No focus target set."}
-    state["reasoning_trace"].append("focus_analysis_completed")
+    state["ghidra_trace"].append("focus_analysis_completed")
     await _emit_progress(state, "focus_analysis_completed", 66)
     return state
 
@@ -654,70 +575,9 @@ async def cross_reference(state: AgentState) -> AgentState:
             logger.error("function_graph_failed", error=str(exc))
             graph_result = {"ok": False, "error": str(exc)}
         state["analysis_results"]["function_graph"] = graph_result
-    state["reasoning_trace"].append("cross_reference_completed")
+    state["ghidra_trace"].append("cross_reference_completed")
     await _emit_progress(state, "cross_reference_completed", 70)
     return state
-
-
-def _prioritize_strings(strings_list: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """I4: Sort strings by relevance - IOCs, C2 indicators, and suspicious patterns first."""
-    def relevance_score(s: Dict[str, Any]) -> int:
-        val = s.get("value", "")
-        score = 0
-        # F1 FIX: Boost strings with cross-references (actually used in code)
-        xrefs = s.get("xrefs", [])
-        if isinstance(xrefs, list) and xrefs:
-            score += min(len(xrefs), 10) * 15
-        # ---- C2 / protocol-specific boosts ----
-        # Google Sheets / Docs / Drive API (C2 over cloud services)
-        if re.search(r'googleapis\.com|sheets\.google|docs\.google|drive\.google', val, re.IGNORECASE):
-            score += 110
-        # OAuth2 / JWT / auth tokens
-        if re.search(r'oauth|bearer|refresh.?token|client.?secret|client.?id|jwt|authorization', val, re.IGNORECASE):
-            score += 105
-        # Spreadsheet cell references (A1, V1, B2 etc.) used in C2 polling
-        if re.search(r'\b[A-Z][1-9]\b|values/|!A1|!V1', val):
-            score += 100
-        # Command syntax delimiters and patterns
-        if re.search(r'-\d+-|C-C|C-U|C-D|S-\d|split.*-|strchr.*-', val, re.IGNORECASE):
-            score += 100
-        # Base64 / encoding patterns
-        if re.search(r'base64|b64|url.?safe|ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef|\+/=', val, re.IGNORECASE):
-            score += 95
-        # Sleep / timer / jitter patterns
-        if re.search(r'sleep|usleep|nanosleep|timer|interval|jitter|poll|idle', val, re.IGNORECASE):
-            score += 90
-        # ---- General malware indicators ----
-        # High priority: file paths in /proc, /dev, /bin, /etc
-        if re.search(r'/proc/|/dev/|/bin/|/etc/|/tmp/|/var/', val):
-            score += 100
-        # High priority: IP addresses
-        if re.search(r'\d+\.\d+\.\d+\.\d+', val):
-            score += 90
-        # High priority: URLs/domains
-        if re.search(r'https?://|\.com|\.net|\.org|\.io', val):
-            score += 80
-        # Medium priority: crypto-related
-        if re.search(r'crypt|aes|rsa|md5|sha|encrypt|decrypt', val, re.IGNORECASE):
-            score += 70
-        # Medium priority: network-related
-        if re.search(r'socket|connect|bind|listen|recv|send|http', val, re.IGNORECASE):
-            score += 60
-        # Medium priority: interesting API calls
-        if re.search(r'exec|system|popen|fork|clone|mmap', val, re.IGNORECASE):
-            score += 50
-        # Medium priority: file operations
-        if re.search(r'fopen|fwrite|fread|unlink|rename|chmod', val, re.IGNORECASE):
-            score += 45
-        # Low priority: section names
-        if val.startswith('.') and len(val) < 10:
-            score -= 50
-        # Penalty: very short strings (likely noise)
-        if len(val) < 4:
-            score -= 30
-        return score
-
-    return sorted(strings_list, key=relevance_score, reverse=True)
 
 
 def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
@@ -873,142 +733,123 @@ def _build_fallback_summary(state: AgentState, error_msg: str) -> str:
     return "\n".join(parts)
 
 
-def _safe_sequence(value: Any) -> List[Any]:
-    if isinstance(value, list):
-        return value
-    if isinstance(value, (tuple, set)):
-        return list(value)
-    return []
+async def plan_analysis(state: AgentState) -> AgentState:
+    await _emit_progress(state, "planning_investigation", 72)
+    light_context = build_light_context(state)
+
+    prev_results: List[str] = []
+    for key, value in state.get("investigation_results", {}).items():
+        ok = value.get("ok", False)
+        status = "success" if ok else f"failed:{value.get('error', 'unknown')}"
+        snippet = ""
+        if ok and value.get("c"):
+            snippet = value["c"][:600].replace("\n", " ")
+        elif ok and value.get("instructions"):
+            snippet = f"{len(value['instructions'])} instructions"
+        elif ok and value.get("xrefs"):
+            snippet = f"xrefs={value.get('xrefs')}"
+        elif ok and value.get("nodes"):
+            snippet = f"nodes={len(value.get('nodes', []))}"
+        prev_results.append(f"- {key} -> {status}; {snippet}")
+
+    prev_section = ""
+    if prev_results:
+        prev_section = "\n\nPrevious investigation results:\n" + "\n".join(prev_results)
+
+    prompt = f"{PLANNER_PROMPT}\n\nAnalysis summary:\n{light_context}{prev_section}\n\nGenerate your breakpoint decision JSON now."
+
+    iterations = state.get("investigation_iterations", 0)
+
+    # Safety guardrail: force stop after max iterations
+    if iterations >= MAX_INVESTIGATION_ITERATIONS:
+        logger.info("planner_hit_max_iterations_guard", iterations=iterations)
+        state["analysis_plan"] = []
+        state["investigation_iterations"] = iterations + 1
+        state["investigation_trace"] = f"Investigation halted by safety guardrail after {iterations} iterations (max {MAX_INVESTIGATION_ITERATIONS})."
+        state["ghidra_trace"].append("plan_analysis_guard_stop")
+        await _emit_progress(state, "planning_stop_guard", 74)
+        return state
+
+    try:
+        lf_meta = get_trace_metadata(generation_name="plan_analysis")
+        result = await call_llm(prompt, metadata=lf_meta or None, model=state.get("llm_model"), timeout=300)
+        decision = _extract_breakpoint_decision(result.get("content", ""))
+        action = decision.get("action", "stop")
+        step = decision.get("step", {})
+
+        if action == "investigate" and isinstance(step, dict) and step.get("tool") and step.get("target"):
+            state["analysis_plan"] = [step]
+            state["investigation_iterations"] = iterations + 1
+            logger.info(
+                "planner_breakpoint_continue",
+                tool=step.get("tool"),
+                target=step.get("target"),
+                rationale=decision.get("rationale"),
+            )
+        else:
+            state["analysis_plan"] = []
+            state["investigation_iterations"] = iterations + 1
+            rationale = decision.get("rationale", "")
+            state["investigation_trace"] = rationale
+            logger.info("planner_breakpoint_stop", rationale=rationale)
+    except Exception as exc:
+        logger.error("plan_analysis_failed", error=str(exc))
+        state["analysis_plan"] = []
+
+    state["ghidra_trace"].append("plan_analysis_completed")
+    await _emit_progress(state, "planning_completed", 74)
+    return state
 
 
-def _summarize_qiling_network(network: Dict[str, Any]) -> str:
-    indicators = network.get("indicators", {}) if isinstance(network, dict) else {}
-    c2 = _safe_sequence(indicators.get("c2_candidates", [])) if isinstance(indicators, dict) else []
-    dns_domains = _safe_sequence(indicators.get("dns_domains", [])) if isinstance(indicators, dict) else []
-    protocols = _safe_sequence(indicators.get("protocols_used", [])) if isinstance(indicators, dict) else []
-    return (
-        "Qiling Network: "
-        f"connections={len(_safe_sequence(network.get('connections', [])))}, "
-        f"dns_queries={len(_safe_sequence(network.get('dns_queries', [])))}, "
-        f"c2_candidates={c2[:10]}, "
-        f"dns_domains={dns_domains[:10]}, "
-        f"protocols={protocols[:10]}"
-    )
+async def investigate(state: AgentState) -> AgentState:
+    await _emit_progress(state, "investigating", 76)
+    steps = state.get("analysis_plan", [])
+    if not steps:
+        await _emit_progress(state, "investigation_skipped", 80)
+        return state
 
+    tool_args_base = {
+        "session_id": state["session_id"],
+        "program_hash": state["program_hash"],
+        "binary_path": state.get("binary_path"),
+    }
 
-def _summarize_qiling_evasion(evasion: Dict[str, Any]) -> str:
-    summary = evasion.get("summary", {}) if isinstance(evasion, dict) else {}
-    techniques = _safe_sequence(evasion.get("techniques", [])) if isinstance(evasion, dict) else []
-    sample = [
-        f"{t.get('method', 'unknown')}:{t.get('mitre_id', 'N/A')}"
-        for t in techniques[:10]
-        if isinstance(t, dict)
-    ]
-    return (
-        "Qiling Evasion: "
-        f"total={summary.get('total_techniques', len(techniques)) if isinstance(summary, dict) else len(techniques)}, "
-        f"risk={summary.get('risk_level', 'low') if isinstance(summary, dict) else 'low'}, "
-        f"sample={sample}"
-    )
+    for idx, step in enumerate(steps):
+        tool = step.get("tool", "")
+        target = step.get("target", "")
+        reason = step.get("reason", "")
+        if not tool or not target:
+            continue
 
+        key = f"{tool}:{target}"
+        if key in state.get("investigation_results", {}):
+            continue
 
-def _summarize_qiling_api_calls(api_calls: Dict[str, Any]) -> str:
-    calls = _safe_sequence(api_calls.get("api_calls", [])) if isinstance(api_calls, dict) else []
-    summary = api_calls.get("summary", {}) if isinstance(api_calls, dict) else {}
-    modules = _safe_sequence(summary.get("modules_used", [])) if isinstance(summary, dict) else []
-    suspicious = _safe_sequence(summary.get("suspicious_apis", [])) if isinstance(summary, dict) else []
-    dynamic_imports = _safe_sequence(api_calls.get("dynamic_imports", [])) if isinstance(api_calls, dict) else []
-    dynamic_sample = [
-        item.get("name", "unknown")
-        for item in dynamic_imports[:10]
-        if isinstance(item, dict)
-    ]
-    suspicious_names = [
-        s.get("name", "unknown")
-        for s in suspicious[:10]
-        if isinstance(s, dict)
-    ]
-    return (
-        "Qiling API Calls: "
-        f"total={summary.get('total_calls', len(calls)) if isinstance(summary, dict) else len(calls)}, "
-        f"modules={modules[:10]}, "
-        f"suspicious={suspicious_names}, "
-        f"dynamic_imports={dynamic_sample}"
-    )
+        await _emit_progress(state, f"investigating {tool} {target}", 76 + int((idx / max(len(steps), 1)) * 8))
+        logger.info("investigation_step", tool=tool, target=target, reason=reason)
 
+        result: Dict[str, Any] = {"ok": False, "error": "unsupported tool"}
+        try:
+            if tool == "decompile":
+                result = await decompile_function.ainvoke({**tool_args_base, "function_name": target})
+            elif tool == "disassemble":
+                result = await disassemble_at.ainvoke({**tool_args_base, "address": target})
+            elif tool == "find_xrefs":
+                result = await find_xrefs.ainvoke({**tool_args_base, "address": target})
+            elif tool == "function_graph":
+                result = await get_function_graph.ainvoke({**tool_args_base, "function_name": target})
+            else:
+                result = {"ok": False, "error": f"unsupported tool: {tool}"}
+        except Exception as exc:
+            logger.error("investigation_step_failed", tool=tool, target=target, error=str(exc))
+            result = {"ok": False, "error": str(exc)}
 
-def _summarize_qiling_instruction_trace(instruction_trace: Dict[str, Any]) -> str:
-    """Summarize Qiling instruction trace (Capstone disassembly) for LLM context."""
-    if not isinstance(instruction_trace, dict):
-        return ""
-    summary = instruction_trace.get("summary", {})
-    if not isinstance(summary, dict):
-        summary = {}
-    total = summary.get("total_executed", 0)
-    unique = summary.get("unique_mnemonics", 0)
+        state["investigation_results"][key] = result
 
-    # Top mnemonics (list of {"mnemonic": str, "count": int})
-    freq = summary.get("top_mnemonics", [])
-    top_mnemonics = []
-    if isinstance(freq, list):
-        for entry in freq[:15]:
-            if isinstance(entry, dict):
-                top_mnemonics.append(f"{entry.get('mnemonic', '?')}:{entry.get('count', 0)}")
-
-    # OEP candidates from memory analysis integration
-    oep_candidates = instruction_trace.get("oep_candidates", [])
-    oep_info = ""
-    if isinstance(oep_candidates, list) and oep_candidates:
-        oep_entries = []
-        for oep in oep_candidates[:5]:
-            if isinstance(oep, dict):
-                oep_entries.append(
-                    f"addr={oep.get('address', '?')}"
-                    f"(confidence={oep.get('confidence', '?')},"
-                    f"reason={oep.get('reason', '?')})"
-                )
-        if oep_entries:
-            oep_info = f", oep_candidates=[{'; '.join(oep_entries)}]"
-
-    # Instruction regions / segments
-    regions = instruction_trace.get("regions", [])
-    region_info = ""
-    if isinstance(regions, list) and regions:
-        region_summaries = []
-        for r in regions[:5]:
-            if isinstance(r, dict):
-                region_summaries.append(
-                    f"{r.get('name', '?')}({r.get('instruction_count', 0)} insns)"
-                )
-        if region_summaries:
-            region_info = f", regions=[{', '.join(region_summaries)}]"
-
-    # Sample instructions (first few + last few for entry/exit patterns)
-    instructions = instruction_trace.get("instructions", [])
-    sample_info = ""
-    if isinstance(instructions, list) and instructions:
-        sample_lines = []
-        for insn in instructions[:10]:
-            if isinstance(insn, dict):
-                sample_lines.append(
-                    f"  {insn.get('address', '?')}: {insn.get('mnemonic', '?')} {insn.get('operands', '')}"
-                )
-        if len(instructions) > 20:
-            sample_lines.append(f"  ... ({len(instructions) - 20} more instructions) ...")
-            for insn in instructions[-10:]:
-                if isinstance(insn, dict):
-                    sample_lines.append(
-                        f"  {insn.get('address', '?')}: {insn.get('mnemonic', '?')} {insn.get('operands', '')}"
-                    )
-        if sample_lines:
-            sample_info = "\n" + "\n".join(sample_lines)
-
-    return (
-        f"Qiling Instruction Trace: total={total}, unique={unique}, "
-        f"top_mnemonics=[{', '.join(top_mnemonics)}]"
-        f"{oep_info}{region_info}"
-        f"{sample_info}"
-    )
+    state["analysis_plan"] = []
+    state["ghidra_trace"].append("investigation_completed")
+    await _emit_progress(state, "investigation_completed", 84)
+    return state
 
 
 async def synthesize(state: AgentState) -> AgentState:
@@ -1016,238 +857,31 @@ async def synthesize(state: AgentState) -> AgentState:
     user_query = state.get("user_query", "")
     results = state.get("analysis_results", {})
 
-    # B4 + I5 FIX: Build enhanced context for the LLM
-    context_parts = []
-    binary = results.get("binary", {})
-    if binary.get("ok"):
-        context_parts.append(f"Architecture: {binary.get('architecture')}, Image base: {binary.get('image_base')}")
-        context_parts.append(f"Segments: {', '.join(binary.get('segments', []))}")
-        # Include entry point info
-        if binary.get("entry_points"):
-            context_parts.append(f"Entry points: {', '.join(binary.get('entry_points', []))}")
-        if binary.get("imports"):
-            context_parts.append(f"Ghidra Imports: {', '.join(binary.get('imports', []))}")
-        if binary.get("exports"):
-            context_parts.append(f"Ghidra Exports: {', '.join(binary.get('exports', []))}")
-
-    # Rank functions by composite score (xrefs + size), include top 100.
-    funcs = results.get("functions", {})
-    if funcs.get("ok") and funcs.get("functions"):
-        sorted_funcs = sorted(funcs["functions"], key=_function_priority_key, reverse=True)
-        top_funcs = sorted_funcs[:100]
-        func_descriptions = [
-            f"{f.get('name')}(score:{f.get('priority_score', 0)},xrefs:{f.get('xrefs', 0)},size:{f.get('size', 0)})"
-            for f in top_funcs
-        ]
-        context_parts.append(
-            f"Top functions by composite priority ({len(funcs['functions'])} total): {', '.join(func_descriptions)}"
+    context = build_analysis_context(
+        state,
+        include_focus=True,
+        include_xrefs=True,
+        string_limit=100,
+        func_limit=50,
+        ghidra_decomp_limit=20,
+        r2_decomp_limit=20,
+        decomp_chars=2000,
+        decomp_chars_high=10000,
+    )
+    if len(context) > 80_000:
+        logger.warning("synthesize_context_oversized", chars=len(context))
+        context = build_analysis_context(
+            state,
+            include_focus=True,
+            include_xrefs=True,
+            string_limit=60,
+            func_limit=30,
+            ghidra_decomp_limit=12,
+            r2_decomp_limit=12,
+            decomp_chars=1500,
+            decomp_chars_high=6000,
         )
 
-    # I4 FIX: Sort strings by relevance (IOCs first), not alphabetically
-    strings_data = results.get("strings", {})
-    if strings_data.get("ok") and strings_data.get("strings"):
-        sorted_strings = _prioritize_strings(strings_data["strings"])
-        # F1 FIX: Include xref addresses from Ghidra when available.
-        str_entries = []
-        for s in sorted_strings[:LLM_STRING_LIMIT]:
-            val = s.get("value", "")
-            xrefs = s.get("xrefs", [])
-            if isinstance(xrefs, list) and xrefs:
-                str_entries.append(f"{val} [xrefs: {', '.join(str(x) for x in xrefs[:3])}]")
-            else:
-                str_entries.append(val)
-        context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_entries)}")
-
-    # Include byte-signature findings collected in discovery.
-    byte_sigs = results.get("byte_signatures", {})
-    if byte_sigs.get("ok"):
-        sig_hits = [s for s in byte_sigs.get("signatures", []) if s.get("count", 0) > 0]
-        if sig_hits:
-            context_parts.append("\n=== BYTE SIGNATURE HITS ===")
-            for sig in sig_hits:
-                context_parts.append(
-                    f"{sig.get('id')} matched {sig.get('count')} time(s) at {', '.join(sig.get('addresses', [])[:5])}"
-                )
-
-    # Include extracted IOCs and verdict scoring explicitly.
-    iocs = extract_iocs_from_state(state)
-    verdict, _, indicators, score = calculate_verdict(iocs, state)
-    context_parts.append(f"\nIOC Assessment: verdict={verdict}, score={score}, indicators={indicators}")
-
-    # Include malware type classification hints for the LLM
-    mtype, mconf, mcaps = classify_malware_type(state)
-    if mtype != "Unknown":
-        context_parts.append(
-            f"\nHeuristic Malware Type Classification: {mtype} (confidence: {mconf}, "
-            f"capabilities: {', '.join(mcaps)})"
-        )
-        context_parts.append(
-            "NOTE: This is a heuristic hint. Refine or override based on your deep code analysis. "
-            "You MUST output **Malware Type: <type>** in your conclusion."
-        )
-    else:
-        context_parts.append(
-            "\nHeuristic Malware Type: could not be determined automatically. "
-            "Analyze the decompiled code to determine the type (RAT, Backdoor, Ransomware, etc.) "
-            "and output **Malware Type: <type>** in your conclusion."
-        )
-
-    if not iocs.is_empty():
-        context_parts.append("\n=== EXTRACTED IOCS ===")
-        context_parts.append(format_iocs_for_report(iocs))
-
-    # B5 + I2 + I3 FIX: Include decompilation_cache contents (the actual C code!)
-    # Give top-priority functions a larger character budget so the LLM can see
-    # deep logic like command-parsing loops, C2 protocol handlers, etc.
-    decomp_cache = state.get("decompilation_cache", {})
-    if decomp_cache:
-        context_parts.append(f"\n=== DECOMPILED CODE ({len(decomp_cache)} functions) ===")
-        context_parts.append("YOU MUST ANALYZE EACH FUNCTION BELOW IN DETAIL:")
-        for i, (func_name, c_code) in enumerate(list(decomp_cache.items())[:LLM_GHIDRA_DECOMP_LIMIT], 1):
-            char_limit = LLM_DECOMP_SNIPPET_CHARS_HIGH if i <= LLM_HIGH_PRIORITY_COUNT else LLM_DECOMP_SNIPPET_CHARS
-            context_parts.append(f"\n--- Function {i}: {func_name} ---")
-            context_parts.append(_smart_truncate(c_code, limit=char_limit))
-
-        if len(decomp_cache) > LLM_GHIDRA_DECOMP_LIMIT:
-            context_parts.append(
-                f"\n... and {len(decomp_cache) - LLM_GHIDRA_DECOMP_LIMIT} more decompiled functions in cache"
-            )
-
-    # Include focused analysis result if available
-    focus = results.get("focus", {})
-    if focus.get("ok"):
-        if focus.get("c"):
-            focused_code = focus['c'][:4000]
-            if len(focus['c']) > 4000:
-                focused_code += "\n/* ... [truncated at 4000 chars] ... */"
-            context_parts.append(f"\n=== FOCUSED DECOMPILE ===\n{focused_code}")
-        elif focus.get("instructions"):
-            instr_str = "\n".join(
-                f"  {i.get('address')}: {i.get('mnemonic')} {i.get('operands', '')}"
-                for i in focus["instructions"][:40]
-            )
-            context_parts.append(f"\n=== FOCUSED DISASSEMBLY ===\n{instr_str}")
-
-    xrefs = results.get("xrefs", {})
-    if xrefs.get("ok"):
-        context_parts.append(f"\nXRefs to: {xrefs.get('to', [])}, from: {xrefs.get('from', [])}")
-
-    # Include call-graph summary + detected attack chains for data-driven flow analysis.
-    call_graph = results.get("call_graph", {})
-    call_graph_analysis = results.get("call_graph_analysis", {})
-    if call_graph.get("ok"):
-        context_parts.append(
-            f"\nGhidra Call Graph: nodes={len(call_graph.get('nodes', []))}, edges={len(call_graph.get('edges', []))}"
-        )
-    if call_graph_analysis.get("ok"):
-        context_parts.append("\n=== GHIDRA ATTACK CHAINS ===")
-        entries = call_graph_analysis.get("entries", [])
-        if entries:
-            context_parts.append(f"Entry functions: {', '.join(entries)}")
-        for chain in call_graph_analysis.get("chains", [])[:20]:
-            path = " -> ".join(chain.get("path", []))
-            context_parts.append(f"[{chain.get('category', 'Unknown')}] {path}")
-        cycles = call_graph_analysis.get("cycles", [])
-        if cycles:
-            cycle_preview = [" -> ".join(c) for c in cycles[:5]]
-            context_parts.append(f"Detected recursive/cyclic paths: {', '.join(cycle_preview)}")
-
-    # Include Radare2 results if available
-    r2_results = state.get("r2_analysis_results", {})
-    r2_decomp = state.get("r2_decompilation_cache", {})
-    if r2_results:
-        context_parts.append("\n=== RADARE2 ANALYSIS ===")
-        r2_binary = r2_results.get("binary", {})
-        if r2_binary.get("ok"):
-            context_parts.append(f"R2 Binary: arch={r2_binary.get('architecture')}, bits={r2_binary.get('bits')}, os={r2_binary.get('os')}")
-            if r2_binary.get("imports"):
-                context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'])}")
-            if r2_binary.get("exports"):
-                context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'])}")
-        r2_funcs = r2_results.get("functions", {})
-        if r2_funcs.get("ok") and r2_funcs.get("functions"):
-            r2_sorted = sorted(r2_funcs["functions"], key=_function_priority_key, reverse=True)
-            r2_desc = [
-                f"{f.get('name')}(score:{f.get('priority_score', 0)},xrefs:{f.get('xrefs', 0)},size:{f.get('size', 0)})"
-                for f in r2_sorted[:40]
-            ]
-            context_parts.append(f"R2 Functions by priority ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
-        # Include R2 strings (may find different strings than Ghidra)
-        r2_strings = r2_results.get("strings", {})
-        if r2_strings.get("ok") and r2_strings.get("strings"):
-            r2_sorted_strings = _prioritize_strings(r2_strings["strings"])
-            r2_str_vals = [s.get("value") for s in r2_sorted_strings[:LLM_STRING_LIMIT]]
-            context_parts.append(f"R2 Strings ({len(r2_strings['strings'])} total): {', '.join(r2_str_vals)}")
-        r2_call_graph = r2_results.get("call_graph", {})
-        if r2_call_graph.get("ok"):
-            context_parts.append(
-                f"R2 Call Graph: nodes={len(r2_call_graph.get('nodes', []))}, edges={len(r2_call_graph.get('edges', []))}"
-            )
-        r2_call_graph_analysis = r2_results.get("call_graph_analysis", {})
-        if r2_call_graph_analysis.get("ok"):
-            context_parts.append("\n=== R2 ATTACK CHAINS ===")
-            for chain in r2_call_graph_analysis.get("chains", [])[:20]:
-                path = " -> ".join(chain.get("path", []))
-                context_parts.append(f"[{chain.get('category', 'Unknown')}] {path}")
-        r2_syscalls = r2_results.get("syscalls", {})
-        if r2_syscalls.get("ok") and r2_syscalls.get("syscalls"):
-            sys_desc = [f"{s.get('name')}#{s.get('number')}" for s in r2_syscalls.get("syscalls", [])[:40]]
-            context_parts.append(f"R2 Syscalls ({len(r2_syscalls.get('syscalls', []))} total): {', '.join(sys_desc)}")
-    if r2_decomp:
-        context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
-        for i, (func_name, c_code) in enumerate(list(r2_decomp.items())[:LLM_R2_DECOMP_LIMIT], 1):
-            char_limit = LLM_DECOMP_SNIPPET_CHARS_HIGH if i <= LLM_HIGH_PRIORITY_COUNT else LLM_DECOMP_SNIPPET_CHARS
-            context_parts.append(f"\n--- R2 Function: {func_name} ---")
-            context_parts.append(_smart_truncate(c_code, limit=char_limit))
-
-    # Include Qiling dynamic analysis when available.
-    qiling_results = state.get("qiling_analysis_results", {})
-    if qiling_results:
-        context_parts.append("\n=== QILING DYNAMIC ANALYSIS ===")
-        execution = qiling_results.get("execution_trace", {})
-        if isinstance(execution, dict) and execution:
-            context_parts.append(
-                "Execution Trace: "
-                f"success={execution.get('success')}, "
-                f"os={execution.get('os', 'unknown')}, "
-                f"arch={execution.get('arch', 'unknown')}, "
-                f"instructions={execution.get('instructions_executed', 0)}, "
-                f"duration_ms={execution.get('duration_ms', 0)}, "
-                f"exit_reason={execution.get('exit_reason', 'unknown')}"
-            )
-        syscalls = qiling_results.get("syscalls", {})
-        if isinstance(syscalls, dict) and syscalls:
-            summary = syscalls.get("summary", {})
-            if isinstance(summary, dict):
-                context_parts.append(
-                    "Qiling Syscalls: "
-                    f"total={summary.get('total_calls', 0)}, "
-                    f"categories={summary.get('categories', {})}, "
-                    f"suspicious={summary.get('suspicious_calls', [])[:20]}"
-                )
-        memory_events = qiling_results.get("memory_events", {})
-        if isinstance(memory_events, dict) and memory_events:
-            indicators = memory_events.get("indicators", {})
-            context_parts.append(
-                "Qiling Memory Indicators: "
-                f"{indicators if isinstance(indicators, dict) else {}}"
-            )
-        network = qiling_results.get("network_activity", {})
-        if isinstance(network, dict) and network:
-            context_parts.append(_summarize_qiling_network(network))
-        evasion = qiling_results.get("evasion_techniques", {})
-        if isinstance(evasion, dict) and evasion:
-            context_parts.append(_summarize_qiling_evasion(evasion))
-        api_calls = qiling_results.get("api_calls", {})
-        if isinstance(api_calls, dict) and api_calls:
-            context_parts.append(_summarize_qiling_api_calls(api_calls))
-        instruction_trace = qiling_results.get("instruction_trace", {})
-        if isinstance(instruction_trace, dict) and instruction_trace:
-            context_parts.append(_summarize_qiling_instruction_trace(instruction_trace))
-        if qiling_results.get("errors"):
-            context_parts.append(f"Qiling Errors: {qiling_results.get('errors')}")
-
-    context = "\n".join(context_parts) if context_parts else "No analysis data available."
 
     if user_query:
         prompt = f"""{SYSTEM_PROMPT}
@@ -1273,9 +907,16 @@ Use ONLY the data provided above - do not invent or assume information.
 If the malware family is unknown, state "Unknown".
 Cite actual addresses (0xXXXXXXXX) and actual strings from the analysis data."""
 
+    logger.info("synthesize_llm_start", prompt_len=len(prompt), model=state.get("llm_model"))
     try:
         lf_meta = get_trace_metadata(generation_name="synthesize")
-        summary = await call_llm(prompt, metadata=lf_meta or None)
+        # Synthesize can take up to 20 minutes for large binaries with deep thinking.
+        result = await call_llm(prompt, metadata=lf_meta or None, model=state.get("llm_model"), timeout=1200)
+        summary = result.get("content", "")
+        reasoning = result.get("reasoning_content", "")
+        # Store reasoning in state for later reference
+        if reasoning:
+            state.setdefault("synthesis_reasoning", reasoning)
     except Exception as exc:
         logger.error("synthesize_llm_failed", error=str(exc))
         summary = f"[LLM error: {exc}]"
@@ -1288,48 +929,82 @@ Cite actual addresses (0xXXXXXXXX) and actual strings from the analysis data."""
 
     state["summary"] = summary
     state["status"] = "completed"
-    state["reasoning_trace"].append("synthesized")
+    # Merge per-analyzer traces into the global reasoning trace to eliminate
+    # race conditions from concurrent appends during parallel analysis.
+    state["reasoning_trace"] = (
+        state.get("ghidra_trace", [])
+        + state.get("r2_trace", [])
+        + state.get("qiling_trace", [])
+        + ["synthesized"]
+    )
     await _emit_progress(state, "analysis_completed", 100)
-    return state
 
+    # Record analysis in episodic memory for future reference
+    try:
+        memory = get_memory_manager()
+        # Extract capabilities and techniques from the analysis
+        _, mtype, mcaps = classify_malware_type(state)
+        capabilities = mcaps if mcaps else []
 
-async def human_review(state: AgentState) -> AgentState:
-    state["status"] = "awaiting_review"
-    return state
+        # Extract IOCs and verdict for memory recording
+        iocs = extract_iocs_from_state(state)
+        verdict, _, _, _ = calculate_verdict(iocs, state)
 
+        # Extract techniques from IOCs and analysis results
+        techniques = []
+        if iocs:
+            if iocs.domains:
+                techniques.append("C2 Communication")
+            if iocs.ips:
+                techniques.append("External Network Connection")
+            if iocs.file_system_operations:
+                techniques.append("File System Manipulation")
+            if iocs.registry_operations:
+                techniques.append("Registry Persistence")
+            if iocs.process_operations:
+                techniques.append("Process Manipulation")
 
-async def action_execution(state: AgentState) -> AgentState:
-    if not state.get("write_mode_enabled"):
-        state["status"] = "write_actions_skipped"
-        state["reasoning_trace"].append("write_actions_skipped")
-        return state
-    for action in state.get("pending_actions", []):
-        try:
-            if action.get("type") == "rename_symbol":
-                await rename_symbol.ainvoke(
-                    {
-                        "session_id": state["session_id"],
-                        "program_hash": state["program_hash"],
-                        "binary_path": state.get("binary_path"),
-                        "address": action["address"],
-                        "new_name": action["new_name"],
-                    }
-                )
-            elif action.get("type") == "add_comment":
-                await add_comment.ainvoke(
-                    {
-                        "session_id": state["session_id"],
-                        "program_hash": state["program_hash"],
-                        "binary_path": state.get("binary_path"),
-                        "address": action["address"],
-                        "comment": action["comment"],
-                    }
-                )
-        except Exception as exc:
-            logger.error("action_execution_failed", action_type=action.get("type"), error=str(exc))
-    state["pending_actions"] = []
-    state["status"] = "write_actions_completed"
-    state["reasoning_trace"].append("write_actions_done")
+        # Add techniques from Qiling analysis
+        qiling_results = state.get("qiling_analysis_results", {})
+        if qiling_results:
+            evasion = qiling_results.get("evasion_techniques", {})
+            if isinstance(evasion, dict) and evasion.get("techniques"):
+                techniques.extend([f"Evasion: {t}" for t in evasion.get("techniques", [])])
+
+        # Count IOCs
+        iocs_count = (
+            len(iocs.domains or []) +
+            len(iocs.ips or []) +
+            len(iocs.urls or []) +
+            len(iocs.file_system_operations or []) +
+            len(iocs.registry_operations or []) +
+            len(iocs.process_operations or []) +
+            len(iocs.suspicious_strings or [])
+        ) if iocs else 0
+
+        # Create a brief summary from the full report
+        brief_summary = summary[:1000] if len(summary) > 1000 else summary
+        # Extract key findings (first 500 chars or first section)
+        if "Executive Summary" in summary:
+            parts = summary.split("##")
+            for part in parts:
+                if "Executive Summary" in part:
+                    brief_summary = part[:500]
+                    break
+
+        memory.record_analysis(
+            program_hash=state.get("program_hash", ""),
+            verdict=verdict,
+            capabilities=list(set(capabilities + [mtype])) if mtype != "Unknown" else capabilities,
+            iocs_count=iocs_count,
+            techniques=list(set(techniques)),
+            summary=brief_summary,
+            session_id=state.get("session_id"),
+        )
+        logger.info("analysis_recorded_in_memory", program_hash=state.get("program_hash"), verdict=verdict)
+    except Exception as exc:
+        logger.warning("memory_recording_failed", error=str(exc))
+
     return state
 
 
@@ -1343,26 +1018,22 @@ def _needs_discovery(state: AgentState) -> str:
 def _discovery_next(state: AgentState) -> str:
     if state.get("current_function") or state.get("current_address"):
         return "focus_analysis"
-    return "synthesize"
+    return "plan_analysis"
 
 
 def _focus_next(state: AgentState) -> str:
     if state.get("current_address"):
         return "cross_reference"
-    if state.get("write_mode_enabled") and state.get("pending_actions"):
-        return "human_review"
-    return "synthesize"
+    return "plan_analysis"
 
 
 def _cross_next(state: AgentState) -> str:
-    # Always proceed to synthesize after cross-reference to avoid infinite loops.
-    # (focus_analysis and cross_reference would loop if current_function is set)
-    return "synthesize"
+    return "plan_analysis"
 
 
-def _review_next(state: AgentState) -> str:
-    if state.get("pending_actions") and state.get("review_approved"):
-        return "action_execution"
+def _plan_next(state: AgentState) -> str:
+    if state.get("analysis_plan"):
+        return "investigate"
     return "synthesize"
 
 
@@ -1373,9 +1044,9 @@ def build_graph() -> StateGraph:
     graph.add_node("discovery", discovery)
     graph.add_node("focus_analysis", focus_analysis)
     graph.add_node("cross_reference", cross_reference)
+    graph.add_node("plan_analysis", plan_analysis)
+    graph.add_node("investigate", investigate)
     graph.add_node("synthesize", synthesize)
-    graph.add_node("human_review", human_review)
-    graph.add_node("action_execution", action_execution)
 
     graph.set_entry_point("parse_intent")
     graph.add_edge("parse_intent", "initialize_ghidra")
@@ -1383,8 +1054,8 @@ def build_graph() -> StateGraph:
     graph.add_conditional_edges("discovery", _discovery_next)
     graph.add_conditional_edges("focus_analysis", _focus_next)
     graph.add_conditional_edges("cross_reference", _cross_next)
-    graph.add_conditional_edges("human_review", _review_next)
-    graph.add_edge("action_execution", "synthesize")
+    graph.add_conditional_edges("plan_analysis", _plan_next)
+    graph.add_edge("investigate", "plan_analysis")
     graph.add_edge("synthesize", END)
     return graph
 

@@ -150,8 +150,6 @@ services:
         condition: service_healthy
       radare2:
         condition: service_healthy
-      qiling:
-        condition: service_healthy
       postgres:
         condition: service_healthy
       langfuse:
@@ -167,6 +165,7 @@ services:
       GHIDRA_INSTALL_PATH: /usr/share/ghidra
       DOCKER_CLI_PATH: /usr/bin/docker
       LLM_MODEL_NAME: ${ANTHROPIC_MODEL:-glm-5}
+      LLM_TIMEOUT: ${LLM_TIMEOUT:-1200}
       LLM_PROVIDER: openai
       MAX_DECOMPILATION_TIME: "30"
       DEFAULT_ANALYSIS_TIMEOUT: "120"

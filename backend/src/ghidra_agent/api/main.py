@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Depends, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
 from pydantic import BaseModel as PydanticBaseModel, EmailStr, Field as PydanticField
@@ -25,14 +25,15 @@ from ghidra_agent.config import settings
 from ghidra_agent.ioc_extractor import calculate_verdict, classify_malware_type, build_analysis_tags, extract_iocs_from_state, format_iocs_for_report
 from ghidra_agent.langfuse_tracing import create_standalone_trace_metadata
 from ghidra_agent.llm import call_llm
+from ghidra_agent.context_builder import build_analysis_context
 from ghidra_agent.logging import configure_logging, logger
 from ghidra_agent.models import (
     QueryRequest,
     SessionCreateRequest,
     SessionCreateResponse,
     StatusResponse,
-    WriteModeRequest,
 )
+from ghidra_agent.ranking_utils import _function_priority_key
 from ghidra_agent.reporting import build_agent_report_html, build_report_html, build_report_pdf, build_report_text
 from ghidra_agent.sessions import run_graph, store
 from ghidra_agent.ui_adapter import (
@@ -56,6 +57,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Ghidra Reverse Engineering Agent", lifespan=lifespan)
+
+# Import and include memory routes
+from ghidra_agent.api.memory_routes import router as memory_router
+app.include_router(memory_router)
 
 import os as _os
 
@@ -105,33 +110,21 @@ async def _global_exception_handler(request, exc):
     )
 
 
-def _to_num(value: Any) -> float:
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value.strip())
-        except ValueError:
-            return 0.0
-    return 0.0
-
-
-def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, str]:
-    score = _to_num(func.get("priority_score"))
-    if score <= 0.0:
-        score = _to_num(func.get("xrefs")) * 100.0 + _to_num(func.get("size"))
-    return (
-        score,
-        _to_num(func.get("xrefs")),
-        _to_num(func.get("size")),
-        str(func.get("name", "")),
-    )
-
-
 @app.get("/health")
 async def health() -> JSONResponse:
-    """Health check endpoint."""
-    return JSONResponse({"status": "ok", "sessions": len(store.sessions)})
+    """Health check endpoint. Verifies API and database connectivity."""
+    db_ok = False
+    try:
+        from ghidra_agent import database as db
+        await db.get_user_by_id("healthcheck")
+        db_ok = True
+    except Exception as exc:
+        logger.warning("health_db_check_failed", error=str(exc))
+    status_code = 200 if db_ok else 503
+    return JSONResponse(
+        {"status": "ok" if db_ok else "degraded", "db_connected": db_ok, "sessions": len(store.sessions)},
+        status_code=status_code,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -417,6 +410,8 @@ async def analyze(
         raise HTTPException(status_code=400, detail="binary_path required unless using upload")
     state = store.create_session(request.binary_path)
     state["user_id"] = user["id"]
+    if request.model:
+        state["llm_model"] = request.model
     _create_tracked_task(_run_with_events(state))
     return SessionCreateResponse(session_id=state["session_id"])
 
@@ -424,6 +419,7 @@ async def analyze(
 @app.post("/analyze/upload", response_model=SessionCreateResponse)
 async def analyze_upload(
     file: UploadFile = File(...),
+    model: Optional[str] = Form(None),
     user: Dict[str, Any] = Depends(get_current_user),
 ) -> SessionCreateResponse:
     if not can_write(user):
@@ -454,6 +450,8 @@ async def analyze_upload(
         )
     state = store.create_session(str(target_path))
     state["user_id"] = user["id"]
+    if model:
+        state["llm_model"] = model
     _create_tracked_task(_run_with_events(state))
     return SessionCreateResponse(session_id=state["session_id"])
 
@@ -470,6 +468,13 @@ async def status(
     await _check_analysis_access(state, user, "")
     response_state = dict(state)
     response_state.pop("progress_callback", None)
+    # Merge per-analyzer traces so consumers of reasoning_trace see live progress
+    merged_trace: list[str] = []
+    merged_trace.extend(response_state.get("ghidra_trace", []))
+    merged_trace.extend(response_state.get("r2_trace", []))
+    merged_trace.extend(response_state.get("qiling_trace", []))
+    merged_trace.extend(response_state.get("reasoning_trace", []))
+    response_state["reasoning_trace"] = merged_trace
     return StatusResponse(session_id=session_id, status=state["status"], state=response_state)
 
 
@@ -493,131 +498,34 @@ async def query(
             status_code=400,
         )
 
-    # Build context from existing analysis data (same as synthesize node)
-    context_parts = []
-    results = state.get("analysis_results", {})
-    binary = results.get("binary", {})
-    if binary.get("ok"):
-        context_parts.append(f"Architecture: {binary.get('architecture')}, Image base: {binary.get('image_base')}")
-        if binary.get("entry_points"):
-            context_parts.append(f"Entry points: {', '.join(binary.get('entry_points', []))}")
-        if binary.get("imports"):
-            context_parts.append(f"Ghidra Imports: {', '.join(binary.get('imports', [])[:30])}")
-        if binary.get("exports"):
-            context_parts.append(f"Ghidra Exports: {', '.join(binary.get('exports', [])[:30])}")
-
-    funcs = results.get("functions", {})
-    if funcs.get("ok") and funcs.get("functions"):
-        sorted_funcs = sorted(funcs["functions"], key=_function_priority_key, reverse=True)
-        func_desc = [
-            f"{f.get('name')}(score:{f.get('priority_score', 0)},xrefs:{f.get('xrefs', 0)},size:{f.get('size', 0)})"
-            for f in sorted_funcs[:50]
-        ]
-        context_parts.append(f"Functions ({len(funcs['functions'])} total): {', '.join(func_desc)}")
-
-    gh_call_graph = results.get("call_graph", {})
-    gh_call_graph_analysis = results.get("call_graph_analysis", {})
-    if gh_call_graph.get("ok"):
-        context_parts.append(
-            f"Ghidra Call Graph: nodes={len(gh_call_graph.get('nodes', []))}, edges={len(gh_call_graph.get('edges', []))}"
-        )
-    if gh_call_graph_analysis.get("ok"):
-        chains = gh_call_graph_analysis.get("chains", [])
-        if chains:
-            chain_desc = [
-                f"[{c.get('category', 'Unknown')}] {' -> '.join(str(p) for p in c.get('path', []))}"
-                for c in chains[:12]
-            ]
-            context_parts.append(f"Ghidra Attack Chains ({len(chains)}): " + " | ".join(chain_desc))
-
-    strings_data = results.get("strings", {})
-    if strings_data.get("ok") and strings_data.get("strings"):
-        str_vals = [s.get("value", str(s)) if isinstance(s, dict) else str(s) for s in strings_data["strings"][:50]]
-        context_parts.append(f"Strings ({len(strings_data['strings'])} total): {', '.join(str_vals)}")
-
-    decomp_cache = state.get("decompilation_cache", {})
-    if decomp_cache:
-        context_parts.append(f"\n=== GHIDRA DECOMPILED CODE ({len(decomp_cache)} functions) ===")
-        for func_name, c_code in list(decomp_cache.items())[:25]:
-            context_parts.append(f"\n--- {func_name} ---\n{c_code[:4000]}")
-
-    r2_results = state.get("r2_analysis_results", {})
-    r2_decomp = state.get("r2_decompilation_cache", {})
-    if r2_results:
-        r2_binary = r2_results.get("binary", {})
-        if r2_binary.get("ok"):
-            context_parts.append(f"\nR2 Binary: arch={r2_binary.get('architecture')}, bits={r2_binary.get('bits')}, os={r2_binary.get('os')}")
-            if r2_binary.get("imports"):
-                context_parts.append(f"R2 Imports: {', '.join(r2_binary['imports'][:30])}")
-            if r2_binary.get("exports"):
-                context_parts.append(f"R2 Exports: {', '.join(r2_binary['exports'][:30])}")
-        r2_call_graph = r2_results.get("call_graph", {})
-        r2_call_graph_analysis = r2_results.get("call_graph_analysis", {})
-        if r2_call_graph.get("ok"):
-            context_parts.append(
-                f"R2 Call Graph: nodes={len(r2_call_graph.get('nodes', []))}, edges={len(r2_call_graph.get('edges', []))}"
-            )
-        if r2_call_graph_analysis.get("ok"):
-            chains = r2_call_graph_analysis.get("chains", [])
-            if chains:
-                chain_desc = [
-                    f"[{c.get('category', 'Unknown')}] {' -> '.join(str(p) for p in c.get('path', []))}"
-                    for c in chains[:12]
-                ]
-                context_parts.append(f"R2 Attack Chains ({len(chains)}): " + " | ".join(chain_desc))
-        r2_syscalls = r2_results.get("syscalls", {})
-        if r2_syscalls.get("ok") and r2_syscalls.get("syscalls"):
-            syscall_desc = [f"{s.get('name')}#{s.get('number')}" for s in r2_syscalls.get("syscalls", [])[:30]]
-            context_parts.append(f"R2 Syscalls ({len(r2_syscalls.get('syscalls', []))} total): {', '.join(syscall_desc)}")
-    if r2_decomp:
-        context_parts.append(f"\n=== R2 DECOMPILED CODE ({len(r2_decomp)} functions) ===")
-        for func_name, c_code in list(r2_decomp.items())[:25]:
-            context_parts.append(f"\n--- {func_name} ---\n{c_code[:4000]}")
-
-    qiling_results = state.get("qiling_analysis_results", {})
-    if qiling_results:
-        context_parts.append("\n=== QILING DYNAMIC ANALYSIS ===")
-        execution = qiling_results.get("execution_trace", {})
-        if isinstance(execution, dict) and execution:
-            context_parts.append(
-                "Execution: "
-                f"success={execution.get('success')}, os={execution.get('os')}, "
-                f"arch={execution.get('arch')}, instructions={execution.get('instructions_executed')}, "
-                f"exit={execution.get('exit_reason')}"
-            )
-        syscalls = qiling_results.get("syscalls", {})
-        if isinstance(syscalls, dict) and syscalls:
-            context_parts.append(f"Qiling Syscalls: {syscalls.get('summary', {})}")
-        network = qiling_results.get("network_activity", {})
-        if isinstance(network, dict) and network:
-            context_parts.append(f"Qiling Network: {network.get('indicators', network)}")
-        evasion = qiling_results.get("evasion_techniques", {})
-        if isinstance(evasion, dict) and evasion:
-            context_parts.append(f"Qiling Evasion: {evasion.get('summary', evasion)}")
-        instr_trace = qiling_results.get("instruction_trace", {})
-        if isinstance(instr_trace, dict) and instr_trace:
-            summary = instr_trace.get("summary", {})
-            if isinstance(summary, dict) and summary.get("total_executed"):
-                top = summary.get("top_mnemonics", [])[:10]
-                top_str = ", ".join(f"{m.get('mnemonic')}:{m.get('count')}" for m in top if isinstance(m, dict))
-                context_parts.append(
-                    f"Qiling Instructions: total={summary.get('total_executed')}, "
-                    f"unique_mnemonics={summary.get('unique_mnemonics')}, "
-                    f"range={summary.get('address_range')}, top=[{top_str}]"
-                )
-
-    # Include structured IOC extraction in the follow-up context.
-    iocs = extract_iocs_from_state(state)
-    verdict, _, indicators, score = calculate_verdict(iocs, state)
-    context_parts.append(f"\nIOC Assessment: verdict={verdict}, score={score}, indicators={indicators}")
-    if not iocs.is_empty():
-        context_parts.append("\n=== EXTRACTED IOCS ===")
-        context_parts.append(format_iocs_for_report(iocs))
+    # Build context from existing analysis data (tight limits for follow-up query)
+    context = build_analysis_context(
+        state,
+        string_limit=40,
+        func_limit=30,
+        ghidra_decomp_limit=5,
+        r2_decomp_limit=5,
+        decomp_chars=1200,
+        truncate_decomp=True,
+        include_investigation=False,
+    )
 
     # Include previous analysis summary for continuity
     prev_summary = state.get("summary", "")
 
-    context = "\n".join(context_parts) if context_parts else "No analysis data available."
+    # Include memory context (similar previous analyses, patterns)
+    try:
+        from ghidra_agent.memory import get_memory_manager
+        memory = get_memory_manager()
+        memory_context = memory.get_context_for_prompt(
+            program_hash=state.get("program_hash"),
+            max_project_length=2000,
+            max_episodic_entries=2,
+        )
+        if memory_context:
+            context += "\n\n=== ANALYSIS PATTERNS & SIMILAR CASES ===\n" + memory_context[:3000]
+    except Exception as exc:
+        logger.warning("memory_context_fetch_failed", error=str(exc))
 
     prompt = f"""You are a malware analyst answering a follow-up question about a binary you already analyzed.
 
@@ -646,13 +554,16 @@ INSTRUCTIONS:
             generation_name="query",
             program_hash=state.get("program_hash", ""),
         )
-        answer = await call_llm(prompt, metadata=lf_meta or None)
+        result = await call_llm(prompt, metadata=lf_meta or None, model=request.model)
+        answer = result.get("content", "")
+        reasoning = result.get("reasoning_content", "")
         logger.info("query_complete", session_id=request.session_id, answer_len=len(answer))
 
         # Store the Q&A in reasoning trace for history
         state.setdefault("qa_history", []).append({
             "question": request.query,
             "answer": answer,
+            "reasoning": reasoning,  # Store reasoning for context
         })
         store.update_session(request.session_id, state)
         # Persist Q&A to DB
@@ -666,6 +577,7 @@ INSTRUCTIONS:
             "session_id": request.session_id,
             "status": "completed",
             "answer": answer,
+            "reasoning": reasoning,  # Include reasoning in response
         })
     except Exception as exc:
         logger.error("query_failed", session_id=request.session_id, error=str(exc), exc_info=exc)
@@ -675,36 +587,160 @@ INSTRUCTIONS:
         )
 
 
-@app.post("/write_mode")
-async def write_mode(
-    request: WriteModeRequest,
+@app.post("/query_with_tools")
+async def query_with_tools(
+    request: QueryRequest,
     user: Dict[str, Any] = Depends(get_current_user),
 ) -> JSONResponse:
+    """Answer follow-up questions with GLM-5 function calling support.
+
+    The LLM can dynamically invoke radare2 tools to perform additional analysis
+    beyond the cached data in the session state.
+    """
     if not can_write(user):
-        raise HTTPException(status_code=403, detail="Guests cannot toggle write mode")
+        raise HTTPException(status_code=403, detail="Guests cannot query")
+
     try:
         state = store.get_session(request.session_id)
     except KeyError:
         raise HTTPException(status_code=404, detail=f"Session not found: {request.session_id}")
     await _check_analysis_access(state, user, "")
-    state["write_mode_enabled"] = request.enabled
-    return JSONResponse({"ok": True, "write_mode_enabled": request.enabled})
 
+    if state.get("status") != "completed":
+        return JSONResponse(
+            {"ok": False, "error": f"Analysis not yet completed (status: {state.get('status')})"},
+            status_code=400,
+        )
 
-@app.post("/write_mode/confirm")
-async def write_mode_confirm(
-    request: WriteModeRequest,
-    user: Dict[str, Any] = Depends(get_current_user),
-) -> JSONResponse:
-    if not can_write(user):
-        raise HTTPException(status_code=403, detail="Guests cannot confirm write mode")
+    # Build minimal context (lighter than /query since tools can fetch more data)
+    context_parts = []
+    results = state.get("analysis_results", {})
+    binary = results.get("binary", {})
+    if binary.get("ok"):
+        context_parts.append(f"Architecture: {binary.get('architecture')}, Image base: {binary.get('image_base')}")
+        context_parts.append(f"Binary hash: {state.get('program_hash', 'unknown')}")
+        context_parts.append(f"Binary path: {state.get('binary_path', 'unknown')}")
+
+    # Build context for tool executor
+    program_hash = state.get("program_hash", "")
+    binary_path = state.get("binary_path", "")
+    session_id = request.session_id
+
+    # Create tool executor that injects session context
+    from ghidra_agent.glm_function_tools import get_tool_registry
+
+    registry = get_tool_registry()
+
+    async def tool_executor_with_context(tool_name: str, arguments: Dict[str, Any]) -> Any:
+        """Execute tool with session context injected."""
+        # Inject common context parameters
+        if "session_id" not in arguments:
+            arguments["session_id"] = session_id
+        if "program_hash" not in arguments and program_hash:
+            arguments["program_hash"] = program_hash
+        if "binary_path" not in arguments and binary_path:
+            arguments["binary_path"] = binary_path
+
+        return await registry.execute_tool(tool_name, arguments)
+
+    # Build prompt
+    prev_summary = state.get("summary", "")
+    context = "\n".join(context_parts) if context_parts else "No analysis data available."
+
+    prompt = f"""You are a malware analyst with access to binary analysis tools. The user has a question about a binary.
+
+BINARY CONTEXT:
+{context}
+
+PREVIOUS ANALYSIS SUMMARY:
+{prev_summary[:4000]}
+
+USER QUESTION: {request.query}
+
+AVAILABLE TOOLS:
+- r2_analyze_binary: Get binary structure (architecture, sections, imports, exports)
+- r2_list_functions: List all functions with addresses and sizes
+- r2_build_call_graph: Build inter-procedural call graph
+- r2_decompile_function: Decompile a specific function by name or address
+- r2_disassemble_at: Disassemble code at a specific address
+- r2_find_strings: Find all strings in the binary
+- r2_find_xrefs: Find cross-references to an address
+- r2_search_bytes: Search for byte patterns
+- r2_syscall_analysis: Detect syscalls in the binary
+- search_functions: Search previously analyzed functions by name
+- get_decompilation: Get cached decompilation for a function
+
+INSTRUCTIONS:
+- Use tools when you need specific data that's not in the context
+- Be concise and direct in your answers
+- Reference specific function names, addresses, and code
+- If a tool fails, explain the error and suggest alternatives
+- You can chain multiple tool calls to gather comprehensive information"""
+
     try:
-        state = store.get_session(request.session_id)
-    except KeyError:
-        raise HTTPException(status_code=404, detail=f"Session not found: {request.session_id}")
-    await _check_analysis_access(state, user, "")
-    state["review_approved"] = request.enabled
-    return JSONResponse({"ok": True, "review_approved": request.enabled})
+        logger.info("query_with_tools_start", session_id=request.session_id, query=request.query[:200])
+        lf_meta = create_standalone_trace_metadata(
+            session_id=request.session_id,
+            trace_name="follow-up-query-with-tools",
+            generation_name="query_with_tools",
+            program_hash=program_hash,
+        )
+
+        # Get tools and executor
+        from ghidra_agent.llm import get_function_calling_tools
+        tools = get_function_calling_tools()
+
+        result = await call_llm(
+            prompt,
+            metadata=lf_meta or None,
+            tools=tools,
+            tool_executor=tool_executor_with_context,
+            model=request.model,
+        )
+
+        answer = result.get("content", "")
+        reasoning = result.get("reasoning_content", "")
+        tool_calls = result.get("tool_calls", [])
+        tool_results = result.get("tool_results", [])
+
+        logger.info(
+            "query_with_tools_complete",
+            session_id=request.session_id,
+            answer_len=len(answer),
+            tool_calls_count=len(tool_calls),
+        )
+
+        # Store the Q&A with tool call information
+        state.setdefault("qa_history", []).append({
+            "question": request.query,
+            "answer": answer,
+            "reasoning": reasoning,
+            "tool_calls": tool_calls,
+            "tool_results": tool_results,
+        })
+        store.update_session(request.session_id, state)
+
+        # Persist Q&A to DB
+        try:
+            await db.save_qa(request.session_id, request.query, answer)
+        except Exception:
+            pass
+
+        return JSONResponse({
+            "ok": True,
+            "session_id": request.session_id,
+            "status": "completed",
+            "answer": answer,
+            "reasoning": reasoning,
+            "tool_calls": tool_calls,
+            "tool_results": tool_results,
+        })
+    except Exception as exc:
+        logger.error("query_with_tools_failed", session_id=request.session_id, error=str(exc), exc_info=exc)
+        return JSONResponse(
+            {"ok": False, "error": str(exc)},
+            status_code=500,
+        )
 
 
 @app.websocket("/stream/{session_id}")
@@ -1035,7 +1071,7 @@ async def analysis_similar(
     state = await _resolve_by_hash(program_hash, user)
     if state is None:
         return JSONResponse([], status_code=404)
-    return JSONResponse(build_similar_files(state))
+    return JSONResponse(await build_similar_files(state))
 
 
 @app.get("/api/analysis/{program_hash}/results/ghidra")

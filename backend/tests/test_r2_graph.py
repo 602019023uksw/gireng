@@ -53,7 +53,7 @@ class TestR2Discovery:
         assert result["r2_analysis_results"]["call_graph_analysis"]["ok"] is True
         assert result["r2_analysis_results"]["strings"]["ok"] is True
         assert result["r2_analysis_results"]["syscalls"]["ok"] is True
-        assert "r2_discovery_completed" in result["reasoning_trace"]
+        assert "r2_discovery_completed" in result["r2_trace"]
 
     @pytest.mark.asyncio
     async def test_handles_binary_failure(self, base_state: AgentState):

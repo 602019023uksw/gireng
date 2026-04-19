@@ -30,11 +30,14 @@ def main():
     matches = []
     memory = program.getMemory()
     for block in memory.getBlocks():
+        if not block.isInitialized():
+            continue
         block_size = block.getSize()
         offset = 0
         while offset < block_size:
             chunk_size = min(1024 * 1024, block_size - offset)
-            data = block.getBytes(block.getStart().add(offset), chunk_size)
+            data = bytearray(chunk_size)
+            block.getBytes(block.getStart().add(offset), data)
             idx = data.find(needle)
             while idx != -1:
                 addr = block.getStart().add(offset + idx)

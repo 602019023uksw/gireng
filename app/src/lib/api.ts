@@ -200,9 +200,12 @@ export interface AnalyzerRawResults {
 }
 
 // Upload a binary file for analysis
-export async function uploadBinary(file: File): Promise<UploadResponse> {
+export async function uploadBinary(file: File, modelId?: string): Promise<UploadResponse> {
   const form = new FormData();
   form.append('file', file);
+  if (modelId) {
+    form.append('model', modelId);
+  }
   const res = await authFetch(`${API_BASE}/analyze/upload`, { method: 'POST', body: form });
   if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
   return res.json();
@@ -233,11 +236,11 @@ export interface QueryResponse {
   error?: string;
 }
 
-export async function sendQuery(sessionId: string, query: string): Promise<QueryResponse> {
+export async function sendQuery(sessionId: string, query: string, modelId?: string): Promise<QueryResponse> {
   const res = await authFetch(`${API_BASE}/query`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ session_id: sessionId, query }),
+    body: JSON.stringify({ session_id: sessionId, query, model: modelId }),
   });
   if (!res.ok) throw new Error(`Query failed: ${res.status}`);
   return res.json();
@@ -317,6 +320,12 @@ export async function getQilingResults(hash: string): Promise<AnalyzerRawResults
   return res.json();
 }
 
+export async function getSimilarFiles(hash: string): Promise<{ hash: string; labels: string[] }[] | null> {
+  const res = await authFetch(`${API_BASE}/api/analysis/${hash}/similar`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function getModels() {
   const res = await authFetch(`${API_BASE}/api/models`);
   if (!res.ok) return [];
@@ -345,10 +354,17 @@ export async function pollStatus(
   sessionId: string,
   onUpdate: (status: StatusResponse) => void,
   intervalMs = 2000,
-  maxPolls = 540,
+  maxPolls = 1200,  // 1200 × 2s = 40 minutes
+  signal?: AbortSignal,
 ): Promise<StatusResponse> {
   for (let i = 0; i < maxPolls; i++) {
+    if (signal?.aborted) {
+      throw new Error('Upload cancelled');
+    }
     const status = await getStatus(sessionId);
+    if (signal?.aborted) {
+      throw new Error('Upload cancelled');
+    }
     onUpdate(status);
     if (status.status === 'completed' || status.status === 'error') {
       return status;

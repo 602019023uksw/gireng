@@ -1994,15 +1994,38 @@ def build_report_html(state: Dict[str, Any]) -> str:
                                         <td>Ghidra: {len(strings_data.get('strings', []))} &middot; R2: {len(r2_strings.get('strings', []))} extracted</td></tr>'''
 
     has_qiling = bool(qiling_results)
-    qiling_section_no = "11"
-    iocs_section_no = "12" if has_qiling else "11"
-    recommendations_section_no = "13" if has_qiling else "12"
-    conclusion_section_no = "14" if has_qiling else "13"
+    qiling_section_no = "12" if has_qiling else "11"
+    iocs_section_no = "13" if has_qiling else "12"
+    recommendations_section_no = "14" if has_qiling else "13"
+    conclusion_section_no = "15" if has_qiling else "14"
     report_scope_label = "Ghidra + Radare2 + Qiling Analysis" if has_qiling else "Ghidra + Radare2 Analysis"
     report_fusion_copy = (
         "This report fuses Ghidra, Radare2, and Qiling findings into a readable intelligence layout while preserving exact evidence from decompiled code and extracted indicators."
         if has_qiling
         else "This report fuses Ghidra and Radare2 findings into a readable intelligence layout while preserving exact evidence from decompiled code and extracted indicators."
+    )
+    has_investigation_trace = bool(state.get("investigation_trace"))
+    investigation_trace_nav_link = (
+        '<a href="#investigation-trace" class="nav-link px-3 py-2 rounded"><i class="fas fa-route"></i><span>Investigation Trace</span></a>'
+        if has_investigation_trace
+        else ""
+    )
+    investigation_trace_html = (
+        '<section id="investigation-trace" class="scroll-mt-20 section-card">'
+        '<div class="section-title-wrap">'
+        '<div class="section-icon"><i class="fas fa-magnifying-glass"></i></div>'
+        '<div>'
+        '<p class="section-eyebrow">02 · Planner Rationale</p>'
+        '<h2 class="section-headline">Investigation Trace</h2>'
+        '<p class="section-subtitle">Breakpoint-driven investigation strategy and reasoning recorded by the analysis planner.</p>'
+        '</div>'
+        '</div>'
+        '<div class="section-body md-content text-slate-700 dark:text-slate-300 leading-relaxed space-y-4 text-base">'
+        '<p class="mb-3">' + _markdown_to_html(state.get("investigation_trace", "")) + '</p>'
+        '</div>'
+        '</section>'
+        if has_investigation_trace
+        else ""
     )
     qiling_nav_link = (
         '<a href="#qiling-dynamic" class="nav-link px-3 py-2 rounded"><i class="fas fa-vial"></i><span>Qiling Dynamic</span></a>'
@@ -2445,6 +2468,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         </div>
         <div class="p-4 space-y-1 text-sm">
             <a href="#executive-summary" class="nav-link px-3 py-2 rounded"><i class="fas fa-binoculars"></i><span>Executive Summary</span></a>
+            {investigation_trace_nav_link}
             <a href="#mitre-attack" class="nav-link px-3 py-2 rounded"><i class="fas fa-spider"></i><span>Threat Intel</span></a>
             <a href="#capabilities" class="nav-link px-3 py-2 rounded"><i class="fas fa-bolt"></i><span>Malware Capabilities</span></a>
             <a href="#binary-info" class="nav-link px-3 py-2 rounded"><i class="fas fa-file-code"></i><span>Binary Information</span></a>
@@ -2558,16 +2582,19 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         </div>
                     </section>
 
+                    <!-- 1b. Investigation Trace -->
+                    {investigation_trace_html}
+
                     
                     <!-- MITRE ATT&CK -->
-                    {('<section id="mitre-attack" class="scroll-mt-20 section-card"><div class="section-title-wrap"><div class="section-icon"><i class="fas fa-spider"></i></div><div><p class="section-eyebrow">02 · Threat Context</p><h2 class="section-headline">Threat Intel &amp; MITRE ATT&amp;CK</h2><p class="section-subtitle">Mapped tactics and techniques linked to concrete static-analysis artifacts.</p></div></div><div class="section-body">' + mitre_html + '</div></section>') if mitre_html else ''}
+                    {('<section id="mitre-attack" class="scroll-mt-20 section-card"><div class="section-title-wrap"><div class="section-icon"><i class="fas fa-spider"></i></div><div><p class="section-eyebrow">03 · Threat Context</p><h2 class="section-headline">Threat Intel &amp; MITRE ATT&amp;CK</h2><p class="section-subtitle">Mapped tactics and techniques linked to concrete static-analysis artifacts.</p></div></div><div class="section-body">' + mitre_html + '</div></section>') if mitre_html else ''}
 
                     <!-- 2. Malware Capabilities -->
                     <section id="capabilities" class="scroll-mt-20 section-card">
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-bolt"></i></div>
                             <div>
-                                <p class="section-eyebrow">03 · Behavior Deck</p>
+                                <p class="section-eyebrow">04 · Behavior Deck</p>
                                 <h2 class="section-headline">Malware Capabilities</h2>
                                 <p class="section-subtitle">Capability statements paired with direct evidence from function bodies or strings.</p>
                             </div>
@@ -2580,7 +2607,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-file-code"></i></div>
                             <div>
-                                <p class="section-eyebrow">04 · Binary Profile</p>
+                                <p class="section-eyebrow">05 · Binary Profile</p>
                                 <h2 class="section-headline">Binary Information</h2>
                                 <p class="section-subtitle">Core metadata baseline from toolchain output before behavior interpretation.</p>
                             </div>
@@ -2600,7 +2627,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-microscope"></i></div>
                             <div>
-                                <p class="section-eyebrow">05 · Deep Technical Dive</p>
+                                <p class="section-eyebrow">06 · Deep Technical Dive</p>
                                 <h2 class="section-headline">Technical Analysis</h2>
                                 <p class="section-subtitle">Component-level internals with code snippets proving each behavioral claim.</p>
                             </div>
@@ -2613,7 +2640,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-cubes"></i></div>
                             <div>
-                                <p class="section-eyebrow">06 · Function Triage</p>
+                                <p class="section-eyebrow">07 · Function Triage</p>
                                 <h2 class="section-headline">Functions Analysis</h2>
                                 <p class="section-subtitle">Purpose, maliciousness status, and primary code evidence per high-priority function.</p>
                             </div>
@@ -2626,7 +2653,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-fingerprint"></i></div>
                             <div>
-                                <p class="section-eyebrow">07 · Evidence Register</p>
+                                <p class="section-eyebrow">08 · Evidence Register</p>
                                 <h2 class="section-headline">Evidence of Malicious Activity</h2>
                                 <p class="section-subtitle">Structured findings that can be cited directly in IR and hunting workflows.</p>
                             </div>
@@ -2639,7 +2666,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-code"></i></div>
                             <div>
-                                <p class="section-eyebrow">08 · Code Anchors</p>
+                                <p class="section-eyebrow">09 · Code Anchors</p>
                                 <h2 class="section-headline">Code Evidence (Suspicious API Calls)</h2>
                                 <p class="section-subtitle">Exact decompiled lines where suspicious APIs are invoked.</p>
                             </div>
@@ -2653,7 +2680,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-route"></i></div>
                             <div>
-                                <p class="section-eyebrow">09 · Execution Story</p>
+                                <p class="section-eyebrow">10 · Execution Story</p>
                                 <h2 class="section-headline">Operational Flow</h2>
                                 <p class="section-subtitle">Timeline from initialization to command handling and persistence behavior.</p>
                             </div>
@@ -2666,7 +2693,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-project-diagram"></i></div>
                             <div>
-                                <p class="section-eyebrow">10 · Graph Intelligence</p>
+                                <p class="section-eyebrow">11 · Graph Intelligence</p>
                                 <h2 class="section-headline">Call Graph &amp; Attack Chains</h2>
                                 <p class="section-subtitle">Graph-derived routes from entry points to suspicious sinks.</p>
                             </div>

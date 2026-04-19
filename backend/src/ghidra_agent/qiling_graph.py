@@ -146,7 +146,7 @@ async def run_qiling_pipeline(state: AgentState) -> AgentState:
         results["skipped"] = True
         results["skip_reason"] = "unsupported_pe_for_emulation"
         state["qiling_analysis_results"] = results
-        state["reasoning_trace"].append("qiling_discovery_completed")
+        state["qiling_trace"].append("qiling_discovery_completed")
         await _emit_qiling_progress(state, progress=100, step="qiling_emulation_skipped", status="completed")
         return state
 
@@ -155,7 +155,7 @@ async def run_qiling_pipeline(state: AgentState) -> AgentState:
             errors.append(str(execution_trace["error"]))
         results["errors"] = errors
         state["qiling_analysis_results"] = results
-        state["reasoning_trace"].append("qiling_discovery_completed")
+        state["qiling_trace"].append("qiling_discovery_completed")
         await _emit_qiling_progress(state, progress=100, step="qiling_emulation_failed", status="failed")
         return state
 
@@ -232,7 +232,7 @@ async def run_qiling_pipeline(state: AgentState) -> AgentState:
         results["errors"] = errors
 
     state["qiling_analysis_results"] = results
-    state["reasoning_trace"].append("qiling_discovery_completed")
+    state["qiling_trace"].append("qiling_discovery_completed")
 
     # Determine final status: "completed" if ANY useful data was collected,
     # even when individual scripts errored after partial execution.

@@ -95,7 +95,9 @@ def _restore_sessions():
             with open(backup) as f:
                 data = json.load(f)
             for sid, state in data.items():
-                store.sessions[sid] = state
+                merged = dict(DEFAULT_STATE)
+                merged.update(state)
+                store.sessions[sid] = merged
             backup.unlink()
             logger.info('sessions_restored', count=len(data))
         except Exception as e:

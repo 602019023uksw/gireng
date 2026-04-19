@@ -988,6 +988,32 @@ async def get_binary_decompilations(program_hash: str, analyzer: Optional[str] =
     return [_row_to_dict(r) for r in rows]
 
 
+async def get_decompilation(program_hash: str, analyzer: str, function_name: str) -> Optional[str]:
+    """Get a single decompiled function by program hash, analyzer, and function name."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT code FROM decompilations WHERE program_hash = $1 AND analyzer = $2 AND function_name = $3",
+            program_hash, analyzer, function_name,
+        )
+    return row["code"] if row else None
+
+
+async def find_similar_analyses(program_hash: str, verdict: str, limit: int = 10) -> List[Dict[str, Any]]:
+    """Find previous analyses with the same verdict, excluding the given hash."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """SELECT program_hash, verdict, threat_score, summary
+               FROM analyses
+               WHERE program_hash != $1 AND verdict = $2
+               ORDER BY completed_at DESC NULLS LAST
+               LIMIT $3""",
+            program_hash, verdict, limit,
+        )
+    return [_row_to_dict(r) for r in rows]
+
+
 async def get_binary_iocs(program_hash: str) -> List[Dict[str, Any]]:
     """Get all IOCs for a specific binary."""
     pool = await get_pool()

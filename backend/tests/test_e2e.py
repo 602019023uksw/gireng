@@ -124,8 +124,8 @@ class TestE2EDualAgentFlow:
                 assert state["intent"] == "reconnaissance"
 
                 state = await initialize_ghidra(state)
-                assert "ghidra_initialized" in state["reasoning_trace"]
-                assert "r2_initialized" in state["reasoning_trace"]
+                assert "ghidra_initialized" in state["ghidra_trace"]
+                assert "r2_initialized" in state["r2_trace"]
 
                 state = await discovery(state)
 
@@ -154,7 +154,7 @@ class TestE2EDualAgentFlow:
                 assert state["r2_analysis_results"]["call_graph"]["ok"] is True
                 assert state["r2_analysis_results"]["call_graph_analysis"]["ok"] is True
                 assert state["r2_analysis_results"]["syscalls"]["ok"] is True
-                assert "discovery_completed" in state["reasoning_trace"]
+                assert "discovery_completed" in state["ghidra_trace"]
 
                 # Both should have decompiled functions
                 assert len(state["decompilation_cache"]) > 0
@@ -238,7 +238,7 @@ class TestE2EDualAgentFlow:
                 assert state["analysis_results"]["functions"]["ok"] is True
 
                 # R2 should have failed gracefully — container was down so skipped
-                assert "r2_unavailable" in state["reasoning_trace"]
+                assert "r2_unavailable" in state["r2_trace"]
                 # R2 pipeline was skipped, so r2_analysis_results stays empty
                 assert state["r2_analysis_results"] == {} or \
                        "error" in state["r2_analysis_results"] or \
@@ -279,10 +279,10 @@ class TestE2EDualAgentFlow:
                 state = await initialize_ghidra(state)
                 state = await discovery(state)
                 state = await focus_analysis(state)
-                assert "focus_analysis_completed" in state["reasoning_trace"]
+                assert "focus_analysis_completed" in state["ghidra_trace"]
 
                 state = await cross_reference(state)
-                assert "cross_reference_completed" in state["reasoning_trace"]
+                assert "cross_reference_completed" in state["ghidra_trace"]
 
                 state = await synthesize(state)
                 assert state["status"] == "completed"

@@ -304,13 +304,13 @@ class TestChargenPipelineFlow:
                 # Step 1: Parse intent (no query = reconnaissance)
                 state = await parse_intent(state)
                 assert state["intent"] == "reconnaissance"
-                assert "intent:reconnaissance" in state["reasoning_trace"]
+                assert "intent:reconnaissance" in state["ghidra_trace"]
 
                 # Step 2: Initialize
                 state = await initialize_ghidra(state)
                 assert state["status"] == "initialized"
-                assert "ghidra_initialized" in state["reasoning_trace"]
-                assert "r2_initialized" in state["reasoning_trace"]
+                assert "ghidra_initialized" in state["ghidra_trace"]
+                assert "r2_initialized" in state["r2_trace"]
                 assert isinstance(state["r2_analysis_results"], dict)
                 assert isinstance(state["r2_decompilation_cache"], dict)
 
@@ -335,8 +335,8 @@ class TestChargenPipelineFlow:
                 assert state["r2_analysis_results"]["call_graph_analysis"]["ok"] is True
 
                 # Verify dual discovery trace
-                assert "discovery_completed" in state["reasoning_trace"]
-                assert "r2_discovery_completed" in state["reasoning_trace"]
+                assert "discovery_completed" in state["ghidra_trace"]
+                assert "r2_discovery_completed" in state["r2_trace"]
 
                 # Verify auto-decompilation happened
                 assert len(state["decompilation_cache"]) > 0
@@ -408,7 +408,7 @@ class TestChargenPipelineFlow:
                 assert state["analysis_results"]["functions"]["ok"] is True
 
                 # R2 should indicate it was skipped
-                assert "r2_unavailable" in state["reasoning_trace"]
+                assert "r2_unavailable" in state["r2_trace"]
 
                 state = await synthesize(state)
                 assert state["status"] == "completed"
@@ -657,8 +657,20 @@ class TestChargenAPI:
             mock_s.get_session = MagicMock(return_value=state)
             yield mock_s
 
+    @pytest.fixture
+    def mock_auth(self):
+        from unittest.mock import patch
+        with patch("ghidra_agent.api.main.get_current_user", return_value={
+            "id": "test-user",
+            "username": "test",
+            "email": "test@example.com",
+            "role": "admin",
+            "is_active": True,
+        }) as m:
+            yield m
+
     @pytest_asyncio.fixture
-    async def client(self, mock_store):
+    async def client(self, mock_store, mock_auth):
         from ghidra_agent.api.main import app
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as c:
@@ -804,9 +816,9 @@ class TestChargenStateIntegrity:
             "binary_path", "program_hash", "current_address", "current_function",
             "analysis_results", "decompilation_cache", "r2_analysis_results",
             "r2_decompilation_cache", "qiling_analysis_results", "qiling_execution_cache",
-            "user_query", "reasoning_trace",
-            "pending_actions", "write_mode_enabled", "session_id", "intent",
-            "status", "review_approved", "summary",
+            "user_query", "reasoning_trace", "ghidra_trace", "r2_trace", "qiling_trace",
+            "session_id", "intent",
+            "status", "summary",
         ]
         for field in required_fields:
             assert field in DEFAULT_STATE, f"Missing field in DEFAULT_STATE: {field}"
