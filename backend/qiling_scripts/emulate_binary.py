@@ -84,6 +84,14 @@ def _run_emulation(binary_path: str, timeout_sec: int, rootfs_base: str, max_ins
             result["success"] = False
             result["exit_reason"] = "unsupported_pe"
             msg = "Unsupported PE for emulation: missing/corrupt import directory"
+        elif "uc_err_read_unmapped" in lowered or "uc_err_write_unmapped" in lowered or "uc_err_fetch_unmapped" in lowered:
+            # Unicorn memory-mapping errors are common with packed, encrypted,
+            # or API-heavy binaries that rely on unemulated OS behaviour.
+            # Treat as unsupported so the pipeline continues with static data.
+            result["ok"] = True
+            result["success"] = False
+            result["exit_reason"] = "unsupported"
+            msg = f"Binary unsupported for emulation: {msg}"
         elif instruction_count > 0:
             # Partial execution: binary ran some instructions before crashing.
             # Mark as ok so the pipeline continues with whatever data we have.

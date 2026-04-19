@@ -66,7 +66,8 @@ def _is_windows_binary(execution_trace: Dict[str, Any]) -> bool:
 def _is_unsupported_qiling_sample(execution_trace: Dict[str, Any]) -> bool:
     if not isinstance(execution_trace, dict):
         return False
-    if str(execution_trace.get("exit_reason", "")).lower() == "unsupported_pe":
+    exit_reason = str(execution_trace.get("exit_reason", "")).lower()
+    if exit_reason in ("unsupported_pe", "unsupported"):
         return True
     err = str(execution_trace.get("error", "")).lower()
     return "directory_entry_import" in err
