@@ -861,25 +861,25 @@ async def synthesize(state: AgentState) -> AgentState:
         state,
         include_focus=True,
         include_xrefs=True,
-        string_limit=100,
-        func_limit=50,
-        ghidra_decomp_limit=20,
-        r2_decomp_limit=20,
-        decomp_chars=2000,
-        decomp_chars_high=10000,
+        string_limit=80,
+        func_limit=40,
+        ghidra_decomp_limit=12,
+        r2_decomp_limit=12,
+        decomp_chars=1500,
+        decomp_chars_high=6000,
     )
-    if len(context) > 80_000:
+    if len(context) > 60_000:
         logger.warning("synthesize_context_oversized", chars=len(context))
         context = build_analysis_context(
             state,
             include_focus=True,
             include_xrefs=True,
-            string_limit=60,
-            func_limit=30,
-            ghidra_decomp_limit=12,
-            r2_decomp_limit=12,
-            decomp_chars=1500,
-            decomp_chars_high=6000,
+            string_limit=50,
+            func_limit=25,
+            ghidra_decomp_limit=8,
+            r2_decomp_limit=8,
+            decomp_chars=1200,
+            decomp_chars_high=4000,
         )
 
 
