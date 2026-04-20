@@ -121,6 +121,7 @@ export interface Report {
   name: string;
   timestamp: number;
   content?: string;
+  html_url?: string;
 }
 
 export interface NavItem {

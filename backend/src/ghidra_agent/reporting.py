@@ -12,6 +12,26 @@ from ghidra_agent.ioc_extractor import IOCs, calculate_verdict, extract_iocs_fro
 
 logger = logging.getLogger(__name__)
 
+# ── Report tone context (set per-build_report_html call) ──
+_report_tone: str = "neutral"  # neutral | clean | suspicious | malicious
+
+
+def _set_report_tone(tone: str) -> None:
+    global _report_tone
+    _report_tone = tone
+
+
+def _code_color() -> str:
+    """Return Tailwind color name for inline code based on report tone."""
+    if _report_tone == "clean":
+        return "cyan"
+    if _report_tone == "suspicious":
+        return "orange"
+    if _report_tone == "malicious":
+        return "red"
+    return "sky"
+
+
 # Maximum number of entry points to display in the report
 _MAX_ENTRY_POINTS = 5
 
@@ -484,10 +504,12 @@ def _inline_code_html(text: str) -> str:
     # Protect backtick code in placeholders to avoid double-wrapping with chips
     _ic_spans: List[str] = []
 
+    c = _code_color()
+
     def _save_ic(m):
         _ic_spans.append(
-            '<code class="bg-slate-100 dark:bg-slate-800 text-red-600 '
-            'dark:text-red-400 px-1 py-0.5 rounded text-xs font-mono">'
+            f'<code class="bg-slate-100 dark:bg-slate-800 text-{c}-600 '
+            f'dark:text-{c}-400 px-1 py-0.5 rounded text-xs font-mono">'
             + m.group(1) + '</code>'
         )
         return f'\x00IC{len(_ic_spans) - 1}\x00'
@@ -918,17 +940,34 @@ def _render_evidence_cards(evidence_items: List[str], md_text: str) -> str:
     if not evidence_items and not md_text:
         return '<p class="text-sm text-slate-500 italic" role="status">No evidence of malicious activity identified.</p>'
 
-    # Severity tiers: first findings are most critical, later ones taper
-    _SEV_CFG = [
-        ("sev-critical", "Critical", "fas fa-circle-exclamation", "text-red-400"),
-        ("sev-critical", "Critical", "fas fa-circle-exclamation", "text-red-400"),
-        ("sev-high",     "High",     "fas fa-triangle-exclamation", "text-orange-400"),
-        ("sev-high",     "High",     "fas fa-triangle-exclamation", "text-orange-400"),
-        ("sev-medium",   "Medium",   "fas fa-circle-info", "text-yellow-400"),
-        ("sev-medium",   "Medium",   "fas fa-circle-info", "text-yellow-400"),
-        ("sev-low",      "Low",      "fas fa-circle-check", "text-blue-400"),
-        ("sev-info",     "Info",     "fas fa-circle-question", "text-purple-400"),
-    ]
+    # Severity tiers: first findings are most critical, later ones taper.
+    # For clean binaries, tone down to Info/Note severity.
+    if _report_tone == "clean":
+        _SEV_CFG = [
+            ("sev-info", "Note", "fas fa-circle-check", "text-blue-400"),
+        ] * 8
+    elif _report_tone == "suspicious":
+        _SEV_CFG = [
+            ("sev-high",     "High",     "fas fa-triangle-exclamation", "text-orange-400"),
+            ("sev-high",     "High",     "fas fa-triangle-exclamation", "text-orange-400"),
+            ("sev-medium",   "Medium",   "fas fa-circle-info", "text-yellow-400"),
+            ("sev-medium",   "Medium",   "fas fa-circle-info", "text-yellow-400"),
+            ("sev-low",      "Low",      "fas fa-circle-check", "text-blue-400"),
+            ("sev-low",      "Low",      "fas fa-circle-check", "text-blue-400"),
+            ("sev-info",     "Info",     "fas fa-circle-question", "text-purple-400"),
+            ("sev-info",     "Info",     "fas fa-circle-question", "text-purple-400"),
+        ]
+    else:
+        _SEV_CFG = [
+            ("sev-critical", "Critical", "fas fa-circle-exclamation", "text-red-400"),
+            ("sev-critical", "Critical", "fas fa-circle-exclamation", "text-red-400"),
+            ("sev-high",     "High",     "fas fa-triangle-exclamation", "text-orange-400"),
+            ("sev-high",     "High",     "fas fa-triangle-exclamation", "text-orange-400"),
+            ("sev-medium",   "Medium",   "fas fa-circle-info", "text-yellow-400"),
+            ("sev-medium",   "Medium",   "fas fa-circle-info", "text-yellow-400"),
+            ("sev-low",      "Low",      "fas fa-circle-check", "text-blue-400"),
+            ("sev-info",     "Info",     "fas fa-circle-question", "text-purple-400"),
+        ]
 
     # Try structured evidence items first
     if evidence_items:
@@ -1045,7 +1084,12 @@ def _render_operational_flow(md_text: str) -> str:
     if not steps:
         return _markdown_to_html(md_text)
 
-    _flow_colors = ['red', 'orange', 'yellow', 'blue', 'purple', 'green', 'cyan', 'pink']
+    if _report_tone == "clean":
+        _flow_colors = ['blue', 'cyan', 'green', 'purple', 'sky', 'teal', 'indigo', 'emerald']
+    elif _report_tone == "suspicious":
+        _flow_colors = ['orange', 'yellow', 'amber', 'blue', 'purple', 'green', 'cyan', 'pink']
+    else:
+        _flow_colors = ['red', 'orange', 'yellow', 'blue', 'purple', 'green', 'cyan', 'pink']
 
     items: List[str] = []
     for idx, (title, desc, evidence) in enumerate(steps):
@@ -1822,6 +1866,33 @@ def build_report_html(state: Dict[str, Any]) -> str:
 
     iocs = extract_iocs_from_state(state)
     verdict, verdict_class, indicators, score = calculate_verdict(iocs, state)
+    _set_report_tone(verdict_class)
+
+    # ── Tone-aware labels ──
+    _is_clean = verdict_class == "clean"
+    _cap_section_title = "Capabilities" if _is_clean else "Malware Capabilities"
+    _cap_subtitle = (
+        "Behavioral capabilities identified through code analysis and pattern matching."
+        if _is_clean else
+        "Capability statements paired with direct evidence from function bodies or strings."
+    )
+    _ev_section_title = "Evidence & Findings" if _is_clean else "Evidence of Malicious Activity"
+    _ev_subtitle = (
+        "Structured findings that can be cited directly in documentation and review workflows."
+        if _is_clean else
+        "Structured findings that can be cited directly in IR and hunting workflows."
+    )
+    _chain_label = "Graph Chains" if _is_clean else "Attack Chains"
+    _chain_desc = (
+        "Connected graph paths discovered during static analysis."
+        if _is_clean else
+        "Sink-reaching graph paths"
+    )
+    _interesting_label = (
+        "Decompiled or high-priority functions"
+        if _is_clean else
+        "Suspicious or high-priority functions"
+    )
 
     analysis_results = state.get("analysis_results", {})
     r2_results = state.get("r2_analysis_results", {})
@@ -1961,8 +2032,12 @@ def build_report_html(state: Dict[str, Any]) -> str:
                    "border-green-200 dark:border-green-800/50", "text-green-900 dark:text-green-100",
                    "text-green-800 dark:text-green-200", "bg-green-100 dark:bg-green-800/50",
                    "text-green-600 dark:text-green-400"),
+        "unknown": ("from-slate-50 to-slate-100 dark:from-slate-900/20 dark:to-slate-800/10",
+                     "border-slate-200 dark:border-slate-700/50", "text-slate-900 dark:text-slate-100",
+                     "text-slate-800 dark:text-slate-200", "bg-slate-100 dark:bg-slate-800/50",
+                     "text-slate-600 dark:text-slate-400"),
     }
-    cc_grad, cc_border, cc_title, cc_body, cc_icon_bg, cc_icon_txt = _CC.get(verdict_class, _CC["malicious"])
+    cc_grad, cc_border, cc_title, cc_body, cc_icon_bg, cc_icon_txt = _CC.get(verdict_class, _CC["unknown"])
 
     # Binary info table rows
     _stripped_val = r2_binary.get('stripped', 'unknown')
@@ -2369,7 +2444,6 @@ def build_report_html(state: Dict[str, Any]) -> str:
             right: 0;
             bottom: 0;
             background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.06) 10px, rgba(255,255,255,0.06) 20px);
-            animation: slide 18s linear infinite;
         }}
         @keyframes slide {{ 0% {{ transform: translateX(0); }} 100% {{ transform: translateX(40px); }} }}
         .md-content p {{ margin-bottom: 0.8rem; line-height: 1.72; color: #d4e1f4; }}
@@ -2470,11 +2544,11 @@ def build_report_html(state: Dict[str, Any]) -> str:
             <a href="#executive-summary" class="nav-link px-3 py-2 rounded"><i class="fas fa-binoculars"></i><span>Executive Summary</span></a>
             {investigation_trace_nav_link}
             <a href="#mitre-attack" class="nav-link px-3 py-2 rounded"><i class="fas fa-spider"></i><span>Threat Intel</span></a>
-            <a href="#capabilities" class="nav-link px-3 py-2 rounded"><i class="fas fa-bolt"></i><span>Malware Capabilities</span></a>
+            <a href="#capabilities" class="nav-link px-3 py-2 rounded"><i class="fas fa-bolt"></i><span>{_cap_section_title}</span></a>
             <a href="#binary-info" class="nav-link px-3 py-2 rounded"><i class="fas fa-file-code"></i><span>Binary Information</span></a>
             <a href="#technical-analysis" class="nav-link px-3 py-2 rounded"><i class="fas fa-microscope"></i><span>Technical Analysis</span></a>
             <a href="#functions-analysis" class="nav-link px-3 py-2 rounded"><i class="fas fa-cubes"></i><span>Functions Analysis</span></a>
-            <a href="#evidence" class="nav-link px-3 py-2 rounded"><i class="fas fa-fingerprint"></i><span>Evidence</span></a>
+            <a href="#evidence" class="nav-link px-3 py-2 rounded"><i class="fas fa-fingerprint"></i><span>{_ev_section_title}</span></a>
             <a href="#code-evidence" class="nav-link px-3 py-2 rounded"><i class="fas fa-code"></i><span>Code Evidence</span></a>
             <a href="#operational-flow" class="nav-link px-3 py-2 rounded"><i class="fas fa-route"></i><span>Operational Flow</span></a>
             <a href="#call-graph" class="nav-link px-3 py-2 rounded"><i class="fas fa-project-diagram"></i><span>Call Graph</span></a>
@@ -2550,12 +2624,12 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="stat-card p-3">
                             <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">Interesting</div>
                             <div class="text-xl font-display font-bold text-white mt-1">{interesting_total}</div>
-                            <div class="text-[11px] text-slate-400">Suspicious or high-priority functions</div>
+                            <div class="text-[11px] text-slate-400">{_interesting_label}</div>
                         </div>
                         <div class="stat-card p-3">
-                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">Attack Chains</div>
+                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">{_chain_label}</div>
                             <div class="text-xl font-display font-bold text-white mt-1">{chain_total}</div>
-                            <div class="text-[11px] text-slate-400">Sink-reaching graph paths</div>
+                            <div class="text-[11px] text-slate-400">{_chain_desc}</div>
                         </div>
                         <div class="stat-card p-3">
                             <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">IOCs</div>
@@ -2589,14 +2663,14 @@ def build_report_html(state: Dict[str, Any]) -> str:
                     <!-- MITRE ATT&CK -->
                     {('<section id="mitre-attack" class="scroll-mt-20 section-card"><div class="section-title-wrap"><div class="section-icon"><i class="fas fa-spider"></i></div><div><p class="section-eyebrow">03 · Threat Context</p><h2 class="section-headline">Threat Intel &amp; MITRE ATT&amp;CK</h2><p class="section-subtitle">Mapped tactics and techniques linked to concrete static-analysis artifacts.</p></div></div><div class="section-body">' + mitre_html + '</div></section>') if mitre_html else ''}
 
-                    <!-- 2. Malware Capabilities -->
+                    <!-- 2. {_cap_section_title} -->
                     <section id="capabilities" class="scroll-mt-20 section-card">
                         <div class="section-title-wrap">
                             <div class="section-icon"><i class="fas fa-bolt"></i></div>
                             <div>
                                 <p class="section-eyebrow">04 · Behavior Deck</p>
-                                <h2 class="section-headline">Malware Capabilities</h2>
-                                <p class="section-subtitle">Capability statements paired with direct evidence from function bodies or strings.</p>
+                                <h2 class="section-headline">{_cap_section_title}</h2>
+                                <p class="section-subtitle">{_cap_subtitle}</p>
                             </div>
                         </div>
                         <div class="section-body">{capabilities_html}</div>
@@ -2654,8 +2728,8 @@ def build_report_html(state: Dict[str, Any]) -> str:
                             <div class="section-icon"><i class="fas fa-fingerprint"></i></div>
                             <div>
                                 <p class="section-eyebrow">08 · Evidence Register</p>
-                                <h2 class="section-headline">Evidence of Malicious Activity</h2>
-                                <p class="section-subtitle">Structured findings that can be cited directly in IR and hunting workflows.</p>
+                                <h2 class="section-headline">{_ev_section_title}</h2>
+                                <p class="section-subtitle">{_ev_subtitle}</p>
                             </div>
                         </div>
                         <div class="section-body">{evidence_html}</div>
@@ -2694,7 +2768,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                             <div class="section-icon"><i class="fas fa-project-diagram"></i></div>
                             <div>
                                 <p class="section-eyebrow">11 · Graph Intelligence</p>
-                                <h2 class="section-headline">Call Graph &amp; Attack Chains</h2>
+                                <h2 class="section-headline">Call Graph &amp; {_chain_label}</h2>
                                 <p class="section-subtitle">Graph-derived routes from entry points to suspicious sinks.</p>
                             </div>
                         </div>
@@ -2851,6 +2925,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
 </body>
 </html>'''
 
+    _set_report_tone('neutral')
     return html
 
 

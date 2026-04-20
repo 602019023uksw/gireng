@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { X, Download, Copy, FileText, ChevronRight } from 'lucide-react';
+import { X, Download, Copy, FileText, ChevronRight, Monitor, FileCode } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { useState } from 'react';
 
@@ -7,11 +7,13 @@ interface ReportViewerProps {
   title: string;
   fileHash: string;
   content: string;
+  htmlUrl?: string;
   onClose: () => void;
 }
 
-export function ReportViewer({ title, fileHash, content, onClose }: ReportViewerProps) {
+export function ReportViewer({ title, fileHash, content, htmlUrl, onClose }: ReportViewerProps) {
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<'html' | 'markdown'>('html');
 
   const handleCopy = () => {
     navigator.clipboard.writeText(content);
@@ -30,6 +32,8 @@ export function ReportViewer({ title, fileHash, content, onClose }: ReportViewer
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
+
+  const showHtml = htmlUrl && viewMode === 'html';
 
   return (
     <motion.div
@@ -67,10 +71,32 @@ export function ReportViewer({ title, fileHash, content, onClose }: ReportViewer
               color: 'rgba(160, 168, 184, 0.8)',
             }}
           >
-            markdown
+            {showHtml ? 'html' : 'markdown'}
           </span>
         </div>
         <div className="flex items-center gap-2">
+          {htmlUrl && (
+            <div className="flex items-center bg-white/5 rounded-lg p-0.5 mr-1">
+              <button
+                onClick={() => setViewMode('html')}
+                className={`w-7 h-7 rounded flex items-center justify-center transition-all ${
+                  viewMode === 'html' ? 'bg-white/10 text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                }`}
+                title="Styled HTML view"
+              >
+                <Monitor className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewMode('markdown')}
+                className={`w-7 h-7 rounded flex items-center justify-center transition-all ${
+                  viewMode === 'markdown' ? 'bg-white/10 text-text-primary' : 'text-text-secondary hover:text-text-primary'
+                }`}
+                title="Raw markdown view"
+              >
+                <FileCode className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
           <button
             onClick={handleDownload}
             className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-150"
@@ -105,65 +131,76 @@ export function ReportViewer({ title, fileHash, content, onClose }: ReportViewer
       </div>
 
       {/* Report Content */}
-      <div className="flex-1 overflow-y-auto scrollbar-dark p-6">
-        {/* Title Section */}
-        <div className="mb-6 pb-6 border-b border-white/10"
-          style={{ borderColor: 'rgba(100, 120, 180, 0.15)' }}
-        >
-          <h1 className="text-2xl font-bold text-text-primary mb-3">{title}</h1>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-text-muted">File Hash (SHA256):</span>
-            <span className="text-text-secondary font-mono">{fileHash}</span>
-          </div>
-        </div>
+      <div className="flex-1 overflow-hidden">
+        {showHtml ? (
+          <iframe
+            src={htmlUrl}
+            className="w-full h-full border-0"
+            title="Analysis Report"
+            sandbox="allow-scripts allow-same-origin"
+          />
+        ) : (
+          <div className="h-full overflow-y-auto scrollbar-dark p-6">
+            {/* Title Section */}
+            <div className="mb-6 pb-6 border-b border-white/10"
+              style={{ borderColor: 'rgba(100, 120, 180, 0.15)' }}
+            >
+              <h1 className="text-2xl font-bold text-text-primary mb-3">{title}</h1>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-text-muted">File Hash (SHA256):</span>
+                <span className="text-text-secondary font-mono">{fileHash}</span>
+              </div>
+            </div>
 
-        {/* Markdown Content */}
-        <div className="prose prose-invert prose-sm max-w-none">
-          <ReactMarkdown
-            components={{
-              h1: ({ children }) => (
-                <h1 className="text-xl font-bold text-text-primary mt-8 mb-4">{children}</h1>
-              ),
-              h2: ({ children }) => (
-                <h2 className="text-lg font-semibold text-text-primary mt-6 mb-3">{children}</h2>
-              ),
-              h3: ({ children }) => (
-                <h3 className="text-base font-semibold text-text-primary mt-4 mb-2">{children}</h3>
-              ),
-              p: ({ children }) => (
-                <p className="text-sm text-text-secondary leading-relaxed mb-4">{children}</p>
-              ),
-              code: ({ children }) => (
-                <code 
-                  className="px-1.5 py-0.5 rounded text-xs font-mono"
-                  style={{
-                    background: 'rgba(88, 166, 255, 0.1)',
-                    border: '1px solid rgba(88, 166, 255, 0.2)',
-                    color: '#F0F6FC',
-                  }}
-                >
-                  {children}
-                </code>
-              ),
-              pre: ({ children }) => (
-                <pre 
-                  className="p-4 rounded-lg overflow-x-auto my-4"
-                  style={{
-                    background: 'rgba(10, 14, 28, 0.6)',
-                    border: '1px solid rgba(100, 120, 180, 0.15)',
-                  }}
-                >
-                  {children}
-                </pre>
-              ),
-              hr: () => (
-                <hr className="my-6 border-white/10" style={{ borderColor: 'rgba(100, 120, 180, 0.15)' }} />
-              ),
-            }}
-          >
-            {content}
-          </ReactMarkdown>
-        </div>
+            {/* Markdown Content */}
+            <div className="prose prose-invert prose-sm max-w-none">
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => (
+                    <h1 className="text-xl font-bold text-text-primary mt-8 mb-4">{children}</h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 className="text-lg font-semibold text-text-primary mt-6 mb-3">{children}</h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="text-base font-semibold text-text-primary mt-4 mb-2">{children}</h3>
+                  ),
+                  p: ({ children }) => (
+                    <p className="text-sm text-text-secondary leading-relaxed mb-4">{children}</p>
+                  ),
+                  code: ({ children }) => (
+                    <code 
+                      className="px-1.5 py-0.5 rounded text-xs font-mono"
+                      style={{
+                        background: 'rgba(88, 166, 255, 0.1)',
+                        border: '1px solid rgba(88, 166, 255, 0.2)',
+                        color: '#F0F6FC',
+                      }}
+                    >
+                      {children}
+                    </code>
+                  ),
+                  pre: ({ children }) => (
+                    <pre 
+                      className="p-4 rounded-lg overflow-x-auto my-4"
+                      style={{
+                        background: 'rgba(10, 14, 28, 0.6)',
+                        border: '1px solid rgba(100, 120, 180, 0.15)',
+                      }}
+                    >
+                      {children}
+                    </pre>
+                  ),
+                  hr: () => (
+                    <hr className="my-6 border-white/10" style={{ borderColor: 'rgba(100, 120, 180, 0.15)' }} />
+                  ),
+                }}
+              >
+                {content}
+              </ReactMarkdown>
+            </div>
+          </div>
+        )}
       </div>
     </motion.div>
   );

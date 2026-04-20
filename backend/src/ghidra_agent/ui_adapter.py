@@ -340,7 +340,12 @@ def build_report_content(state: AgentState, report_id: str) -> Dict[str, Any]:
         call_graph_sections.append(qiling_overview)
     if call_graph_sections:
         summary = summary.rstrip() + "\n\n" + "\n\n".join(call_graph_sections)
-    return {"id": report_id, "name": "Analysis Report", "timestamp": 0, "content": summary}
+    result: Dict[str, Any] = {"id": report_id, "name": "Analysis Report", "timestamp": 0, "content": summary}
+    # Include HTML view URL so the UI can render the styled report
+    program_hash = state.get("program_hash", "")
+    if program_hash:
+        result["html_url"] = f"/api/analysis/{program_hash}/view/html"
+    return result
 
 
 def _build_call_graph_markdown(source: str, analysis: Dict[str, Any]) -> str:

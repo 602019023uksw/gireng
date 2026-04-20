@@ -1163,6 +1163,19 @@ async def export_html(
     })
 
 
+@app.get("/api/analysis/{program_hash}/view/html")
+async def view_html(
+    program_hash: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> HTMLResponse:
+    """Return the HTML report for inline viewing (no attachment disposition)."""
+    state = await _resolve_by_hash(program_hash, user)
+    if state is None:
+        return HTMLResponse("<h1>Report not found</h1>", status_code=404)
+    html = build_report_html(state)
+    return HTMLResponse(content=html)
+
+
 @app.get("/api/analysis/{program_hash}/export/text")
 async def export_text(
     program_hash: str,

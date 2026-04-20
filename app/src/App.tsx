@@ -1113,7 +1113,17 @@ function App() {
 
                         {/* Analysis Summary */}
                         <AnalysisSection title="Analysis Summary">
-                          {activeReport?.content ? (
+                          {activeReport?.html_url ? (
+                            <div className="w-full" style={{ height: '70vh', minHeight: '500px' }}>
+                              <iframe
+                                src={activeReport.html_url}
+                                className="w-full h-full rounded-lg border-0"
+                                style={{ background: '#050915' }}
+                                title="Analysis Report"
+                                sandbox="allow-scripts allow-same-origin"
+                              />
+                            </div>
+                          ) : activeReport?.content ? (
                             <MarkdownContent content={activeReport.content} compact />
                           ) : (
                             <p className="text-sm text-text-muted italic">

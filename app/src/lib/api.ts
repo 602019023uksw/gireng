@@ -260,6 +260,13 @@ export function getExportHtmlUrl(hash: string): string {
   return `${API_BASE}/api/analysis/${hash}/export/html${token ? sep + 'token=' + encodeURIComponent(token) : ''}`;
 }
 
+// Inline HTML view — returns the URL to embed in an iframe
+export function getViewHtmlUrl(hash: string): string {
+  const token = getStoredToken();
+  const sep = '?';
+  return `${API_BASE}/api/analysis/${hash}/view/html${token ? sep + 'token=' + encodeURIComponent(token) : ''}`;
+}
+
 // Export report as text — returns the URL to open
 export function getExportTextUrl(hash: string): string {
   const token = getStoredToken();
