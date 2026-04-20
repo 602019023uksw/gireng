@@ -602,7 +602,7 @@ function App() {
           updateAnalyzingMessage(step, rawProgress, statusUpdate.status, state);
         },
         2000,
-        1200,
+        1800,
         activeUploadAbortRef.current?.signal,
       );
 

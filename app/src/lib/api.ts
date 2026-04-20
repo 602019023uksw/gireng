@@ -361,7 +361,7 @@ export async function pollStatus(
   sessionId: string,
   onUpdate: (status: StatusResponse) => void,
   intervalMs = 2000,
-  maxPolls = 1200,  // 1200 × 2s = 40 minutes
+  maxPolls = 1800,  // 1800 × 2s = 60 minutes
   signal?: AbortSignal,
 ): Promise<StatusResponse> {
   for (let i = 0; i < maxPolls; i++) {
