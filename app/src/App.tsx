@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { PanelRight, ArrowLeft } from 'lucide-react';
 
@@ -49,6 +49,8 @@ import {
   getRadare2Results,
   getQilingResults,
   getSimilarFiles,
+  getHexDump,
+  getDisassembly,
   getExportHtmlUrl,
   type CallGraphAnalysis,
   type CallGraphRaw,
@@ -259,6 +261,7 @@ function App() {
   const [callGraphPanels, setCallGraphPanels] = useState<CallGraphPanel[]>([]);
   const [qilingResults, setQilingResults] = useState<AnalyzerRawResults | null>(null);
   const [similarFiles, setSimilarFiles] = useState<SimilarFile[]>([]);
+  const [codeViewMode, setCodeViewMode] = useState<'decompiled' | 'disassembly' | 'hex'>('decompiled');
 
   // Track current session
   const sessionRef = useRef<{ id: string; hash: string } | null>(null);
@@ -279,6 +282,82 @@ function App() {
       console.error('Failed to fetch report content:', err);
     }
   }, []);
+
+  // Extract a hex address from a function file name like "FUN_180001000.c" -> "0x180001000"
+  const deriveFunctionAddress = useCallback((fileName: string): string => {
+    const base = fileName.replace(/\.c$/, '');
+    // Match FUN_<hex> or similar patterns
+    const match = base.match(/(?:0x)?([0-9a-fA-F]{4,})/);
+    if (match) {
+      return `0x${match[1]}`;
+    }
+    // If it looks like a raw hex string, use it directly
+    if (/^[0-9a-fA-F]{4,}$/.test(base)) {
+      return `0x${base}`;
+    }
+    return base || 'entry0';
+  }, []);
+
+  // Fetch hex or disassembly when view mode changes
+  const handleCodeViewModeChange = useCallback(async (mode: 'decompiled' | 'disassembly' | 'hex') => {
+    setCodeViewMode(mode);
+    const hash = sessionRef.current?.hash;
+    const file = codeFiles.find(f => f.id === activeCodeFileId);
+    if (!hash || !file) return;
+
+    if (mode === 'hex' && !file.hexDump) {
+      try {
+        const addr = deriveFunctionAddress(file.name);
+        const data = await getHexDump(hash, addr, 256);
+        if (data) {
+          setCodeFiles(prev => prev.map(cf =>
+            cf.id === file.id ? { ...cf, hexDump: data } : cf
+          ));
+        }
+      } catch (err) {
+        console.error('Failed to fetch hex dump:', err);
+      }
+    } else if (mode === 'disassembly' && !file.disassembly) {
+      try {
+        const addr = deriveFunctionAddress(file.name);
+        const data = await getDisassembly(hash, addr, 32);
+        if (data) {
+          setCodeFiles(prev => prev.map(cf =>
+            cf.id === file.id ? { ...cf, disassembly: data } : cf
+          ));
+        }
+      } catch (err) {
+        console.error('Failed to fetch disassembly:', err);
+      }
+    }
+  }, [codeFiles, activeCodeFileId, deriveFunctionAddress]);
+
+  // Auto-fetch hex/disassembly when switching files while already in those modes
+  useEffect(() => {
+    const hash = sessionRef.current?.hash;
+    const file = codeFiles.find(f => f.id === activeCodeFileId);
+    if (!hash || !file) return;
+
+    if (codeViewMode === 'hex' && !file.hexDump) {
+      const addr = deriveFunctionAddress(file.name);
+      getHexDump(hash, addr, 256).then(data => {
+        if (data) {
+          setCodeFiles(prev => prev.map(cf =>
+            cf.id === file.id ? { ...cf, hexDump: data } : cf
+          ));
+        }
+      }).catch(err => console.error('Auto hex fetch failed:', err));
+    } else if (codeViewMode === 'disassembly' && !file.disassembly) {
+      const addr = deriveFunctionAddress(file.name);
+      getDisassembly(hash, addr, 32).then(data => {
+        if (data) {
+          setCodeFiles(prev => prev.map(cf =>
+            cf.id === file.id ? { ...cf, disassembly: data } : cf
+          ));
+        }
+      }).catch(err => console.error('Auto disasm fetch failed:', err));
+    }
+  }, [activeCodeFileId, codeViewMode, codeFiles, deriveFunctionAddress]);
 
   // Fetch all side-panel data for a completed analysis
   // Returns the number of analyzers fetched
@@ -612,6 +691,7 @@ function App() {
         throw new Error('Analysis response is missing program hash');
       }
       sessionRef.current = { id: session_id, hash };
+      setCodeViewMode('decompiled');
 
       // Build result message
       const summary = asString(state.summary, 'Analysis completed.');
@@ -790,14 +870,17 @@ function App() {
     setFileTree([]);
     setCodeFiles([]);
     setReports([]);
+    setActiveReport(null);
     setAnalyses([]);
     setCallGraphPanels([]);
+    setCodeViewMode('decompiled');
     setViewState('welcome');
   };
 
   // Restore a past session from history sidebar
   const handleRestoreSession = useCallback(async (sessionId: string, programHash: string) => {
     sessionRef.current = { id: sessionId, hash: programHash };
+    setCodeViewMode('decompiled');
 
     const restoredMsg: Message = {
       id: Date.now().toString(),
@@ -875,9 +958,11 @@ function App() {
           activeReport={activeReport}
           programHash={sessionRef.current?.hash ?? null}
           qilingResults={qilingResults}
+          codeViewMode={codeViewMode}
           onTabChange={setRightPanelTab}
           onCodeFileChange={setActiveCodeFileId}
           onReportSelect={handleReportSelect}
+          onCodeViewModeChange={handleCodeViewModeChange}
           onClose={() => setRightPanelOpen(false)}
         />
       </ResizablePanel>

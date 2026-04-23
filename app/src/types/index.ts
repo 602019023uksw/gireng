@@ -98,6 +98,8 @@ export interface CodeFile {
   name: string;
   language: string;
   content: string;
+  hexDump?: { address: string; size: number; lines: string[] };
+  disassembly?: { address: string; count: number; instructions: { address: string; mnemonic: string; operands: string; bytes: string; size: number }[] };
 }
 
 export interface SimilarFile {

@@ -333,6 +333,41 @@ export async function getSimilarFiles(hash: string): Promise<{ hash: string; lab
   return res.json();
 }
 
+export interface HexDumpResponse {
+  address: string;
+  size: number;
+  lines: string[];
+}
+
+export interface DisassemblyInstruction {
+  address: string;
+  mnemonic: string;
+  operands: string;
+  bytes: string;
+  size: number;
+}
+
+export interface DisassemblyResponse {
+  address: string;
+  count: number;
+  instructions: DisassemblyInstruction[];
+}
+
+export async function getHexDump(hash: string, address = "0x0", size = 256): Promise<HexDumpResponse | null> {
+  const res = await authFetch(`${API_BASE}/api/analysis/${hash}/hex?address=${encodeURIComponent(address)}&size=${size}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function getDisassembly(hash: string, address = "", count = 32): Promise<DisassemblyResponse | null> {
+  const params = new URLSearchParams();
+  if (address) params.set("address", address);
+  params.set("count", String(count));
+  const res = await authFetch(`${API_BASE}/api/analysis/${hash}/disassembly?${params}`);
+  if (!res.ok) return null;
+  return res.json();
+}
+
 export async function getModels() {
   const res = await authFetch(`${API_BASE}/api/models`);
   if (!res.ok) return [];

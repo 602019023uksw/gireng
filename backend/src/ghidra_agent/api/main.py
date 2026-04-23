@@ -127,6 +127,48 @@ async def health() -> JSONResponse:
     )
 
 
+@app.get("/api/guide", response_class=HTMLResponse)
+async def api_guide() -> HTMLResponse:
+    """Public API integration guide (docs.md) rendered as HTML."""
+    guide_path = Path("/app/docs.md")
+    if not guide_path.exists():
+        # Fallback for local development where docs.md is at repo root
+        guide_path = Path(__file__).resolve().parent.parent.parent.parent.parent / "docs.md"
+    if guide_path.exists():
+        content = guide_path.read_text(encoding="utf-8")
+    else:
+        content = "# API Guide\n\nDocumentation not found."
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gireng API Guide</title>
+<style>
+  body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, monospace; background: #0d1117; color: #c9d1d9; padding: 40px; max-width: 900px; margin: 0 auto; line-height: 1.7; }}
+  h1, h2, h3 {{ color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 8px; }}
+  h1 {{ font-size: 2rem; }}
+  h2 {{ font-size: 1.5rem; margin-top: 40px; }}
+  h3 {{ font-size: 1.2rem; margin-top: 30px; }}
+  pre {{ background: #161b22; padding: 16px; border-radius: 8px; overflow-x: auto; border: 1px solid #30363d; }}
+  code {{ background: #161b22; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }}
+  pre code {{ background: transparent; padding: 0; }}
+  table {{ border-collapse: collapse; width: 100%; margin: 16px 0; }}
+  th, td {{ border: 1px solid #30363d; padding: 10px; text-align: left; }}
+  th {{ background: #161b22; color: #58a6ff; }}
+  tr:nth-child(even) {{ background: #161b22; }}
+  a {{ color: #58a6ff; }}
+  blockquote {{ border-left: 4px solid #30363d; margin: 0; padding-left: 16px; color: #8b949e; }}
+  hr {{ border: none; border-top: 1px solid #30363d; margin: 30px 0; }}
+</style>
+</head>
+<body>
+<pre>{content}</pre>
+</body>
+</html>"""
+    return HTMLResponse(content=html)
+
+
 # ---------------------------------------------------------------------------
 # Auth request / response models
 # ---------------------------------------------------------------------------
@@ -1140,6 +1182,74 @@ async def qiling_results(
         "evasion_techniques": qiling.get("evasion_techniques", {}),
         "instruction_trace": qiling.get("instruction_trace", {}),
         "errors": qiling.get("errors", []),
+    })
+
+
+@app.get("/api/analysis/{program_hash}/hex")
+async def analysis_hex_dump(
+    program_hash: str,
+    address: str = "0x0",
+    size: int = 256,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    """Return a hex dump of the binary at the given address."""
+    state = await _resolve_by_hash(program_hash, user)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    binary_path = state.get("binary_path", "")
+    if not binary_path:
+        return JSONResponse({"error": "binary_path_missing"}, status_code=404)
+    from ghidra_agent.r2_tools import get_runner
+    runner = get_runner()
+    safe_size = min(max(size, 16), 4096)
+    cmd = f"s {address};px {safe_size}"
+    result = await runner.run_command(Path(binary_path), cmd)
+    if not result.ok:
+        return JSONResponse({"error": result.error}, status_code=500)
+    return JSONResponse({
+        "address": address,
+        "size": safe_size,
+        "lines": result.payload.get("raw", "").splitlines(),
+    })
+
+
+@app.get("/api/analysis/{program_hash}/disassembly")
+async def analysis_disassembly(
+    program_hash: str,
+    address: str = "",
+    count: int = 32,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    """Return disassembled instructions at the given address."""
+    state = await _resolve_by_hash(program_hash, user)
+    if state is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    binary_path = state.get("binary_path", "")
+    if not binary_path:
+        return JSONResponse({"error": "binary_path_missing"}, status_code=404)
+    from ghidra_agent.r2_tools import get_runner
+    runner = get_runner()
+    safe_count = min(max(count, 1), 256)
+    addr = address or "entry0"
+    cmd = f"aa;s {addr};pdj {safe_count}"
+    result = await runner.run_json_command(Path(binary_path), cmd)
+    if not result.ok:
+        return JSONResponse({"error": result.error}, status_code=500)
+    instrs_raw = result.payload.get("json", [])
+    instructions = []
+    if isinstance(instrs_raw, list):
+        for ins in instrs_raw:
+            instructions.append({
+                "address": hex(ins.get("offset", 0)),
+                "mnemonic": ins.get("mnemonic", ""),
+                "operands": ins.get("opcode", ""),
+                "bytes": ins.get("bytes", ""),
+                "size": ins.get("size", 0),
+            })
+    return JSONResponse({
+        "address": addr,
+        "count": safe_count,
+        "instructions": instructions,
     })
 
 

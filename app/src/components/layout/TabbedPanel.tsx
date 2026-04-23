@@ -9,6 +9,8 @@ import { MarkdownContent } from '@/components/common/MarkdownContent';
 import { getExportHtmlUrl, getExportTextUrl, getExportPdfUrl } from '@/lib/api';
 import type { AnalyzerRawResults } from '@/lib/api';
 import { QilingResultsView } from '@/components/analysis/QilingResultsView';
+import { HexViewer } from '@/components/code/HexViewer';
+import { DisassemblyView } from '@/components/code/DisassemblyView';
 
 interface TabbedPanelProps {
   files: FileNode[];
@@ -20,9 +22,11 @@ interface TabbedPanelProps {
   activeReport?: Report | null;
   programHash?: string | null;
   qilingResults?: AnalyzerRawResults | null;
+  codeViewMode?: 'decompiled' | 'disassembly' | 'hex';
   onTabChange: (tab: 'resources' | 'code' | 'report' | 'dynamic') => void;
   onCodeFileChange: (fileId: string) => void;
   onReportSelect?: (reportId: string) => void;
+  onCodeViewModeChange?: (mode: 'decompiled' | 'disassembly' | 'hex') => void;
   onClose: () => void;
 }
 
@@ -222,9 +226,11 @@ export function TabbedPanel({
   activeReport,
   programHash,
   qilingResults,
+  codeViewMode,
   onTabChange,
   onCodeFileChange,
   onReportSelect,
+  onCodeViewModeChange,
   onClose,
 }: TabbedPanelProps) {
   const activeCodeFile = codeFiles.find(f => f.id === activeCodeFileId) || codeFiles[0];
@@ -315,6 +321,25 @@ export function TabbedPanel({
       case 'code':
         return (
           <div className="flex flex-col h-full">
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-white/10"
+              style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+            >
+              {(['decompiled', 'disassembly', 'hex'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => onCodeViewModeChange?.(mode)}
+                  className={`px-2 py-1 rounded text-xs font-medium capitalize transition-all ${
+                    (codeViewMode || 'decompiled') === mode
+                      ? 'text-text-primary bg-white/10'
+                      : 'text-text-muted hover:text-text-secondary'
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+
             {/* Code File Tabs */}
             <div className="flex items-center gap-1 px-2 py-2 border-b border-white/10 overflow-x-auto scrollbar-hide"
               style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
@@ -342,11 +367,19 @@ export function TabbedPanel({
               ))}
             </div>
 
-            {/* Code Content */}
-            <div className="flex-1 overflow-auto scrollbar-dark p-4">
-              <pre className="text-sm font-mono text-text-secondary">
-                {activeCodeFile?.content}
-              </pre>
+            {/* Content Area */}
+            <div className="flex-1 overflow-auto scrollbar-dark">
+              {(codeViewMode || 'decompiled') === 'hex' && activeCodeFile?.hexDump ? (
+                <HexViewer lines={activeCodeFile.hexDump.lines} />
+              ) : (codeViewMode || 'decompiled') === 'disassembly' && activeCodeFile?.disassembly ? (
+                <DisassemblyView instructions={activeCodeFile.disassembly.instructions} />
+              ) : (
+                <div className="p-4">
+                  <pre className="text-sm font-mono text-text-secondary">
+                    {activeCodeFile?.content}
+                  </pre>
+                </div>
+              )}
             </div>
           </div>
         );
