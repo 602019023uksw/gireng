@@ -95,6 +95,8 @@ async def get_current_user(request: Request) -> Dict[str, Any]:
     if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Account disabled")
 
+    # Expose user on request.state for downstream middleware / rate limiters
+    request.state.user = user
     return user
 
 

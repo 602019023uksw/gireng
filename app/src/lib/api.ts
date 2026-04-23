@@ -182,7 +182,7 @@ export interface CallGraphAnalysis {
 }
 
 export interface AnalyzerRawResults {
-  analyzer: 'ghidra' | 'radare2' | string;
+  analyzer: 'ghidra' | 'radare2' | 'qiling';
   binary?: Record<string, unknown>;
   functions?: Record<string, unknown>;
   strings?: Record<string, unknown>;

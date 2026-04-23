@@ -21,6 +21,7 @@ LLM_R2_DECOMP_LIMIT = 20
 LLM_DECOMP_SNIPPET_CHARS = 2000
 LLM_DECOMP_SNIPPET_CHARS_HIGH = 10000
 LLM_HIGH_PRIORITY_COUNT = 5
+LLM_MAX_FUNC_INDEX = 200
 
 
 def _safe_sequence(value: Any) -> List[Any]:
@@ -336,10 +337,9 @@ def build_analysis_context(
         )
         # Function index (names only) so the LLM can reference any function.
         # Cap at 200 to avoid blowing up the context on large binaries.
-        _MAX_FUNC_INDEX = 200
-        all_func_names = [f"{f.get('name')}@{f.get('address')}" for f in sorted_funcs[:_MAX_FUNC_INDEX]]
+        all_func_names = [f"{f.get('name')}@{f.get('address')}" for f in sorted_funcs[:LLM_MAX_FUNC_INDEX]]
         if all_func_names:
-            suffix = f" ... ({len(sorted_funcs) - _MAX_FUNC_INDEX} more truncated)" if len(sorted_funcs) > _MAX_FUNC_INDEX else ""
+            suffix = f" ... ({len(sorted_funcs) - LLM_MAX_FUNC_INDEX} more truncated)" if len(sorted_funcs) > LLM_MAX_FUNC_INDEX else ""
             context_parts.append(f"Function index: {', '.join(all_func_names)}{suffix}")
 
     strings_data = results.get("strings", {})
@@ -472,9 +472,9 @@ def build_analysis_context(
                 for f in r2_sorted[:40]
             ]
             context_parts.append(f"R2 Functions by priority ({len(r2_funcs['functions'])} total): {', '.join(r2_desc)}")
-            r2_all_names = [f"{f.get('name')}@{f.get('address')}" for f in r2_sorted[:_MAX_FUNC_INDEX]]
+            r2_all_names = [f"{f.get('name')}@{f.get('address')}" for f in r2_sorted[:LLM_MAX_FUNC_INDEX]]
             if r2_all_names:
-                suffix = f" ... ({len(r2_sorted) - _MAX_FUNC_INDEX} more truncated)" if len(r2_sorted) > _MAX_FUNC_INDEX else ""
+                suffix = f" ... ({len(r2_sorted) - LLM_MAX_FUNC_INDEX} more truncated)" if len(r2_sorted) > LLM_MAX_FUNC_INDEX else ""
                 context_parts.append(f"R2 Function index: {', '.join(r2_all_names)}{suffix}")
         r2_strings = r2_results.get("strings", {})
         if r2_strings.get("ok") and r2_strings.get("strings"):

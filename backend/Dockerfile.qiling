@@ -8,10 +8,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 ARG QILING_VERSION=1.4.6
 RUN pip install --no-cache-dir "qiling==${QILING_VERSION}"
 
-# Clone required Qiling rootfs directories with sparse checkout + LFS.
+# Pin Qiling rootfs to a specific commit for reproducible builds.
 # The Windows rootfs requires DLLs and registry hives tracked via Git LFS.
-RUN git clone --depth 1 --sparse https://github.com/qilingframework/rootfs.git /tmp/qiling-rootfs \
+ARG ROOTFS_COMMIT=120fb6d37700a2d4c0e35ced599aaee7a8f98723
+RUN git init /tmp/qiling-rootfs \
     && cd /tmp/qiling-rootfs \
+    && git remote add origin https://github.com/qilingframework/rootfs.git \
+    && git fetch --depth 1 origin ${ROOTFS_COMMIT} \
+    && git checkout FETCH_HEAD \
     && git sparse-checkout set x86_linux x8664_linux x86_windows x8664_windows \
     && git lfs pull \
     && mkdir -p /opt/qiling/rootfs \

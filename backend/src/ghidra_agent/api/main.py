@@ -34,7 +34,14 @@ from ghidra_agent.models import (
     StatusResponse,
 )
 from ghidra_agent.ranking_utils import _function_priority_key
-from ghidra_agent.reporting import build_agent_report_html, build_report_html, build_report_pdf, build_report_text
+from ghidra_agent.rate_limiter import query_limit, upload_limit
+# Updated to import from the new reporting package (ghidra_agent.reporting/)
+from ghidra_agent.reporting import (
+    build_agent_report_html,
+    build_report_html,
+    build_report_pdf,
+    build_report_text,
+)
 from ghidra_agent.sessions import run_graph, store
 from ghidra_agent.ui_adapter import (
     build_analyzer_response,
@@ -50,7 +57,13 @@ from ghidra_agent.utils import ensure_directory, safe_basename
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: nothing needed (pool is lazy)
+    # Startup: validate security configuration
+    if settings.jwt_secret in ("changeme-gireng-jwt-secret-key", ""):
+        logger.warning("insecure_jwt_secret", hint="Set JWT_SECRET env var to a strong random value")
+    if settings.admin_password == "admin":
+        logger.warning("insecure_admin_password", hint="Set ADMIN_PASSWORD env var to a strong password")
+    if settings.database_url.startswith("postgresql://gireng:gireng_secret@"):
+        logger.warning("insecure_database_password", hint="Change default database credentials")
     yield
     # Shutdown: close DB pool
     await db.close_db()
@@ -86,7 +99,6 @@ for _o in _DEFAULT_ORIGINS:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
-    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1)(:\d+)?",  # catch any localhost port
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -463,6 +475,7 @@ async def analyze_upload(
     file: UploadFile = File(...),
     model: Optional[str] = Form(None),
     user: Dict[str, Any] = Depends(get_current_user),
+    _rate: None = Depends(upload_limit),
 ) -> SessionCreateResponse:
     if not can_write(user):
         raise HTTPException(status_code=403, detail="Guests cannot upload files")
@@ -524,6 +537,7 @@ async def status(
 async def query(
     request: QueryRequest,
     user: Dict[str, Any] = Depends(get_current_user),
+    _rate: None = Depends(query_limit),
 ) -> JSONResponse:
     """Answer follow-up questions using existing analysis context (no re-analysis)."""
     if not can_write(user):
@@ -787,15 +801,17 @@ INSTRUCTIONS:
 
 @app.websocket("/stream/{session_id}")
 async def stream(session_id: str, websocket: WebSocket) -> None:
-    # Validate JWT from query param (optional — allow unauthenticated for backward compat)
+    # Validate JWT from query param — required for security
     token = websocket.query_params.get("token")
-    if token:
-        try:
-            from ghidra_agent.auth import decode_token
-            decode_token(token)
-        except Exception:
-            await websocket.close(code=4001, reason="Invalid token")
-            return
+    if not token:
+        await websocket.close(code=4001, reason="Token required")
+        return
+    try:
+        from ghidra_agent.auth import decode_token
+        decode_token(token)
+    except Exception:
+        await websocket.close(code=4001, reason="Invalid token")
+        return
     await manager.connect(session_id, websocket)
     try:
         while True:
