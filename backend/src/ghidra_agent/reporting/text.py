@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """Plain-text report generation."""
 
+import logging
+import re
+from datetime import datetime, timezone
+from html import escape
 from typing import Any, Dict
 
 from ghidra_agent.reporting.common import *
+from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
 
 def build_report_text(state: Dict[str, Any]) -> str:
     """Build a rich, sandbox.md-inspired plain text report for download.
@@ -131,6 +136,10 @@ def build_report_text(state: Dict[str, Any]) -> str:
     stripped_str   = ("Yes" if stripped_val is True
                       else "No" if stripped_val is False
                       else str(stripped_val))
+    started_at = state.get("started_at_iso", "")
+    completed_at = state.get("completed_at_iso", "")
+    started_str = _format_timestamp(started_at) if started_at else "—"
+    completed_str = _format_timestamp(completed_at) if completed_at else "—"
 
     lines += [SEP, "FILE METADATA", SEP]
     meta_rows = [
@@ -148,6 +157,8 @@ def build_report_text(state: Dict[str, Any]) -> str:
                            f"  ·  R2: {len(r2_funcs_list)} ({len(r2_decomp)} decompiled)")),
         ("Strings",       (f"Ghidra: {len(strings_data.get('strings', []))}"
                            f"  ·  R2: {len(r2_strings_data.get('strings', []))}")),
+        ("Analysis Start", started_str),
+        ("Analysis End",   completed_str),
     ]
     if gh_imports or r2_imports_list:
         meta_rows.append(("Imports", _format_import_export_list(gh_imports or r2_imports_list)))

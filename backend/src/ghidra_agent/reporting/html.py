@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """HTML report generation."""
 
+import logging
+import re
+from datetime import datetime, timezone
+from html import escape
 from typing import Any, Dict
 
 from ghidra_agent.reporting.common import *
+from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
 
 def build_report_html(state: Dict[str, Any]) -> str:
     """Build HTML report using a modern analyst-focused template."""
@@ -55,6 +60,10 @@ def build_report_html(state: Dict[str, Any]) -> str:
     file_name = escape(state.get("binary_path", "unknown").split("/")[-1])
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
     task_id = state.get("session_id", "unknown")[:8]
+    started_at = state.get("started_at_iso", "")
+    completed_at = state.get("completed_at_iso", "")
+    started_str = _format_timestamp(started_at) if started_at else "—"
+    completed_str = _format_timestamp(completed_at) if completed_at else "—"
 
     logger.info("build_report_html: summary_text length=%d", len(summary_text))
 
@@ -210,7 +219,11 @@ def build_report_html(state: Dict[str, Any]) -> str:
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Functions</td>
                                         <td>Ghidra: {len(funcs.get('functions', []))} ({len(state.get('decompilation_cache', {}))}&nbsp;decompiled) &middot; R2: {len(r2_funcs.get('functions', []))} ({len(state.get('r2_decompilation_cache', {}))}&nbsp;decompiled)</td></tr>
                                     <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Strings</td>
-                                        <td>Ghidra: {len(strings_data.get('strings', []))} &middot; R2: {len(r2_strings.get('strings', []))} extracted</td></tr>'''
+                                        <td>Ghidra: {len(strings_data.get('strings', []))} &middot; R2: {len(r2_strings.get('strings', []))} extracted</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Analysis Started</td>
+                                        <td>{started_str}</td></tr>
+                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Analysis Completed</td>
+                                        <td>{completed_str}</td></tr>'''
 
     has_qiling = bool(qiling_results)
     qiling_section_no = "12" if has_qiling else "11"

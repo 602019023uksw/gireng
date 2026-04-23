@@ -474,3 +474,50 @@ export async function deleteHistoryItem(sessionId: string): Promise<boolean> {
   const res = await authFetch(`${API_BASE}/api/history/${sessionId}`, { method: 'DELETE' });
   return res.ok;
 }
+
+export interface QAHistoryItem {
+  id: number;
+  session_id: string;
+  question: string;
+  answer: string;
+  created_at: string;
+}
+
+export async function getQAHistory(sessionId: string): Promise<QAHistoryItem[]> {
+  const res = await authFetch(`${API_BASE}/api/history/${sessionId}/qa`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export interface ChatMessageItem {
+  id: number;
+  session_id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  msg_type: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export async function getChatMessages(sessionId: string): Promise<ChatMessageItem[]> {
+  const res = await authFetch(`${API_BASE}/api/history/${sessionId}/messages`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function saveChatMessage(
+  sessionId: string,
+  role: string,
+  content: string,
+  msgType?: string,
+  metadata?: Record<string, unknown>,
+): Promise<void> {
+  const res = await authFetch(`${API_BASE}/api/history/${sessionId}/messages`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ role, content, msg_type: msgType, metadata }),
+  });
+  if (!res.ok) {
+    console.error('Failed to save chat message:', await res.text().catch(() => ''));
+  }
+}

@@ -234,6 +234,21 @@ async def _init_schema() -> None:
         """)
         await conn.execute("CREATE INDEX IF NOT EXISTS idx_qa_session ON qa_history(session_id)")
 
+        # -- Chat Messages (full conversation thread) ----------------------
+        await conn.execute("""
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id          SERIAL PRIMARY KEY,
+                session_id  TEXT NOT NULL REFERENCES analyses(id) ON DELETE CASCADE,
+                role        TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+                content     TEXT NOT NULL,
+                msg_type    TEXT,
+                metadata    JSONB,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+        """)
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_session ON chat_messages(session_id)")
+        await conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_created ON chat_messages(created_at)")
+
         # -- User-Binary ownership (many-to-many) --------------------------
         await conn.execute("""
             CREATE TABLE IF NOT EXISTS user_binaries (
@@ -483,6 +498,40 @@ async def save_qa(session_id: str, question: str, answer: str) -> None:
             "INSERT INTO qa_history (session_id, question, answer) VALUES ($1, $2, $3)",
             session_id, question, answer,
         )
+
+
+async def save_chat_message(
+    session_id: str,
+    role: str,
+    content: str,
+    msg_type: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist a single chat message to the conversation thread."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            INSERT INTO chat_messages (session_id, role, content, msg_type, metadata)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            session_id,
+            role,
+            content,
+            msg_type,
+            json.dumps(metadata) if metadata is not None else None,
+        )
+
+
+async def get_chat_messages(session_id: str) -> List[Dict[str, Any]]:
+    """Fetch full conversation thread for a session, oldest first."""
+    pool = await get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            "SELECT * FROM chat_messages WHERE session_id = $1 ORDER BY created_at ASC",
+            session_id,
+        )
+    return [_row_to_dict(r) for r in rows]
 
 
 async def get_analysis_by_id(session_id: str) -> Optional[Dict[str, Any]]:

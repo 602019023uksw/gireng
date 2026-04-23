@@ -895,6 +895,13 @@ async def _run_with_events(state: Dict[str, Any]) -> None:
             await db.save_normalized(result)
         except Exception as norm_exc:
             logger.warning("save_normalized_failed", session_id=session_id, error=str(norm_exc))
+        # Persist analysis report to QA history so it survives page refreshes
+        try:
+            summary = result.get("summary", "")
+            if summary:
+                await db.save_qa(session_id, "Analyze this binary", summary)
+        except Exception:
+            pass
         await manager.broadcast(
             session_id,
             {
@@ -1044,6 +1051,7 @@ async def analysis_status(
         "malwareTypeConfidence": mconf,
         "tags": tags,
         "indicators": indicators[:10],
+        "summary": state.get("summary", ""),
     })
 
 
@@ -1471,6 +1479,30 @@ async def get_history_qa(
     """Get Q&A history for a past analysis session."""
     qa = await db.get_qa_history(session_id)
     return JSONResponse(qa)
+
+
+@app.get("/api/history/{session_id}/messages")
+async def get_history_messages(
+    session_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    """Get full chat message thread for a past analysis session."""
+    messages = await db.get_chat_messages(session_id)
+    return JSONResponse(messages)
+
+
+@app.post("/api/history/{session_id}/messages")
+async def save_history_message(
+    session_id: str,
+    role: str,
+    content: str,
+    msg_type: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> JSONResponse:
+    """Save a chat message to the conversation thread."""
+    await db.save_chat_message(session_id, role, content, msg_type, metadata)
+    return JSONResponse({"ok": True})
 
 
 @app.post("/api/history/{session_id}/restore")

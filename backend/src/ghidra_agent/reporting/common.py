@@ -12,6 +12,48 @@ from ghidra_agent.ioc_extractor import IOCs, calculate_verdict, extract_iocs_fro
 
 logger = logging.getLogger(__name__)
 
+__all__ = [
+    'logger',
+    '_set_report_tone',
+    '_format_timestamp',
+    '_code_color',
+    '_MAX_ENTRY_POINTS',
+    '_JAVA_TOSTRING_RE',
+    '_sanitize_compiler',
+    '_format_entry_points',
+    '_MAX_IMPORT_EXPORT',
+    '_clean_import_name',
+    '_format_import_export_list',
+    '_extract_section',
+    '_markdown_to_html',
+    '_parse_iocs_for_template',
+    '_extract_recommendations',
+    '_extract_evidence',
+    '_REC_STYLES',
+    '_render_evidence',
+    '_render_recommendations',
+    '_CAP_ICONS',
+    '_TECH_ICONS',
+    '_inline_code_html',
+    '_render_mitre_cards',
+    '_render_capabilities_cards',
+    '_render_technical_cards',
+    '_render_functions_cards',
+    '_render_evidence_cards',
+    '_render_operational_flow',
+    '_render_iocs',
+    '_deduplicate_chains',
+    '_render_call_graph_section',
+    '_render_qiling_dynamic_section',
+    '_HIGH_VALUE_APIS',
+    '_CONTEXT_APIS',
+    '_API_WORD_RE',
+    '_GENERIC_ONLY_APIS',
+    '_OPENSSL_CONTENT_RE',
+    '_is_library_content',
+    '_render_code_evidence',
+]
+
 # ── Report tone context (set per-build_report_html call) ──
 _report_tone: str = "neutral"  # neutral | clean | suspicious | malicious
 
@@ -19,6 +61,15 @@ _report_tone: str = "neutral"  # neutral | clean | suspicious | malicious
 def _set_report_tone(tone: str) -> None:
     global _report_tone
     _report_tone = tone
+
+
+def _format_timestamp(iso_string: str) -> str:
+    """Convert an ISO-8601 string to a human-readable format."""
+    try:
+        dt = datetime.fromisoformat(iso_string.replace('Z', '+00:00'))
+        return dt.strftime('%Y-%m-%d %H:%M:%S UTC')
+    except Exception:
+        return iso_string
 
 
 def _code_color() -> str:

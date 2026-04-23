@@ -52,8 +52,13 @@ import {
   getHexDump,
   getDisassembly,
   getExportHtmlUrl,
+  getQAHistory,
+  getChatMessages,
+  saveChatMessage,
   type CallGraphAnalysis,
   type CallGraphRaw,
+  type QAHistoryItem,
+  type ChatMessageItem,
 } from '@/lib/api';
 
 import {
@@ -265,9 +270,58 @@ function App() {
 
   // Track current session
   const sessionRef = useRef<{ id: string; hash: string } | null>(null);
+  // Persist active session across page refreshes (soft fallback when URL is bare)
+  const LAST_SESSION_KEY = 'gireng:last_session';
   // Track active upload resources for cancellation
   const activeStreamRef = useRef<WebSocket | null>(null);
   const activeUploadAbortRef = useRef<AbortController | null>(null);
+
+  // Helper: persist a message to the backend chat log
+  const persistMessage = useCallback(
+    async (message: Message, msgType?: string, overrideSessionId?: string) => {
+      const sid = overrideSessionId || sessionRef.current?.id;
+      if (!sid) return;
+      const role = message.isUser ? 'user' : message.toolCalls?.some(t => t.name === 'Report Generation') ? 'system' : 'assistant';
+      const metadata: Record<string, unknown> = {};
+      if (message.showAnalysisCompleted) metadata.showAnalysisCompleted = true;
+      if (message.analysisHash) metadata.analysisHash = message.analysisHash;
+      if (message.analyzerCount !== undefined) metadata.analyzerCount = message.analyzerCount;
+      if (message.analyzerTotal !== undefined) metadata.analyzerTotal = message.analyzerTotal;
+      if (message.agentId) metadata.agentId = message.agentId;
+      if (message.toolCalls && message.toolCalls.length > 0) metadata.toolCalls = message.toolCalls;
+      await saveChatMessage(sid, role, message.content, msgType, metadata);
+    },
+    [],
+  );
+
+  // ---------------------------------------------------------------------------
+  // URL-based session routing (bookmarkable, shareable analysis URLs)
+  // ---------------------------------------------------------------------------
+  const readSessionFromUrl = (): { sessionId: string | null; hash: string | null } => {
+    const params = new URLSearchParams(window.location.search);
+    return {
+      sessionId: params.get('session'),
+      hash: params.get('hash'),
+    };
+  };
+
+  const writeSessionToUrl = (sessionId: string, hash: string, replace = true) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('session', sessionId);
+    url.searchParams.set('hash', hash);
+    if (replace) {
+      window.history.replaceState({}, '', url);
+    } else {
+      window.history.pushState({}, '', url);
+    }
+  };
+
+  const clearSessionFromUrl = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete('session');
+    url.searchParams.delete('hash');
+    window.history.replaceState({}, '', url);
+  };
 
   // Fetch report content when a report is selected
   const handleReportSelect = useCallback(async (reportId: string) => {
@@ -360,8 +414,8 @@ function App() {
   }, [activeCodeFileId, codeViewMode, codeFiles, deriveFunctionAddress]);
 
   // Fetch all side-panel data for a completed analysis
-  // Returns the number of analyzers fetched
-  const fetchAnalysisData = useCallback(async (hash: string): Promise<number> => {
+  // Returns analyzer count and optional summary text
+  const fetchAnalysisData = useCallback(async (hash: string): Promise<{ count: number; summary?: string }> => {
     try {
       const [analysisInfo, analyzersData, filesData, reportsData, ghidraResults, radare2Results, qilingResults, similarFilesData] = await Promise.all([
         getAnalysis(hash),
@@ -463,10 +517,10 @@ function App() {
         verdict: overallVerdict,
         status: 'completed',
       }]);
-      return (analyzersData || []).length;
+      return { count: (analyzersData || []).length, summary: analysisInfo?.summary };
     } catch (err) {
       console.error('Failed to fetch analysis data:', err);
-      return 0;
+      return { count: 0 };
     }
   }, []);
 
@@ -500,6 +554,7 @@ function App() {
 
     try {
       const { session_id } = await uploadBinary(file, selectedModelId);
+      persistMessage(uploadMsg, 'upload', session_id);
       const analyzingMsg: Message = {
         id: (Date.now() + 1).toString(),
         content:
@@ -691,6 +746,8 @@ function App() {
         throw new Error('Analysis response is missing program hash');
       }
       sessionRef.current = { id: session_id, hash };
+      localStorage.setItem(LAST_SESSION_KEY, JSON.stringify({ sessionId: session_id, hash }));
+      writeSessionToUrl(session_id, hash);
       setCodeViewMode('decompiled');
 
       // Build result message
@@ -721,6 +778,7 @@ function App() {
         const filtered = prev.filter(m => m.id !== analyzingMsg.id);
         return [...filtered, resultMsg];
       });
+      persistMessage(resultMsg, 'analysis_complete');
 
       // Populate side panel data
       const endTime = Date.now();
@@ -743,7 +801,7 @@ function App() {
         started: startedStr,
         completed: completedStr,
       });
-      const realAnalyzerCount = await fetchAnalysisData(hash);
+      const { count: realAnalyzerCount } = await fetchAnalysisData(hash);
       if (realAnalyzerCount > 0) {
         setMessages(prev =>
           prev.map(m =>
@@ -784,6 +842,7 @@ function App() {
     };
     setMessages(prev => [...prev, userMessage]);
     setViewState('chat');
+    persistMessage(userMessage, 'qa');
 
     // If no active session, check if this looks like a file upload request
     if (!sessionRef.current) {
@@ -840,6 +899,7 @@ function App() {
         const filtered = prev.filter(m => m.id !== thinkingMsg.id);
         return [...filtered, responseMsg];
       });
+      persistMessage(responseMsg, 'qa');
 
       // Refresh side panel data
       await fetchAnalysisData(sessionRef.current.hash);
@@ -860,12 +920,15 @@ function App() {
         const filtered = prev.filter(m => m.id !== thinkingMsg.id);
         return [...filtered, errMsg];
       });
+      persistMessage(errMsg, 'error');
     }
-  }, [fetchAnalysisData]);
+  }, [fetchAnalysisData, persistMessage]);
 
   const handleNewChat = () => {
     setMessages([]);
     sessionRef.current = null;
+    localStorage.removeItem(LAST_SESSION_KEY);
+    clearSessionFromUrl();
     setAnalyzers([]);
     setFileTree([]);
     setCodeFiles([]);
@@ -880,41 +943,121 @@ function App() {
   // Restore a past session from history sidebar
   const handleRestoreSession = useCallback(async (sessionId: string, programHash: string) => {
     sessionRef.current = { id: sessionId, hash: programHash };
+    localStorage.setItem(LAST_SESSION_KEY, JSON.stringify({ sessionId, hash: programHash }));
     setCodeViewMode('decompiled');
-
-    const restoredMsg: Message = {
-      id: Date.now().toString(),
-      content: `Restored past analysis for binary \`${programHash.slice(0, 16)}...\``,
-      isUser: false,
-      timestamp: new Date(),
-    };
-    setMessages([restoredMsg]);
     setViewState('chat');
 
-    // Load analysis data from the restored session
+    // Load full chat thread from DB (primary)
+    let chatMessages: Message[] = [];
     try {
-      const analyzerCount = await fetchAnalysisData(programHash);
-      const completedMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `Analysis data loaded. ${analyzerCount} analyzer(s) available. You can ask follow-up questions or view the analysis.`,
-        isUser: false,
-        timestamp: new Date(),
-        showAnalysisCompleted: true,
-        analysisHash: programHash,
-        analyzerCount,
-        analyzerTotal: analyzerCount,
-      };
-      setMessages(prev => [...prev, completedMsg]);
+      const dbMessages = await getChatMessages(sessionId);
+      if (dbMessages.length > 0) {
+        chatMessages = dbMessages.map((item: ChatMessageItem): Message => ({
+          id: `chat-${item.id}`,
+          content: item.content,
+          isUser: item.role === 'user',
+          timestamp: new Date(item.created_at),
+          ...(item.metadata?.showAnalysisCompleted ? { showAnalysisCompleted: true } : {}),
+          ...(item.metadata?.analysisHash ? { analysisHash: item.metadata.analysisHash as string } : {}),
+          ...(item.metadata?.analyzerCount !== undefined ? { analyzerCount: item.metadata.analyzerCount as number } : {}),
+          ...(item.metadata?.analyzerTotal !== undefined ? { analyzerTotal: item.metadata.analyzerTotal as number } : {}),
+          ...(item.metadata?.agentId ? { agentId: item.metadata.agentId as string } : {}),
+          ...(item.metadata?.toolCalls ? { toolCalls: item.metadata.toolCalls as ToolCall[] } : {}),
+        }));
+        setMessages(chatMessages);
+      }
     } catch {
-      const errMsg: Message = {
-        id: (Date.now() + 2).toString(),
-        content: 'Failed to load analysis data from this session.',
-        isUser: false,
-        timestamp: new Date(),
-      };
-      setMessages(prev => [...prev, errMsg]);
+      // Non-critical
+    }
+
+    // Load analysis data for side panels
+    try {
+      const { count: analyzerCount, summary } = await fetchAnalysisData(programHash);
+
+      // Legacy fallback: no chat_messages in DB — reconstruct from QA history
+      if (chatMessages.length === 0) {
+        const restoredMsg: Message = {
+          id: Date.now().toString(),
+          content: `Restored past analysis for binary \`${programHash.slice(0, 16)}...\``,
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages([restoredMsg]);
+
+        let qaMessages: Message[] = [];
+        try {
+          const qaHistory = await getQAHistory(sessionId);
+          qaMessages = qaHistory.flatMap((qa: QAHistoryItem): Message[] => {
+            const ts = new Date(qa.created_at);
+            return [
+              { id: `qa-q-${qa.id}`, content: qa.question, isUser: true, timestamp: ts },
+              { id: `qa-a-${qa.id}`, content: qa.answer, isUser: false, timestamp: ts },
+            ];
+          });
+        } catch {
+          // QA history is non-critical; don't block restore on failure
+        }
+
+        // Build the analysis header message (export buttons + metadata)
+        const headerMsg: Message = {
+          id: (Date.now() + 1).toString(),
+          content: qaMessages.length > 0
+            ? `Analysis data loaded. ${analyzerCount} analyzer(s) available. You can ask follow-up questions or view the analysis.`
+            : summary?.trim() || 'Analysis completed.',
+          isUser: false,
+          timestamp: new Date(),
+          showAnalysisCompleted: true,
+          analysisHash: programHash,
+          analyzerCount,
+          analyzerTotal: analyzerCount,
+        };
+        setMessages(prev => [...prev, ...qaMessages, headerMsg]);
+      }
+    } catch {
+      if (chatMessages.length === 0) {
+        const errMsg: Message = {
+          id: (Date.now() + 2).toString(),
+          content: 'Failed to load analysis data from this session.',
+          isUser: false,
+          timestamp: new Date(),
+        };
+        setMessages(prev => [...prev, errMsg]);
+      }
     }
   }, [fetchAnalysisData]);
+
+  // Restore session on mount from URL params (primary) or localStorage (fallback)
+  useEffect(() => {
+    const url = readSessionFromUrl();
+    if (url.sessionId && url.hash) {
+      handleRestoreSession(url.sessionId, url.hash);
+      return;
+    }
+    const raw = localStorage.getItem(LAST_SESSION_KEY);
+    if (!raw) return;
+    try {
+      const { sessionId, hash } = JSON.parse(raw);
+      if (sessionId && hash) {
+        handleRestoreSession(sessionId, hash);
+      }
+    } catch {
+      localStorage.removeItem(LAST_SESSION_KEY);
+    }
+  }, [handleRestoreSession]);
+
+  // Handle browser back/forward navigation
+  useEffect(() => {
+    const onPopState = () => {
+      const url = readSessionFromUrl();
+      if (url.sessionId && url.hash) {
+        handleRestoreSession(url.sessionId, url.hash);
+      } else {
+        handleNewChat();
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    return () => window.removeEventListener('popstate', onPopState);
+  }, [handleRestoreSession, handleNewChat]);
 
   const handleQuickAction = useCallback((actionId: string) => {
     const action = mockQuickActions.find(a => a.id === actionId);
@@ -1049,7 +1192,10 @@ function App() {
         sidebar={
           <Sidebar
             onNewChat={handleNewChat}
-            onRestoreSession={handleRestoreSession}
+            onRestoreSession={(sessionId: string, programHash: string) => {
+              writeSessionToUrl(sessionId, programHash, false);
+              handleRestoreSession(sessionId, programHash);
+            }}
           />
         }
         rightPanel={renderRightPanel()}

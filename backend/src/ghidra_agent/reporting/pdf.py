@@ -1,9 +1,14 @@
 # -*- coding: utf-8 -*-
 """PDF report generation."""
 
+import logging
+import re
+from datetime import datetime, timezone
+from html import escape
 from typing import Any, Dict
 
 from ghidra_agent.reporting.common import *
+from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
 
 def _pdf_md_to_html(text: str) -> str:
     """Lightweight markdown→HTML for PDF (light-mode, no Tailwind dark: classes)."""
