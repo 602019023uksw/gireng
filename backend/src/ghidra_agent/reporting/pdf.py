@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 from ghidra_agent.reporting.common import *
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
+from ghidra_agent.function_priority import is_library_function
 
 def _pdf_md_to_html(text: str) -> str:
     """Lightweight markdown→HTML for PDF (light-mode, no Tailwind dark: classes)."""
