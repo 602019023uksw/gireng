@@ -508,9 +508,12 @@ Content-Type: application/json
 {
   "session_id": "a1b2c3d4-...",
   "query": "What functions handle network connections?",
-  "model": "deepseek-v4-pro"
+  "model": "deepseek-v4-pro",
+  "response_format": {"type": "json_object"}
 }
 ```
+
+`response_format` is optional. Use `{"type": "json_object"}` when the prompt asks for strict JSON output.
 
 **Response:**
 ```json

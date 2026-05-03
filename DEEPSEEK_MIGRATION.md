@@ -23,7 +23,7 @@ The following aliases are also supported for compatibility with common SDK forma
 
 ## Code changes
 
-- `backend/src/ghidra_agent/llm.py` resolves API key, base URL, provider, and model from env variables and sends DeepSeek thinking controls via `extra_body`.
+- `backend/src/ghidra_agent/llm.py` resolves API key, base URL, provider, and model from env variables, sends DeepSeek thinking controls via `extra_body`, preserves `reasoning_content` across tool-call turns, and supports `response_format={"type": "json_object"}` for strict JSON output.
 - `backend/src/ghidra_agent/function_tools.py` contains the OpenAI-compatible function/tool registry.
 - `backend/src/ghidra_agent/glm_function_tools.py` remains as a backward-compatible import shim.
 - `docker-compose.yml`, `.env.template`, README, API docs, and UI model defaults now point to DeepSeek models.

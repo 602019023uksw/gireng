@@ -1,31 +1,37 @@
 import asyncio
+import os
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect, Depends, Query
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, Response
-from pydantic import BaseModel as PydanticBaseModel, EmailStr, Field as PydanticField
+from pydantic import BaseModel as PydanticBaseModel
 
 from ghidra_agent import database as db
+from ghidra_agent.api.memory_routes import router as memory_router
 from ghidra_agent.auth import (
     can_write,
     create_access_token,
     get_current_user,
-    get_optional_user,
     hash_password,
     is_admin,
     require_role,
     verify_password,
 )
 from ghidra_agent.config import settings
-from ghidra_agent.ioc_extractor import calculate_verdict, classify_malware_type, build_analysis_tags, extract_iocs_from_state, format_iocs_for_report
+from ghidra_agent.context_builder import build_analysis_context
+from ghidra_agent.ioc_extractor import (
+    build_analysis_tags,
+    calculate_verdict,
+    classify_malware_type,
+    extract_iocs_from_state,
+)
 from ghidra_agent.langfuse_tracing import create_standalone_trace_metadata
 from ghidra_agent.llm import call_llm
-from ghidra_agent.context_builder import build_analysis_context
 from ghidra_agent.logging import configure_logging, logger
 from ghidra_agent.models import (
     QueryRequest,
@@ -33,8 +39,8 @@ from ghidra_agent.models import (
     SessionCreateResponse,
     StatusResponse,
 )
-from ghidra_agent.ranking_utils import _function_priority_key
 from ghidra_agent.rate_limiter import query_limit, upload_limit
+
 # Updated to import from the new reporting package (ghidra_agent.reporting/)
 from ghidra_agent.reporting import (
     build_agent_report_html,
@@ -71,16 +77,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Ghidra Reverse Engineering Agent", lifespan=lifespan)
 
-# Import and include memory routes
-from ghidra_agent.api.memory_routes import router as memory_router
 app.include_router(memory_router)
-
-import os as _os
 
 # Build the allowed origins list.
 # In production, set CORS_ORIGINS env var (comma-separated).
 # In dev, the Vite proxy makes CORS unnecessary, but we still allow common ports.
-_cors_env = _os.environ.get("CORS_ORIGINS", "")
+_cors_env = os.environ.get("CORS_ORIGINS", "")
 _cors_origins: list[str] = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else []
 
 # Always allow common local dev origins
@@ -610,7 +612,12 @@ INSTRUCTIONS:
             generation_name="query",
             program_hash=state.get("program_hash", ""),
         )
-        result = await call_llm(prompt, metadata=lf_meta or None, model=request.model)
+        result = await call_llm(
+            prompt,
+            metadata=lf_meta or None,
+            model=request.model,
+            response_format=request.response_format,
+        )
         answer = result.get("content", "")
         reasoning = result.get("reasoning_content", "")
         logger.info("query_complete", session_id=request.session_id, answer_len=len(answer))
@@ -752,6 +759,7 @@ INSTRUCTIONS:
             tools=tools,
             tool_executor=tool_executor_with_context,
             model=request.model,
+            response_format=request.response_format,
         )
 
         answer = result.get("content", "")
@@ -957,7 +965,7 @@ def _pick_best_in_memory(candidates: List[Dict[str, Any]]) -> Dict[str, Any] | N
 
 async def _resolve_by_hash(program_hash: str, user: Optional[Dict[str, Any]] = None) -> Dict[str, Any] | None:
     """Find the best session for a hash, preferring completed DB sessions.
-    
+
     If user is provided and not admin, only return sessions owned by that user.
     """
     candidates = [

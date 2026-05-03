@@ -195,6 +195,64 @@ async def test_llm_call_uses_deepseek_openai_compatible_defaults(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_llm_call_omits_deepseek_thinking_for_standard_openai(monkeypatch):
+    """Test that non-DeepSeek OpenAI calls do not include DeepSeek-only params."""
+    from ghidra_agent.llm import _single_llm_call
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.openai.com/v1")
+    monkeypatch.setenv("LLM_MODEL_NAME", "gpt-4o")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+
+    mock_response = {
+        "choices": [{
+            "message": {
+                "content": "done",
+                "tool_calls": None,
+            },
+        }],
+    }
+
+    with patch("ghidra_agent.llm.acompletion", new=AsyncMock(return_value=mock_response)) as mock_completion:
+        await _single_llm_call(prompt="Analyze this", timeout=30)
+
+    kwargs = mock_completion.call_args.kwargs
+    assert kwargs["model"] == "openai/gpt-4o"
+    assert kwargs["api_base"] == "https://api.openai.com/v1"
+    assert "reasoning_effort" not in kwargs
+    assert "extra_body" not in kwargs
+
+
+@pytest.mark.asyncio
+async def test_llm_call_passes_response_format(monkeypatch):
+    """Test JSON output can be requested through Chat Completions response_format."""
+    from ghidra_agent.llm import _single_llm_call
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("LLM_MODEL_NAME", "deepseek-v4-pro")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+
+    mock_response = {
+        "choices": [{
+            "message": {
+                "content": '{"ok": true}',
+                "tool_calls": None,
+            },
+        }],
+    }
+
+    with patch("ghidra_agent.llm.acompletion", new=AsyncMock(return_value=mock_response)) as mock_completion:
+        await _single_llm_call(
+            prompt="Return json",
+            timeout=30,
+            response_format={"type": "json_object"},
+        )
+
+    assert mock_completion.call_args.kwargs["response_format"] == {"type": "json_object"}
+
+
+@pytest.mark.asyncio
 async def test_get_function_calling_tools():
     """Test that get_function_calling_tools returns valid tools."""
     from ghidra_agent.llm import get_function_calling_tools
@@ -223,6 +281,58 @@ async def test_get_function_calling_tools():
                 assert len(tools) == 1
                 assert tools[0]["type"] == "function"
                 assert tools[0]["function"]["name"] == "test_tool"
+
+
+@pytest.mark.asyncio
+async def test_call_llm_preserves_reasoning_across_tool_turns():
+    """Test DeepSeek tool turns keep reasoning_content in assistant history."""
+    from ghidra_agent.llm import call_llm
+
+    responses = [
+        {
+            "content": "",
+            "reasoning_content": "Need to call a tool",
+            "tool_calls": [{
+                "id": "call_123",
+                "function": {
+                    "name": "test_tool",
+                    "arguments": '{"param": "value"}',
+                },
+            }],
+        },
+        {
+            "content": "Tool result processed",
+            "reasoning_content": "Used the tool result",
+            "tool_calls": None,
+        },
+    ]
+    captured_messages = []
+
+    async def fake_single_llm_call(*args, **kwargs):
+        captured_messages.append([dict(message) for message in kwargs["messages"]])
+        return responses.pop(0)
+
+    async def fake_tool_executor(name, arguments):
+        return {"ok": True, "name": name, "arguments": arguments}
+
+    with patch("ghidra_agent.llm._single_llm_call", new=fake_single_llm_call):
+        result = await call_llm(
+            "Use a tool",
+            tools=[{
+                "type": "function",
+                "function": {
+                    "name": "test_tool",
+                    "description": "Test",
+                    "parameters": {"type": "object", "properties": {}, "required": []},
+                },
+            }],
+            tool_executor=fake_tool_executor,
+        )
+
+    assert result["content"] == "Tool result processed"
+    assert captured_messages[1][1]["role"] == "assistant"
+    assert captured_messages[1][1]["reasoning_content"] == "Need to call a tool"
+    assert captured_messages[1][1]["tool_calls"][0]["id"] == "call_123"
 
 
 def test_tool_format_structure():
