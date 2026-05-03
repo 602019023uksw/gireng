@@ -83,6 +83,21 @@
 - **Real-time streaming** — WebSocket events for live analysis progress
 - **React UI** — Modern dark-themed SPA with chat interface, code viewer, and analysis dashboard
 
+## Current Analysis Tool Status
+
+This is the current verified condition of the analysis stack:
+
+| Component | Current condition | Local verification |
+|-----------|-------------------|--------------------|
+| **Radare2 runner** | Implemented through `Radare2Runner`, using `docker exec radare2 r2 ...` against binaries in `/data/shared`. It verifies the container, parses JSON output with noisy-prefix tolerance, handles non-zero exits/timeouts, and probes `pdg`/`pdd`/`pdf` decompiler availability. | `tests/test_r2_runner.py` passed. |
+| **R2 analysis tools** | Implemented as OpenAI-compatible callable tools: `r2_analyze_binary`, `r2_list_functions`, `r2_build_call_graph`, `r2_decompile_function`, `r2_disassemble_at`, `r2_find_strings`, `r2_find_xrefs`, `r2_search_bytes`, and `r2_syscall_analysis`. | `tests/test_r2_tools.py` passed. |
+| **R2 LangGraph pipeline** | Implemented and stores progress/results under `r2_analysis_results`, `r2_decompilation_cache`, and `r2_trace`. The mocked pipeline currently populates R2 results, priorities, call graph analysis, strings, syscalls, focus analysis, and xrefs, but some legacy tests still assert older `reasoning_trace` behavior instead of `r2_trace`. | Partial: `tests/test_r2_graph.py` has 4 trace-location assertion failures; core result assertions before those failures pass. |
+| **IOC extraction** | Implemented in `ioc_extractor.py` for IPs, URLs, domains, file paths, emails, registry keys, mutexes, crypto materials, and suspicious strings. Extraction combines Ghidra, R2, and Qiling state; verdict scoring uses IOC counts plus behavioral indicators. | `TestChargenIOCExtraction` and `tests/test_ioc_verdict_qiling.py` passed. |
+| **Qiling dynamic analysis** | Implemented for syscall/API tracing, evasion indicators, network/memory behavior, and capability signals. Docker Compose enables Qiling by default with `ENABLE_QILING=true`. | `tests/test_qiling_runner.py`, `tests/test_qiling_tools.py`, `tests/test_qiling_graph.py`, and `tests/test_ioc_verdict_qiling.py` passed. |
+| **LLM tools / follow-up analysis** | `/query_with_tools` exposes R2 and utility tools to the LLM via OpenAI-compatible function calling. DeepSeek reasoning and tool-call turns preserve `reasoning_content`, and JSON output can be requested with `response_format: {"type": "json_object"}`. | `tests/test_function_calling.py` passed, plus a live DeepSeek smoke test returned valid JSON and completed one tool-call round trip. |
+
+Important runtime note: these local checks verify code behavior with mocked runners and the DeepSeek API smoke test. A full end-to-end upload analysis still requires the Docker Compose services (`ghidra`, `radare2`, `qiling`, `postgres`, `agent`, and UI) to be running and healthy.
+
 ## How It Works
 
 ```
@@ -367,6 +382,25 @@ See [DEPLOY.md](DEPLOY.md) for full API documentation (50+ endpoints) and exampl
 cd backend
 pip install -e .
 python -m pytest tests/ -v    # 183 tests
+```
+
+Useful targeted checks for the analysis stack:
+
+```bash
+# Radare2 runner and tool wrappers
+python -m pytest tests/test_r2_runner.py tests/test_r2_tools.py -q
+
+# IOC extraction, verdict scoring, and Qiling behavior
+python -m pytest \
+  tests/test_chargen_e2e.py::TestChargenIOCExtraction \
+  tests/test_ioc_verdict_qiling.py \
+  tests/test_qiling_runner.py \
+  tests/test_qiling_tools.py \
+  tests/test_qiling_graph.py \
+  -q
+
+# DeepSeek/OpenAI-compatible tool calling and JSON output
+python -m pytest tests/test_function_calling.py -q
 ```
 
 ### Frontend (React)
