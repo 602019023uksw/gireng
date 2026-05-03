@@ -648,7 +648,7 @@ async def query_with_tools(
     request: QueryRequest,
     user: Dict[str, Any] = Depends(get_current_user),
 ) -> JSONResponse:
-    """Answer follow-up questions with GLM-5 function calling support.
+    """Answer follow-up questions with function calling support.
 
     The LLM can dynamically invoke radare2 tools to perform additional analysis
     beyond the cached data in the session state.
@@ -683,7 +683,7 @@ async def query_with_tools(
     session_id = request.session_id
 
     # Create tool executor that injects session context
-    from ghidra_agent.glm_function_tools import get_tool_registry
+    from ghidra_agent.function_tools import get_tool_registry
 
     registry = get_tool_registry()
 

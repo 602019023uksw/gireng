@@ -1,7 +1,7 @@
 import asyncio
 import json
 import os
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional
 
 import litellm
 from litellm import acompletion
@@ -12,6 +12,57 @@ from ghidra_agent.logging import logger
 # Configurable via env; default 1200s (20 min) to accommodate large prompts with deep thinking
 LLM_TIMEOUT_SECONDS = int(os.environ.get("LLM_TIMEOUT", "1200"))
 LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
+LLM_REASONING_EFFORT = os.environ.get("LLM_REASONING_EFFORT", "high")
+LLM_THINKING_MODE = os.environ.get("LLM_THINKING_MODE", "enabled")
+
+
+def _first_env(*names: str) -> str:
+    for name in names:
+        value = os.environ.get(name, "")
+        if value:
+            return value
+    return ""
+
+
+def _llm_api_key() -> str:
+    return _first_env("LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+
+
+def _llm_api_base() -> str:
+    return _first_env("LLM_BASE_URL", "DEEPSEEK_BASE_URL", "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL")
+
+
+def _llm_model_name(model: Optional[str] = None) -> str:
+    return model or _first_env("LLM_MODEL_NAME", "DEEPSEEK_MODEL", "OPENAI_MODEL", "ANTHROPIC_MODEL") or settings.llm_model_name
+
+
+def _llm_provider() -> str:
+    return (_first_env("LLM_PROVIDER", "LLM_API_FORMAT") or settings.llm_provider or "openai").lower()
+
+
+def _litellm_model_name(model: Optional[str] = None) -> str:
+    model_name = _llm_model_name(model)
+    if "/" in model_name:
+        return model_name
+    return f"{_llm_provider()}/{model_name}"
+
+
+def _thinking_kwargs() -> Dict[str, Any]:
+    thinking_mode = LLM_THINKING_MODE.lower()
+    if thinking_mode not in {"enabled", "disabled"}:
+        thinking_mode = "enabled"
+
+    extra_body: Dict[str, Any] = {"thinking": {"type": thinking_mode}}
+    if thinking_mode == "enabled":
+        if _llm_provider() == "anthropic":
+            extra_body["output_config"] = {"effort": LLM_REASONING_EFFORT}
+            return {"extra_body": extra_body}
+        return {
+            "reasoning_effort": LLM_REASONING_EFFORT,
+            "extra_body": extra_body,
+        }
+
+    return {"extra_body": extra_body}
 
 # ---------------------------------------------------------------------------
 # Langfuse tracing – uses LiteLLM's built-in callback integration
@@ -74,27 +125,13 @@ async def _single_llm_call(
         - 'reasoning_content': Deep thinking reasoning (if available)
         - 'tool_calls': List of function calls requested by the model
     """
-    api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY", "")
-    api_base = os.environ.get("LLM_BASE_URL", "")
-    model_name = model or settings.llm_model_name
-    # Z.AI API is OpenAI-compatible - use openai/ prefix with custom api_base
-    if "/" in model_name:
-        litellm_model = model_name
-    else:
-        litellm_model = f"openai/{model_name}"
+    api_key = _llm_api_key()
+    api_base = _llm_api_base()
+    litellm_model = _litellm_model_name(model)
 
     # Use provided messages or create from prompt
     request_messages = messages if messages is not None else [{"role": "user", "content": prompt}]
 
-    # GLM-5 parameters for deep reasoning
-    # Enable deep thinking for complex analysis tasks (binary analysis, reverse engineering)
-    extra_body = {
-        "thinking": {"type": "enabled", "clear_thinking": False},  # Preserved thinking for multi-turn context
-        "temperature": 1.0,  # GLM-5 default
-        "top_p": 0.95,  # GLM-5 default - only use one of temperature/top_p
-    }
-
-    # Add function calling parameters
     kwargs: Dict[str, Any] = {
         "model": litellm_model,
         "messages": request_messages,
@@ -102,7 +139,7 @@ async def _single_llm_call(
         "api_key": api_key or None,
         "timeout": timeout,
         "metadata": metadata or {},
-        **extra_body,
+        **_thinking_kwargs(),
     }
 
     if tools:
@@ -144,7 +181,7 @@ async def call_llm(
         metadata: Optional metadata for tracing
         conversation_history: Optional conversation history for multi-turn context.
             Should include messages with 'role', 'content', and optionally 'reasoning_content'.
-        tools: Optional list of tools for function calling in GLM format
+        tools: Optional list of OpenAI/Anthropic-compatible tools
         tool_executor: Optional async function to execute tools. Signature:
             async def tool_executor(name: str, arguments: dict) -> dict
         max_tool_iterations: Maximum number of tool call iterations
@@ -156,13 +193,8 @@ async def call_llm(
             - 'tool_calls': List of tool calls made and their results
             - 'tool_results': List of tool execution results
     """
-    api_base = os.environ.get("LLM_BASE_URL", "")
-    model_name = model or settings.llm_model_name
-    # Z.AI API is OpenAI-compatible - use openai/ prefix with custom api_base
-    if "/" in model_name:
-        litellm_model = model_name
-    else:
-        litellm_model = f"openai/{model_name}"
+    api_base = _llm_api_base()
+    litellm_model = _litellm_model_name(model)
 
     logger.info("llm_call_start", model=litellm_model, api_base=api_base, prompt_len=len(prompt), has_tools=tools is not None)
 
@@ -365,11 +397,11 @@ def create_tool_executor():
         executor = create_tool_executor()
         result = await call_llm(
             prompt="Analyze this binary",
-            tools=get_tool_registry().to_glm_tools_list(),
+            tools=get_tool_registry().to_openai_tools_list(),
             tool_executor=executor,
         )
     """
-    from ghidra_agent.glm_function_tools import get_tool_registry
+    from ghidra_agent.function_tools import get_tool_registry
 
     registry = get_tool_registry()
 
@@ -381,14 +413,14 @@ def create_tool_executor():
 
 
 def get_function_calling_tools() -> List[Dict[str, Any]]:
-    """Get all registered tools in GLM function calling format.
+    """Get all registered tools in OpenAI/Anthropic-compatible format.
 
     Initializes and registers all radare2 tools on first call.
 
     Returns:
-        List of tool definitions in GLM format.
+        List of OpenAI-compatible tool definitions.
     """
-    from ghidra_agent.glm_function_tools import get_tool_registry, register_all_radare2_tools, register_utility_tools
+    from ghidra_agent.function_tools import get_tool_registry, register_all_radare2_tools, register_utility_tools
 
     registry = get_tool_registry()
 
@@ -397,4 +429,4 @@ def get_function_calling_tools() -> List[Dict[str, Any]]:
         register_all_radare2_tools()
         register_utility_tools()
 
-    return registry.to_glm_tools_list()
+    return registry.to_openai_tools_list()

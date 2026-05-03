@@ -15,8 +15,8 @@ class Settings(BaseModel):
     ghidra_shared_volume: str = Field(default="ghidra_shared", alias="GHIDRA_SHARED_VOLUME")
     ghidra_install_path: str = Field(default="/usr/share/ghidra", alias="GHIDRA_INSTALL_PATH")
     docker_cli_path: str = Field(default="/usr/bin/docker", alias="DOCKER_CLI_PATH")
-    llm_model_name: str = Field(default="glm-5", alias="LLM_MODEL_NAME")
-    llm_provider: str = Field(default="anthropic", alias="LLM_PROVIDER")
+    llm_model_name: str = Field(default="deepseek-v4-pro", alias="LLM_MODEL_NAME")
+    llm_provider: str = Field(default="openai", alias="LLM_PROVIDER")
     max_decompilation_time: int = Field(default=60, alias="MAX_DECOMPILATION_TIME")
     default_analysis_timeout: int = Field(default=150, alias="DEFAULT_ANALYSIS_TIMEOUT")
     max_upload_bytes: int = Field(default=200 * 1024 * 1024, alias="MAX_UPLOAD_BYTES")  # 200 MB

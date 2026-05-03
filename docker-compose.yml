@@ -164,16 +164,21 @@ services:
       GHIDRA_HEADLESS_SCRIPT_PATH: /usr/share/ghidra/support/pyghidraRun
       GHIDRA_INSTALL_PATH: /usr/share/ghidra
       DOCKER_CLI_PATH: /usr/bin/docker
-      LLM_MODEL_NAME: ${ANTHROPIC_MODEL:-glm-5}
+      LLM_MODEL_NAME: ${LLM_MODEL_NAME:-${DEEPSEEK_MODEL:-deepseek-v4-pro}}
       LLM_TIMEOUT: ${LLM_TIMEOUT:-1200}
-      LLM_PROVIDER: openai
+      LLM_PROVIDER: ${LLM_PROVIDER:-openai}
+      LLM_REASONING_EFFORT: ${LLM_REASONING_EFFORT:-high}
+      LLM_THINKING_MODE: ${LLM_THINKING_MODE:-enabled}
       MAX_DECOMPILATION_TIME: "30"
       DEFAULT_ANALYSIS_TIMEOUT: "120"
-      LLM_API_KEY: ${ANTHROPIC_API_KEY}
-      # LLM_BASE_URL: https://api.z.ai/api/coding/paas/v4/
-      LLM_BASE_URL: ${ANTHROPIC_BASE_URL:-https://api.z.ai/api/coding/paas/v4/}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
-      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY:-${DEEPSEEK_API_KEY:-${OPENAI_API_KEY:-${ANTHROPIC_API_KEY:-}}}}
+      LLM_BASE_URL: ${LLM_BASE_URL:-${DEEPSEEK_BASE_URL:-https://api.deepseek.com}}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_BASE_URL: ${ANTHROPIC_BASE_URL:-}
       R2_CONTAINER_NAME: radare2
       R2_SHARED_ROOT: /data/shared
       R2_TIMEOUT: "${R2_TIMEOUT:-60}"

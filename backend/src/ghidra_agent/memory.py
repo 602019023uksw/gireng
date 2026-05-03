@@ -6,19 +6,18 @@ Provides a multi-layered memory system to retain context across analysis session
 - Semantic Memory: Vector-based similarity search for related analyses (optional)
 """
 
-import asyncio
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-from ghidra_agent.config import settings
 from ghidra_agent.logging import logger
 
 # Embedding support via LiteLLM (already a project dependency)
 try:
     import litellm
+
     LITELLM_AVAILABLE = True
 except ImportError:
     LITELLM_AVAILABLE = False
@@ -341,8 +340,10 @@ class SemanticMemory:
     ):
         self.index_file = index_file
         self._index: Dict[str, Dict[str, Any]] = {}
-        self.embedding_api_key = api_key or os.environ.get("LLM_API_KEY", "")
-        self.embedding_base_url = base_url or os.environ.get("LLM_BASE_URL", "")
+        api_key_envs = ("LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY")
+        base_url_envs = ("LLM_BASE_URL", "DEEPSEEK_BASE_URL", "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL")
+        self.embedding_api_key = api_key or next((os.environ.get(name, "") for name in api_key_envs if os.environ.get(name, "")), "")
+        self.embedding_base_url = base_url or next((os.environ.get(name, "") for name in base_url_envs if os.environ.get(name, "")), "")
         self.embedding_model = model or os.environ.get("EMBEDDING_MODEL", "text-embedding-3-small")
         self._embeddings_available = LITELLM_AVAILABLE and bool(self.embedding_api_key)
 
@@ -535,7 +536,7 @@ class MemoryManager:
         self.semantic = SemanticMemory(
             self.memory_dir / "semantic_index.json",
             api_key=embedding_api_key,
-            base_url=os.environ.get("LLM_BASE_URL"),
+            base_url=next((os.environ.get(name, "") for name in ("LLM_BASE_URL", "DEEPSEEK_BASE_URL", "OPENAI_BASE_URL", "ANTHROPIC_BASE_URL") if os.environ.get(name, "")), ""),
             model=os.environ.get("EMBEDDING_MODEL"),
         )
 
@@ -636,6 +637,6 @@ def get_memory_manager() -> MemoryManager:
     """Get the global memory manager instance."""
     global _global_memory
     if _global_memory is None:
-        embedding_key = os.environ.get("LLM_API_KEY")
+        embedding_key = next((os.environ.get(name, "") for name in ("LLM_API_KEY", "DEEPSEEK_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY") if os.environ.get(name, "")), "")
         _global_memory = MemoryManager(embedding_api_key=embedding_key)
     return _global_memory

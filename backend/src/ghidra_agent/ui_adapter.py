@@ -646,8 +646,8 @@ async def build_similar_files(state: AgentState) -> list[Dict[str, Any]]:
     program_hash = state.get("program_hash", "")
     if not program_hash:
         return []
-    from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state
     from ghidra_agent import database as db
+    from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state
     iocs = extract_iocs_from_state(state)
     verdict, _, _, _ = calculate_verdict(iocs, state)
     if not verdict:
@@ -665,6 +665,6 @@ async def build_similar_files(state: AgentState) -> list[Dict[str, Any]]:
 
 def build_model_list() -> list[Dict[str, Any]]:
     return [
-        {"id": "glm-5", "name": "GLM 5", "icon": "circle", "type": "other", "isSelected": True},
-        {"id": "glm-4.7", "name": "GLM 4.7", "icon": "circle", "type": "other", "isSelected": False},
+        {"id": "deepseek-v4-pro", "name": "DeepSeek V4 Pro", "icon": "circle", "type": "other", "isSelected": True},
+        {"id": "deepseek-v4-flash", "name": "DeepSeek V4 Flash", "icon": "circle", "type": "other", "isSelected": False},
     ]
