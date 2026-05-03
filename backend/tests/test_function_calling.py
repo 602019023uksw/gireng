@@ -190,8 +190,8 @@ async def test_llm_call_uses_deepseek_openai_compatible_defaults(monkeypatch):
     assert kwargs["model"] == "openai/deepseek-v4-pro"
     assert kwargs["api_base"] == "https://api.deepseek.com"
     assert kwargs["api_key"] == "test-key"
-    assert kwargs["reasoning_effort"] == "high"
-    assert kwargs["extra_body"] == {"thinking": {"type": "enabled"}}
+    assert "reasoning_effort" not in kwargs
+    assert kwargs["extra_body"] == {"thinking": {"type": "enabled"}, "reasoning_effort": "high"}
 
 
 @pytest.mark.asyncio

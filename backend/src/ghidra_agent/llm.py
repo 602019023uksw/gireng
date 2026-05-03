@@ -67,10 +67,7 @@ def _thinking_kwargs(model: Optional[str] = None) -> Dict[str, Any]:
         if _llm_provider() == "anthropic" or "/anthropic" in _llm_api_base().lower():
             extra_body["output_config"] = {"effort": LLM_REASONING_EFFORT}
             return {"extra_body": extra_body}
-        return {
-            "reasoning_effort": LLM_REASONING_EFFORT,
-            "extra_body": extra_body,
-        }
+        extra_body["reasoning_effort"] = LLM_REASONING_EFFORT
 
     return {"extra_body": extra_body}
 
