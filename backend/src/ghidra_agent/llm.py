@@ -47,20 +47,27 @@ def _litellm_model_name(model: Optional[str] = None) -> str:
     return f"{_llm_provider()}/{model_name}"
 
 
-def _thinking_kwargs() -> Dict[str, Any]:
+def _is_deepseek_api(model: Optional[str] = None) -> bool:
+    model_name = _llm_model_name(model).lower()
+    api_base = _llm_api_base().lower()
+    provider = _llm_provider()
+    return provider == "deepseek" or "deepseek" in model_name or "deepseek" in api_base
+
+
+def _thinking_kwargs(model: Optional[str] = None) -> Dict[str, Any]:
+    if not _is_deepseek_api(model):
+        return {}
+
     thinking_mode = LLM_THINKING_MODE.lower()
     if thinking_mode not in {"enabled", "disabled"}:
         thinking_mode = "enabled"
 
     extra_body: Dict[str, Any] = {"thinking": {"type": thinking_mode}}
     if thinking_mode == "enabled":
-        if _llm_provider() == "anthropic":
+        if _llm_provider() == "anthropic" or "/anthropic" in _llm_api_base().lower():
             extra_body["output_config"] = {"effort": LLM_REASONING_EFFORT}
             return {"extra_body": extra_body}
-        return {
-            "reasoning_effort": LLM_REASONING_EFFORT,
-            "extra_body": extra_body,
-        }
+        extra_body["reasoning_effort"] = LLM_REASONING_EFFORT
 
     return {"extra_body": extra_body}
 
@@ -109,6 +116,7 @@ async def _single_llm_call(
     tools: List[Dict[str, Any]] | None = None,
     tool_choice: str = "auto",
     model: Optional[str] = None,
+    response_format: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Attempt a single LLM call with the given timeout.
 
@@ -139,12 +147,15 @@ async def _single_llm_call(
         "api_key": api_key or None,
         "timeout": timeout,
         "metadata": metadata or {},
-        **_thinking_kwargs(),
+        **_thinking_kwargs(model),
     }
 
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = tool_choice
+
+    if response_format:
+        kwargs["response_format"] = response_format
 
     response = await asyncio.wait_for(
         acompletion(**kwargs),
@@ -173,6 +184,7 @@ async def call_llm(
     max_tool_iterations: int = 5,
     model: Optional[str] = None,
     timeout: Optional[int] = None,
+    response_format: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Call LLM with deep reasoning and optional function calling support.
 
@@ -224,8 +236,9 @@ async def call_llm(
                     call_timeout,
                     metadata=metadata,
                     messages=messages,
-                    tools=tools if iteration == 0 else None,  # Only pass tools on first iteration
+                    tools=tools,
                     model=model,
+                    response_format=response_format,
                 )
                 logger.info("llm_call_complete", attempt=attempt, iteration=iteration)
                 break

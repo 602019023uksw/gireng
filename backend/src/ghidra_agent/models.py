@@ -92,6 +92,7 @@ class QueryRequest(BaseModel):
     session_id: str
     query: str
     model: Optional[str] = None
+    response_format: Optional[Dict[str, Any]] = None
 
 
 class StatusResponse(BaseModel):
