@@ -97,7 +97,7 @@ httpx==0.27.0             structlog==24.4.0
 pydantic==2.9.2           python-dotenv==1.0.1
 tenacity==8.5.0           websockets==12.0
 python-multipart==0.0.9   litellm==1.61.16
-zhipuai>=2.0.0            langchain-community>=0.0.32
+langchain-community>=0.0.32
 asyncpg>=0.29.0           langfuse>=2.0.0,<3.0.0
 playwright>=1.40.0        (Chromium for PDF export)
 ```
@@ -142,8 +142,9 @@ Edit `.env` and fill in the required variables:
 | `UI_PORT` | no | Host port for frontend UI | `4173` |
 | `LANGFUSE_PORT` | no | Host port for Langfuse dashboard | `3100` |
 | `RUNNER_IMAGE` | yes | Ghidra runner Docker image name | `danilid/ireng-runner:2.0.1` |
-| `ANTHROPIC_API_KEY` | yes | LLM API key | `sk-abc123...` |
-| `ANTHROPIC_BASE_URL` | yes | LLM API endpoint | `https://api.anthropic.com` |
+| `LLM_API_KEY` | yes | LLM API key | `sk-abc123...` |
+| `LLM_BASE_URL` | yes | LLM API endpoint | `https://api.deepseek.com` |
+| `LLM_MODEL_NAME` | yes | LLM model name | `deepseek-v4-pro` |
 | `POSTGRES_PASSWORD` | no | Database password (default: `ireng_secret`) | `strong_password` |
 | `JWT_SECRET` | no | JWT signing secret (auto-generated if unset) | `your-secret-key` |
 | `ADMIN_EMAIL` | no | Bootstrap admin email (default: `admin@gireng.local`) | `admin@yourco.com` |
@@ -540,7 +541,7 @@ The React frontend provides export buttons in:
 | Ghidra container takes too long on first boot | Normal — PyGhidra venv setup takes 2-3 minutes on first start. |
 | Upload returns 413 | Binary exceeds `MAX_UPLOAD_BYTES` (default 200 MB). Adjust in `.env`. |
 | 404 "Session not found" | Sessions are in-memory; lost on agent restart. Use `/api/history/{id}/restore` to reload from DB. |
-| LLM errors in logs | Verify `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` in `.env`. |
+| LLM errors in logs | Verify `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL_NAME` in `.env`. |
 | `docker compose` not found | Install Docker Compose v2 (`docker compose`, not `docker-compose`). |
 | API/UI/Langfuse port already in use | Set `API_PORT`, `UI_PORT`, or `LANGFUSE_PORT` in `.env` and restart. |
 | Frontend can't reach backend | Ensure `HOST` and `API_PORT` are correct, or override with `VITE_API_BASE_URL`. |

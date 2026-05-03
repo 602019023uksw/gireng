@@ -118,14 +118,14 @@ Content-Type: multipart/form-data
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `file` | File | Yes | The binary file to analyze |
-| `model` | string | No | LLM model override (e.g. `glm-5`, `glm-4.7`) |
+| `model` | string | No | LLM model override (e.g. `deepseek-v4-pro`, `deepseek-v4-flash`) |
 
 **cURL example:**
 ```bash
 curl -X POST http://localhost:8080/analyze/upload \
   -H "Authorization: Bearer $TOKEN" \
   -F "file=@/path/to/malware.exe" \
-  -F "model=glm-5"
+  -F "model=deepseek-v4-pro"
 ```
 
 **Response:**
@@ -152,7 +152,7 @@ Content-Type: application/json
 {
   "binary_path": "/data/shared/malware.exe",
   "upload_name": "malware.exe",
-  "model": "glm-5"
+  "model": "deepseek-v4-pro"
 }
 ```
 
@@ -508,7 +508,7 @@ Content-Type: application/json
 {
   "session_id": "a1b2c3d4-...",
   "query": "What functions handle network connections?",
-  "model": "glm-5"
+  "model": "deepseek-v4-pro"
 }
 ```
 
@@ -624,7 +624,7 @@ def login(email: str, password: str) -> str:
     return resp.json()["token"]
 
 
-def upload_file(filepath: str, model: str = "glm-5") -> str:
+def upload_file(filepath: str, model: str = "deepseek-v4-pro") -> str:
     """Upload a binary. Returns session_id."""
     headers = {"Authorization": f"Bearer {TOKEN}"}
     with open(filepath, "rb") as f:

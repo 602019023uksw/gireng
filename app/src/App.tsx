@@ -248,7 +248,7 @@ function deriveAnalyzerToolCalls(
 function App() {
   const { user, isAuthenticated, isLoading, isAdmin, login, register, logout } = useAuth();
   const [viewState, setViewState] = useState<ViewState>('welcome');
-  const [selectedModelId, setSelectedModelId] = useState('glm-5');
+  const [selectedModelId, setSelectedModelId] = useState('deepseek-v4-pro');
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeTab, setActiveTab] = useState<'overview' | 'analyzers' | 'callgraph' | 'dynamic'>('overview');
   const [rightPanelOpen, setRightPanelOpen] = useState(true);

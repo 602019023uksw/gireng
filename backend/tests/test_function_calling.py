@@ -1,20 +1,20 @@
-"""Test GLM-5 Function Calling Implementation
+"""Test OpenAI-compatible function calling implementation.
 
 This test verifies that:
-1. Tools are correctly registered in GLM format
+1. Tools are correctly registered in Chat Completions tool format
 2. Tool executor correctly invokes tools
 3. LLM can call tools during conversation
 """
 
-import json
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
 
 
 @pytest.mark.asyncio
 async def test_tool_registry_format():
-    """Test that tools are correctly formatted for GLM function calling."""
-    from ghidra_agent.glm_function_tools import ToolRegistry
+    """Test that tools are correctly formatted for function calling."""
+    from ghidra_agent.function_tools import ToolRegistry
 
     registry = ToolRegistry()
 
@@ -44,8 +44,8 @@ async def test_tool_registry_format():
         handler=test_tool,
     )
 
-    # Verify GLM format
-    tools_list = registry.to_glm_tools_list()
+    # Verify OpenAI-compatible format
+    tools_list = registry.to_openai_tools_list()
     assert len(tools_list) == 1
     assert tools_list[0]["type"] == "function"
     assert tools_list[0]["function"]["name"] == "test_tool"
@@ -56,7 +56,7 @@ async def test_tool_registry_format():
 @pytest.mark.asyncio
 async def test_tool_execution():
     """Test that tool executor correctly invokes tools."""
-    from ghidra_agent.glm_function_tools import ToolRegistry
+    from ghidra_agent.function_tools import ToolRegistry
 
     registry = ToolRegistry()
 
@@ -87,7 +87,7 @@ async def test_tool_execution():
 @pytest.mark.asyncio
 async def test_tool_execution_error():
     """Test that tool execution errors are properly handled."""
-    from ghidra_agent.glm_function_tools import ToolRegistry
+    from ghidra_agent.function_tools import ToolRegistry
 
     registry = ToolRegistry()
 
@@ -110,7 +110,7 @@ async def test_tool_execution_error():
 @pytest.mark.asyncio
 async def test_unknown_tool():
     """Test that unknown tools return an error."""
-    from ghidra_agent.glm_function_tools import ToolRegistry
+    from ghidra_agent.function_tools import ToolRegistry
 
     registry = ToolRegistry()
     result = await registry.execute_tool("unknown_tool", {})
@@ -163,15 +163,47 @@ async def test_llm_call_with_tools():
 
 
 @pytest.mark.asyncio
+async def test_llm_call_uses_deepseek_openai_compatible_defaults(monkeypatch):
+    """Test that DeepSeek is configured through OpenAI-compatible env values."""
+    from ghidra_agent.llm import _single_llm_call
+
+    monkeypatch.setenv("LLM_API_KEY", "test-key")
+    monkeypatch.setenv("LLM_BASE_URL", "https://api.deepseek.com")
+    monkeypatch.setenv("LLM_MODEL_NAME", "deepseek-v4-pro")
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+
+    mock_response = {
+        "choices": [{
+            "message": {
+                "content": "done",
+                "reasoning_content": "thinking",
+                "tool_calls": None,
+            },
+        }],
+    }
+
+    with patch("ghidra_agent.llm.acompletion", new=AsyncMock(return_value=mock_response)) as mock_completion:
+        result = await _single_llm_call(prompt="Analyze this", timeout=30)
+
+    assert result["content"] == "done"
+    kwargs = mock_completion.call_args.kwargs
+    assert kwargs["model"] == "openai/deepseek-v4-pro"
+    assert kwargs["api_base"] == "https://api.deepseek.com"
+    assert kwargs["api_key"] == "test-key"
+    assert kwargs["reasoning_effort"] == "high"
+    assert kwargs["extra_body"] == {"thinking": {"type": "enabled"}}
+
+
+@pytest.mark.asyncio
 async def test_get_function_calling_tools():
     """Test that get_function_calling_tools returns valid tools."""
     from ghidra_agent.llm import get_function_calling_tools
 
     # Mock the tool registry to avoid actual registration
-    with patch("ghidra_agent.llm.get_tool_registry") as mock_registry:
+    with patch("ghidra_agent.function_tools.get_tool_registry") as mock_registry:
         mock_reg_instance = MagicMock()
         mock_reg_instance.get_all_tools.return_value = []
-        mock_reg_instance.to_glm_tools_list.return_value = [
+        mock_reg_instance.to_openai_tools_list.return_value = [
             {
                 "type": "function",
                 "function": {
@@ -184,8 +216,8 @@ async def test_get_function_calling_tools():
         mock_registry.return_value = mock_reg_instance
 
         # Also mock the registration functions to do nothing
-        with patch("ghidra_agent.llm.register_all_radare2_tools"):
-            with patch("ghidra_agent.llm.register_utility_tools"):
+        with patch("ghidra_agent.function_tools.register_all_radare2_tools"):
+            with patch("ghidra_agent.function_tools.register_utility_tools"):
                 tools = get_function_calling_tools()
 
                 assert len(tools) == 1
@@ -193,11 +225,11 @@ async def test_get_function_calling_tools():
                 assert tools[0]["function"]["name"] == "test_tool"
 
 
-def test_glm_tool_format_structure():
-    """Test the GLM tool format structure is valid."""
-    from ghidra_agent.glm_function_tools import GLMTool
+def test_tool_format_structure():
+    """Test the OpenAI-compatible tool format structure is valid."""
+    from ghidra_agent.function_tools import FunctionTool
 
-    tool = GLMTool(
+    tool = FunctionTool(
         name="test_function",
         description="A test function",
         parameters={
@@ -213,25 +245,27 @@ def test_glm_tool_format_structure():
         handler=lambda x: {"ok": True},
     )
 
-    glm_format = tool.to_glm_format()
+    tool_format = tool.to_openai_format()
 
-    # Verify structure matches GLM spec
-    assert "type" in glm_format
-    assert glm_format["type"] == "function"
-    assert "function" in glm_format
-    assert "name" in glm_format["function"]
-    assert "description" in glm_format["function"]
-    assert "parameters" in glm_format["function"]
-    assert glm_format["function"]["parameters"]["type"] == "object"
-    assert "properties" in glm_format["function"]["parameters"]
+    # Verify structure matches OpenAI-compatible schema
+    assert "type" in tool_format
+    assert tool_format["type"] == "function"
+    assert "function" in tool_format
+    assert "name" in tool_format["function"]
+    assert "description" in tool_format["function"]
+    assert "parameters" in tool_format["function"]
+    assert tool_format["function"]["parameters"]["type"] == "object"
+    assert "properties" in tool_format["function"]["parameters"]
 
 
 if __name__ == "__main__":
     # Run basic sanity checks
     import asyncio
 
+    from ghidra_agent.function_tools import ToolRegistry
+
     async def sanity_check():
-        print("Running GLM Function Calling sanity checks...")
+        print("Running function calling sanity checks...")
 
         # Test 1: Tool registry
         registry = ToolRegistry()
@@ -245,16 +279,16 @@ if __name__ == "__main__":
             dummy,
         )
 
-        tools = registry.to_glm_tools_list()
+        tools = registry.to_openai_tools_list()
         print(f"✓ Tool registry: {len(tools)} tool(s) registered")
 
         # Test 2: Tool execution
         result = await registry.execute_tool("dummy", {})
         print(f"✓ Tool execution: {result}")
 
-        # Test 3: GLM format
+        # Test 3: OpenAI-compatible format
         assert tools[0]["type"] == "function"
-        print(f"✓ GLM format valid: {tools[0]}")
+        print(f"✓ OpenAI-compatible format valid: {tools[0]}")
 
         print("\n✅ All sanity checks passed!")
 

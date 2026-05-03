@@ -86,7 +86,7 @@
 | **Binary IOCs** | GET `/api/binary/{hash}/iocs` returns IOCs | Completed hash |
 | **Binary Attack Chains** | GET `/api/binary/{hash}/attack-chains` returns chains | Completed hash |
 
-### 1.5 GLM-5 Deep Reasoning Features
+### 1.5 DeepSeek Reasoning Features
 
 | Feature | Expected Behavior | Test Data Needed |
 |---------|-------------------|------------------|
@@ -416,7 +416,7 @@ curl -sf -H "Authorization: Bearer $TOKEN" \
 | Oversized file | >200MB | 413 payload too large |
 | Duplicate upload | Same binary twice | New session, same hash |
 | Analyze existing | Binary in /data/shared | Session created |
-| Model parameter | model=glm-5 | Uses specified model |
+| Model parameter | model=deepseek-v4-pro | Uses specified model |
 | Status initialized | New session | status=initialized |
 | Status running | Poll during analysis | status=running, progress>0 |
 | Status completed | After analysis | status=completed |
@@ -466,7 +466,7 @@ curl -sf -H "Authorization: Bearer $TOKEN" \
 | Binary IOCs | All IOCs for hash |
 | Binary attack chains | Attack chain data |
 
-### 5.5 GLM-5 Feature Tests
+### 5.5 DeepSeek Feature Tests
 
 | Test | Expected |
 |------|----------|
@@ -560,7 +560,7 @@ curl -sf -H "Authorization: Bearer $TOKEN" \
 | E2E pipeline | 100% | Chargen analysis completes |
 | API tests | 100% | All endpoints respond |
 | R2/R/Qiling tests | 100% | Individual analyzers work |
-| GLM function calling | 100% | Tool registration works |
+| Function calling | 100% | Tool registration works |
 | Frontend type check | 0 errors | `tsc -b --noEmit` |
 | Frontend lint | 0 errors (warns ok) | `npm run lint` |
 
@@ -601,7 +601,7 @@ From `kimi-2.6-review.md`:
 
 | Issue | Status | Fix Required |
 |-------|--------|--------------|
-| `r2_search_bytes` import error | **Broken** | Implement or remove from glm_function_tools.py |
+| `r2_search_bytes` import error | **Broken** | Implement or remove from function_tools.py |
 | `get_decompilation` missing | **Broken** | Implement in database.py |
 | `/query_with_tools` broken tools | **Broken** | Fix prompt to match available tools |
 | `analyze.py` no auth | **Broken** | Add JWT support |

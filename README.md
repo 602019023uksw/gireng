@@ -122,7 +122,7 @@
 
 - **Docker Engine** (with Docker Compose v2)
 - **Docker socket** accessible (`/var/run/docker.sock`)
-- **LLM API Key** (Anthropic, OpenAI-compatible, or ZhipuAI)
+- **LLM API Key** (DeepSeek, OpenAI-compatible, or Anthropic-compatible endpoint)
 
 ### 1. Clone & Configure
 
@@ -137,7 +137,10 @@ cp .env.template .env
 Edit `.env` and set your LLM API key:
 
 ```dotenv
-ANTHROPIC_API_KEY=your-api-key-here
+LLM_API_KEY=your-api-key-here
+LLM_BASE_URL=https://api.deepseek.com
+LLM_MODEL_NAME=deepseek-v4-pro
+LLM_PROVIDER=openai
 ```
 
 Optional: set host/port placeholders so URLs stay aligned:
@@ -381,7 +384,7 @@ npm run build    # Production build
 |-------|-----|
 | Ghidra container unhealthy | Wait ~60s for PyGhidra venv setup, check `docker logs gireng-ghidra-1` |
 | R2 plugins missing | R2 auto-installs r2ghidra/r2dec on first start; check `docker logs gireng-radare2-1` |
-| LLM errors | Verify `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` in `.env` |
+| LLM errors | Verify `LLM_API_KEY`, `LLM_BASE_URL`, and `LLM_MODEL_NAME` in `.env` |
 | Agent can't reach containers | Ensure Docker socket is mounted (`/var/run/docker.sock`) |
 | Port conflict | Set `API_PORT`, `UI_PORT`, or `LANGFUSE_PORT` in `.env` |
 | PDF export fails | Playwright + Chromium are installed in the agent Docker image |
