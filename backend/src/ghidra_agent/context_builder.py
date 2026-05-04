@@ -7,6 +7,7 @@ Consolidates the ~200 lines of duplicated context-building logic between
 import re
 from typing import Any, Dict, List
 
+from ghidra_agent.evidence_correlator import build_evidence_correlation, format_evidence_correlation
 from ghidra_agent.ioc_extractor import (
     calculate_verdict,
     classify_malware_type,
@@ -388,6 +389,11 @@ def build_analysis_context(
     if not iocs.is_empty():
         context_parts.append("\n=== EXTRACTED IOCS ===")
         context_parts.append(format_iocs_for_report(iocs))
+
+    correlation = build_evidence_correlation(state, iocs)
+    if correlation.get("findings"):
+        context_parts.append("\n=== CROSS-ENGINE EVIDENCE CORRELATION ===")
+        context_parts.append(format_evidence_correlation(correlation))
 
     decomp_cache = state.get("decompilation_cache", {})
     if decomp_cache:
