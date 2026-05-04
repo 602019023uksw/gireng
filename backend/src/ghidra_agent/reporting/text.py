@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from html import escape
 from typing import Any, Dict
 
+from ghidra_agent.evidence_correlator import build_evidence_correlation, format_evidence_correlation
 from ghidra_agent.reporting.common import *
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
 
@@ -36,6 +37,7 @@ def build_report_text(state: Dict[str, Any]) -> str:
     iocs_obj = extract_iocs_from_state(state)
     verdict, verdict_class, indicators, score = calculate_verdict(iocs_obj, state)
     ioc_list = _parse_iocs_for_template(iocs_obj)
+    evidence_correlation = build_evidence_correlation(state, iocs_obj)
 
     # --- Extract LLM sections ---
     exec_summary   = _extract_section(summary, "Executive Summary") or summary[:3000]
@@ -253,6 +255,11 @@ def build_report_text(state: Dict[str, Any]) -> str:
             for v in values:
                 lines.append(f"    {v}")
             lines.append("")
+
+    if evidence_correlation.get("findings"):
+        lines += ["", SEP, "CROSS-ENGINE EVIDENCE CORRELATION", SEP]
+        lines.append(format_evidence_correlation(evidence_correlation))
+        lines.append("")
 
     # ------------------------------------------------------------------ #
     # Call Graph & Attack Chains

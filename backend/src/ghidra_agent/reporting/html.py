@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from html import escape
 from typing import Any, Dict
 
+from ghidra_agent.evidence_correlator import build_evidence_correlation
 from ghidra_agent.reporting.common import *
 from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
 
@@ -95,6 +96,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
     operational_html = _render_operational_flow(operational_md)
     dynamic_analysis_html = _render_technical_cards(dynamic_analysis_md) if dynamic_analysis_md else ""
     ioc_list = _parse_iocs_for_template(iocs)
+    evidence_correlation = build_evidence_correlation(state, iocs)
 
     # --- Verdict display config ---
     _VERDICT_CFG = {
@@ -159,6 +161,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
     )
     qiling_dynamic_html = _render_qiling_dynamic_section(qiling_results)
     iocs_rows = _render_iocs(ioc_list)
+    evidence_correlation_html = _render_evidence_correlation(evidence_correlation)
     recommendations_html = _render_recommendations(recommendations)
 
     # Conclusion inner HTML
@@ -227,9 +230,10 @@ def build_report_html(state: Dict[str, Any]) -> str:
 
     has_qiling = bool(qiling_results)
     qiling_section_no = "12" if has_qiling else "11"
-    iocs_section_no = "13" if has_qiling else "12"
-    recommendations_section_no = "14" if has_qiling else "13"
-    conclusion_section_no = "15" if has_qiling else "14"
+    evidence_correlation_section_no = "13" if has_qiling else "12"
+    iocs_section_no = "14" if has_qiling else "13"
+    recommendations_section_no = "15" if has_qiling else "14"
+    conclusion_section_no = "16" if has_qiling else "15"
     report_scope_label = "Ghidra + Radare2 + Qiling Analysis" if has_qiling else "Ghidra + Radare2 Analysis"
     report_fusion_copy = (
         "This report fuses Ghidra, Radare2, and Qiling findings into a readable intelligence layout while preserving exact evidence from decompiled code and extracted indicators."
@@ -300,6 +304,21 @@ def build_report_html(state: Dict[str, Any]) -> str:
         if has_qiling
         else ""
     )
+
+    evidence_correlation_section_html = f'''
+                    <!-- Cross-engine evidence correlation -->
+                    <section id="evidence-correlation" class="scroll-mt-20 section-card">
+                        <div class="section-title-wrap">
+                            <div class="section-icon"><i class="fas fa-project-diagram"></i></div>
+                            <div>
+                                <p class="section-eyebrow">{evidence_correlation_section_no} · Evidence Linking</p>
+                                <h2 class="section-headline">Cross-Engine Evidence Correlation</h2>
+                                <p class="section-subtitle">Links IOCs to static strings, decompiled functions, and Qiling runtime telemetry.</p>
+                            </div>
+                        </div>
+                        <div class="section-body">{evidence_correlation_html}</div>
+                    </section>
+'''
 
     # --- Assemble full HTML ---
     html = f'''<!DOCTYPE html>
@@ -710,6 +729,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
             <a href="#operational-flow" class="nav-link px-3 py-2 rounded"><i class="fas fa-route"></i><span>Operational Flow</span></a>
             <a href="#call-graph" class="nav-link px-3 py-2 rounded"><i class="fas fa-project-diagram"></i><span>Call Graph</span></a>
             {qiling_nav_link}
+            <a href="#evidence-correlation" class="nav-link px-3 py-2 rounded"><i class="fas fa-link"></i><span>Evidence Links</span></a>
             <a href="#iocs" class="nav-link px-3 py-2 rounded"><i class="fas fa-network-wired"></i><span>IOCs</span></a>
             <a href="#recommendations" class="nav-link px-3 py-2 rounded"><i class="fas fa-shield-alt"></i><span>Recommendations</span></a>
             <a href="#conclusion" class="nav-link px-3 py-2 rounded"><i class="fas fa-gavel"></i><span>Conclusion</span></a>
@@ -725,6 +745,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                 <a href="#technical-analysis" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Technical</a>
                 <a href="#functions-analysis" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Functions</a>
                 {qiling_mobile_link}
+                <a href="#evidence-correlation" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Evidence Links</a>
                 <a href="#iocs" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">IOCs</a>
             </div>
             <div class="report-shell rounded-xl overflow-hidden">
@@ -932,6 +953,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                         <div class="section-body">{call_graph_html}</div>
                     </section>
                     {qiling_section_html}
+                    {evidence_correlation_section_html}
 
                     <!-- 9. IOCs -->
                     <section id="iocs" class="scroll-mt-20 section-card">
@@ -1389,5 +1411,3 @@ def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:
 </body>
 </html>'''
     return html
-
-

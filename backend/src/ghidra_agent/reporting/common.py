@@ -42,6 +42,7 @@ __all__ = [
     '_render_evidence_cards',
     '_render_operational_flow',
     '_render_iocs',
+    '_render_evidence_correlation',
     '_deduplicate_chains',
     '_render_call_graph_section',
     '_render_qiling_dynamic_section',
@@ -363,6 +364,8 @@ def _parse_iocs_for_template(iocs: IOCs) -> List[Dict[str, str]]:
         results.append({"type": "Crypto Material", "value": crypto})
     for susp in iocs.suspicious_strings:
         results.append({"type": "Suspicious String", "value": susp})
+    for decoded in iocs.decoded_strings:
+        results.append({"type": "Decoded String", "value": decoded})
 
     return results
 
@@ -1195,6 +1198,38 @@ def _render_iocs(iocs: List[Dict[str, str]]) -> str:
     return '\n'.join(rows)
 
 
+def _render_evidence_correlation(correlation: Dict[str, Any]) -> str:
+    """Render cross-engine evidence correlations."""
+    findings = correlation.get("findings", []) if isinstance(correlation, dict) else []
+    if not findings:
+        return '<div class="text-slate-500 italic">No cross-engine evidence correlations found.</div>'
+
+    cards: List[str] = []
+    for finding in findings[:12]:
+        engine = escape(str(finding.get("engine", "unknown")).title())
+        source = escape(str(finding.get("source", "evidence")).replace("_", " ").title())
+        description = escape(str(finding.get("description", "")))
+        confidence = int(finding.get("confidence", 0))
+        iocs = ", ".join(escape(str(ioc)) for ioc in finding.get("iocs", [])[:4]) or "none"
+        functions = ", ".join(escape(str(func)) for func in finding.get("functions", [])[:4]) or "unknown"
+        evidence = "; ".join(escape(str(item)) for item in finding.get("evidence", [])[:3])
+        cards.append(
+            '<div class="rounded-lg border border-slate-700 bg-[#0B1324] p-4">'
+            '<div class="flex items-center justify-between gap-3 mb-2">'
+            f'<div class="text-sm font-semibold text-slate-100">{engine} · {source}</div>'
+            f'<div class="text-xs text-slate-400">{confidence}% confidence</div>'
+            '</div>'
+            f'<div class="text-sm text-slate-300 mb-2">{description}</div>'
+            f'<div class="text-xs text-slate-400"><span class="font-semibold text-slate-300">IOCs:</span> {iocs}</div>'
+            f'<div class="text-xs text-slate-400"><span class="font-semibold text-slate-300">Functions:</span> {functions}</div>'
+            f'<div class="text-xs text-slate-500 mt-2 break-all">{evidence}</div>'
+            '</div>'
+        )
+    if len(findings) > 12:
+        cards.append(f'<div class="text-xs text-slate-500">... and {len(findings) - 12} more correlations</div>')
+    return '<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">' + "\n".join(cards) + '</div>'
+
+
 def _deduplicate_chains(chains: List[Dict[str, Any]], limit: int = 15) -> List[Dict[str, Any]]:
     """Remove attack chains that are strict sub-paths of longer chains.
 
@@ -1910,5 +1945,3 @@ def _render_code_evidence(state: Dict[str, Any]) -> str:
         return '<p class="text-sm text-slate-500 italic">No suspicious API calls detected in decompiled code.</p>'
 
     return "\n".join(evidence_blocks)
-
-

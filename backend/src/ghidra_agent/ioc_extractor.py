@@ -11,9 +11,12 @@ Extracts IOCs from binary analysis results including:
 - C2 indicators
 """
 
+import base64
+import binascii
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Set
+from urllib.parse import unquote
 
 from ghidra_agent.iana_tlds import IANA_TLDS
 
@@ -29,6 +32,7 @@ class IOCs:
     mutexes: List[str] = field(default_factory=list)
     crypto_materials: List[str] = field(default_factory=list)
     suspicious_strings: List[str] = field(default_factory=list)
+    decoded_strings: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, List[str]]:
         return {
@@ -41,6 +45,7 @@ class IOCs:
             "mutexes": self.mutexes,
             "crypto_materials": self.crypto_materials,
             "suspicious_strings": self.suspicious_strings,
+            "decoded_strings": self.decoded_strings,
         }
 
     def is_empty(self) -> bool:
@@ -76,8 +81,13 @@ _ELF_SECTION_NAMES = frozenset({
 
 def _is_valid_domain(match_str: str) -> bool:
     """Check if a domain candidate has a valid IANA TLD."""
+    if "/" in match_str or "%" in match_str:
+        return False
     parts = match_str.rsplit('.', 1)
     if len(parts) != 2:
+        return False
+    labels = parts[0].split(".")
+    if any(label.lower().startswith(("2f", "3a", "3d", "26")) for label in labels):
         return False
     tld = parts[1].lower()
     if tld not in IANA_TLDS:
@@ -254,6 +264,83 @@ CRYPTO_KEYWORDS = [
 ]
 
 
+_BASE64_CANDIDATE_PATTERN = re.compile(
+    r'(?<![A-Za-z0-9+/=_-])(?:[A-Za-z0-9+/]{16,}={0,2}|[A-Za-z0-9_-]{16,}={0,2})(?![A-Za-z0-9+/=_-])'
+)
+_HEX_CANDIDATE_PATTERN = re.compile(r'\b(?:[A-Fa-f0-9]{2}){8,}\b')
+_MAX_DECODE_INPUT_CHARS = 4096
+_MAX_DECODE_OUTPUT_CHARS = 2048
+_MAX_DECODED_RECORD_CHARS = 220
+
+
+def _safe_decode_bytes(raw: bytes) -> str | None:
+    if not raw or len(raw) > _MAX_DECODE_OUTPUT_CHARS:
+        return None
+    text = raw.decode("utf-8", errors="ignore").strip("\x00\r\n\t ")
+    if len(text) < 4:
+        return None
+    printable = sum(1 for ch in text if ch.isprintable() or ch in "\r\n\t")
+    if printable / max(len(text), 1) < 0.85:
+        return None
+    return text
+
+
+def _has_ioc_signal(text: str) -> bool:
+    if IP_PATTERN.search(text) or URL_PATTERN.search(text) or EMAIL_PATTERN.search(text):
+        return True
+    if UNIX_PATH_PATTERN.search(text) or WINDOWS_PATH_PATTERN.search(text) or REGISTRY_PATTERN.search(text):
+        return True
+    if any(_is_valid_domain(m.group(0)) for m in _DOMAIN_CANDIDATE_PATTERN.finditer(text)):
+        return True
+    lower = text.lower()
+    return any(keyword in lower for keyword in SUSPICIOUS_KEYWORDS)
+
+
+def _decoded_variants(value: str) -> List[Dict[str, str]]:
+    """Return high-signal decoded variants from URL/base64/hex-obfuscated strings."""
+    variants: List[Dict[str, str]] = []
+    seen: Set[str] = set()
+
+    def add(kind: str, decoded: str) -> None:
+        decoded = decoded.strip()
+        if decoded and decoded != value and decoded not in seen and _has_ioc_signal(decoded):
+            seen.add(decoded)
+            variants.append({"encoding": kind, "value": decoded})
+
+    if "%" in value:
+        try:
+            add("url", unquote(value))
+        except Exception:
+            pass
+
+    for match in _BASE64_CANDIDATE_PATTERN.finditer(value[:_MAX_DECODE_INPUT_CHARS]):
+        candidate = match.group(0)
+        padded = candidate + ("=" * (-len(candidate) % 4))
+        decoders = (base64.b64decode, base64.urlsafe_b64decode)
+        for decoder in decoders:
+            try:
+                if decoder is base64.b64decode:
+                    raw = decoder(padded, validate=True)
+                else:
+                    raw = decoder(padded)
+            except (binascii.Error, ValueError):
+                continue
+            decoded = _safe_decode_bytes(raw)
+            if decoded:
+                add("base64", decoded)
+                break
+
+    for match in _HEX_CANDIDATE_PATTERN.finditer(value[:_MAX_DECODE_INPUT_CHARS]):
+        try:
+            decoded = _safe_decode_bytes(bytes.fromhex(match.group(0)))
+        except ValueError:
+            continue
+        if decoded:
+            add("hex", decoded)
+
+    return variants
+
+
 def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
     """Extract IOCs from a list of string objects."""
     iocs = IOCs()
@@ -267,11 +354,11 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
     seen_mutexes: Set[str] = set()
     seen_crypto: Set[str] = set()
     seen_suspicious: Set[str] = set()
+    seen_decoded: Set[str] = set()
 
-    for string_obj in strings_list:
-        value = string_obj.get("value", "")
+    def scan_value(value: str) -> None:
         if not value:
-            continue
+            return
 
         # Extract IPs
         for ip in IP_PATTERN.findall(value):
@@ -358,6 +445,20 @@ def extract_iocs_from_strings(strings_list: List[Dict[str, Any]]) -> IOCs:
                 iocs.suspicious_strings.append(value)
                 break
 
+    for string_obj in strings_list:
+        value = string_obj.get("value", "")
+        if not value:
+            continue
+
+        scan_value(value)
+        for decoded in _decoded_variants(value):
+            decoded_value = decoded["value"]
+            scan_value(decoded_value)
+            record = f"{decoded['encoding']} decoded: {decoded_value[:_MAX_DECODED_RECORD_CHARS]}"
+            if record not in seen_decoded:
+                seen_decoded.add(record)
+                iocs.decoded_strings.append(record)
+
     return iocs
 
 
@@ -419,6 +520,12 @@ def format_iocs_for_report(iocs: IOCs) -> str:
         lines.append("Suspicious Indicators:")
         for susp in iocs.suspicious_strings[:15]:
             lines.append(f"  - {susp}")
+        lines.append("")
+
+    if iocs.decoded_strings:
+        lines.append("Decoded Obfuscated Strings:")
+        for decoded in iocs.decoded_strings[:15]:
+            lines.append(f"  - {decoded[:160]}")
         lines.append("")
 
     if not lines:
@@ -615,7 +722,7 @@ def _extract_llm_malware_type(summary: str) -> str | None:
             rf'\b(?:identified|classified|categorized|detected|confirmed)\s+as\s+(?:a\s+)?{ll}\b',
             rf'\b(?:this\s+(?:binary|sample|malware)\s+is\s+(?:a\s+)?){ll}\b',
             rf'\b{ll}\s+(?:malware|trojan|binary|sample|implant|agent)\b',
-            rf'\b(?:remote\s+access\s+trojan|rat)\b' if ll == "rat" else rf'(?!)',  # special RAT expansion
+            r'\b(?:remote\s+access\s+trojan|rat)\b' if ll == "rat" else r'(?!)',  # special RAT expansion
         ]
         for pat in patterns:
             if re.search(pat, scan_text):
