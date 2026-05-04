@@ -128,7 +128,10 @@ def _dynamic_findings(qiling: Dict[str, Any], ioc_values: List[str]) -> List[Dic
         for conn in network.get("connections", []) or []:
             if not isinstance(conn, dict):
                 continue
-            target = f"{conn.get('address')}:{conn.get('port')}" if conn.get("port") else str(conn.get("address", ""))
+            address = conn.get("address")
+            if not address:
+                continue
+            target = f"{address}:{conn.get('port')}" if conn.get("port") else str(address)
             linked = _matching_iocs(target, ioc_values) or ([target] if target else [])
             if linked:
                 findings.append(_dynamic_finding("network", "runtime connection", linked, target, 95))

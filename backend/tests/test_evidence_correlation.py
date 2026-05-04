@@ -90,3 +90,29 @@ def test_analysis_context_and_reports_include_correlation_section():
 
     html_report = build_report_html(state)
     assert "Cross-Engine Evidence Correlation" in html_report
+    assert 'href="#evidence-correlation"' in html_report
+
+
+def test_dynamic_correlation_skips_network_connections_without_address():
+    state = _state()
+    state["qiling_analysis_results"] = {
+        "network_activity": {
+            "connections": [
+                {"port": 443},
+                {"address": None, "port": 8443},
+                {"address": "5.6.7.8", "port": 443},
+            ]
+        }
+    }
+
+    correlation = build_evidence_correlation(state)
+    qiling_iocs = [
+        ioc
+        for finding in correlation["findings"]
+        if finding["engine"] == "qiling"
+        for ioc in finding["iocs"]
+    ]
+
+    assert "5.6.7.8:443" in qiling_iocs
+    assert "None:443" not in qiling_iocs
+    assert "None:8443" not in qiling_iocs
