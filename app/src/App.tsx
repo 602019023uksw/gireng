@@ -1203,29 +1203,22 @@ function App() {
       >
         {/* Top Header */}
         <header
-          className="h-16 flex items-center justify-between px-5 flex-shrink-0 relative z-30"
+          className="min-h-16 flex items-center justify-between gap-3 px-4 sm:px-5 flex-shrink-0 relative z-30"
           style={{
             background: 'rgba(255, 255, 255, 0.92)',
             borderBottom: '1px solid #e8eaed',
             boxShadow: '0 1px 2px rgba(60, 64, 67, 0.08)',
           }}
         >
-          <div className="flex items-center gap-4">
-            {/* Product mark */}
-            <div className="flex items-center gap-1.5 mr-1">
-              <div className="w-3 h-3 rounded-full bg-terminal-red" />
-              <div className="w-3 h-3 rounded-full bg-terminal-yellow" />
-              <div className="w-3 h-3 rounded-full bg-terminal-green" />
-            </div>
-
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             {/* Back Button (when in analysis view) */}
             {viewState === 'analysis' && (
               <button
                 onClick={handleBackToChat}
-                className="flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-accent-blue rounded-full transition-all duration-150 hover:bg-bg-hover"
+                className="flex min-w-0 items-center gap-2 px-3 sm:px-4 py-2 text-text-secondary hover:text-accent-blue rounded-full transition-all duration-150 hover:bg-bg-hover"
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="text-sm">Back to Chat</span>
+                <ArrowLeft className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm truncate">Back to Chat</span>
               </button>
             )}
 
@@ -1233,10 +1226,10 @@ function App() {
             {!rightPanelOpen && (
               <button
                 onClick={() => setRightPanelOpen(true)}
-                className="flex items-center gap-2 px-4 py-2 text-text-secondary hover:text-accent-blue rounded-full transition-all duration-150 hover:bg-bg-hover"
+                className="flex min-w-0 items-center gap-2 px-3 sm:px-4 py-2 text-text-secondary hover:text-accent-blue rounded-full transition-all duration-150 hover:bg-bg-hover"
               >
-                <PanelRight className="w-4 h-4" />
-                <span className="text-sm">Resources</span>
+                <PanelRight className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm truncate">Resources</span>
               </button>
             )}
 
@@ -1249,7 +1242,7 @@ function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-2">
             {user && (
               <UserMenu
                 user={user}

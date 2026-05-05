@@ -55,33 +55,33 @@ export function ModelSelector({ selectedModelId, onSelect }: ModelSelectorProps)
   // If only one model (or none loaded yet), show as a simple badge (no dropdown)
   if (models.length <= 1) {
     return (
-      <div className="flex items-center gap-2 px-4 py-2 rounded-full text-sm"
+      <div className="flex max-w-full min-w-0 items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-sm"
         style={{
           background: '#ffffff',
           border: '1px solid #dadce0',
           boxShadow: '0 1px 2px rgba(60, 64, 67, 0.10)',
         }}
       >
-        <Cpu className="w-4 h-4 text-accent-blue" />
-        <span className="text-text-primary">{displayName}</span>
+        <Cpu className="w-4 h-4 flex-shrink-0 text-accent-blue" />
+        <span className="truncate text-text-primary">{displayName}</span>
       </div>
     );
   }
 
   return (
-    <div ref={dropdownRef} className="relative">
+    <div ref={dropdownRef} className="relative min-w-0">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-4 py-2 rounded-full text-sm transition-all duration-150 hover:bg-bg-hover"
+        className="flex max-w-full min-w-0 items-center gap-2 px-3 sm:px-4 py-2 rounded-full text-sm transition-all duration-150 hover:bg-bg-hover"
         style={{
           background: '#ffffff',
           border: '1px solid #dadce0',
           boxShadow: '0 1px 2px rgba(60, 64, 67, 0.10)',
         }}
       >
-        <Cpu className="w-4 h-4 text-accent-blue" />
-        <span className="text-text-primary">{displayName}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <Cpu className="w-4 h-4 flex-shrink-0 text-accent-blue" />
+        <span className="truncate text-text-primary">{displayName}</span>
+        <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 text-text-secondary transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
 
       <AnimatePresence>

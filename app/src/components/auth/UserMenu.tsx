@@ -27,20 +27,20 @@ export function UserMenu({ user, onLogout, onAdminPanel }: UserMenuProps) {
   }, []);
 
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative min-w-0" ref={ref}>
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:bg-bg-hover"
+        className="flex max-w-[48vw] min-w-0 items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all hover:bg-bg-hover"
         style={{ border: '1px solid #dadce0' }}
       >
-        <div className="w-6 h-6 rounded-full flex items-center justify-center bg-blue-50">
+        <div className="w-6 h-6 flex-shrink-0 rounded-full flex items-center justify-center bg-blue-50">
           <User className="w-3.5 h-3.5 text-accent-blue" />
         </div>
         <span className="text-text-primary max-w-[120px] truncate">{user.username}</span>
-        <span className={`text-[10px] px-1.5 py-0.5 rounded border ${roleBadgeColors[user.role] || roleBadgeColors.guest}`}>
+        <span className={`hidden sm:inline text-[10px] px-1.5 py-0.5 rounded border ${roleBadgeColors[user.role] || roleBadgeColors.guest}`}>
           {user.role}
         </span>
-        <ChevronDown className={`w-3.5 h-3.5 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown className={`w-3.5 h-3.5 flex-shrink-0 text-text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
 
       {open && (
