@@ -21,14 +21,14 @@ const verdictColors: Record<string, string> = {
 };
 
 const verdictBgColors: Record<string, string> = {
-  Clean: 'bg-accent-green/10',
-  Malware: 'bg-accent-red/10',
-  Malicious: 'bg-accent-red/10',
-  Suspicious: 'bg-accent-orange/10',
-  'Potentially Unwanted': 'bg-accent-orange/10',
+  Clean: 'bg-green-50',
+  Malware: 'bg-red-50',
+  Malicious: 'bg-red-50',
+  Suspicious: 'bg-orange-50',
+  'Potentially Unwanted': 'bg-orange-50',
   Not_extracted: 'bg-text-muted/10',
-  COMPLETED: 'bg-accent-green/10',
-  running: 'bg-accent-blue/10',
+  COMPLETED: 'bg-green-50',
+  running: 'bg-blue-50',
   pending: 'bg-text-muted/10',
 };
 
@@ -38,7 +38,7 @@ const dotColors: Record<string, string> = {
   Malicious: '#F85149',
   Suspicious: '#D29922',
   COMPLETED: '#3FB950',
-  running: '#58A6FF',
+  running: '#1a73e8',
 };
 
 export function StatusBadge({ status, size = 'md', showDot = false }: StatusBadgeProps) {

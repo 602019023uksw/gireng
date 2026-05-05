@@ -21,11 +21,10 @@ export function AnalyzerList({ analyzers }: AnalyzerListProps) {
           },
         },
       }}
-      className="backdrop-blur-xl rounded-2xl overflow-hidden"
+      className="rounded-3xl overflow-hidden bg-white"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.5) 0%, rgba(15, 20, 35, 0.3) 100%)',
-        border: '1px solid rgba(100, 120, 180, 0.15)',
-        boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03) inset',
+        border: '1px solid #e8eaed',
+        boxShadow: '0 1px 3px rgba(60, 64, 67, 0.16), 0 1px 2px rgba(60, 64, 67, 0.08)',
       }}
     >
       {analyzers.map((analyzer) => (

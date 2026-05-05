@@ -48,10 +48,10 @@ function SectionCard({
 }) {
   return (
     <div
-      className="rounded-xl p-4 mb-4"
+      className="rounded-2xl bg-white p-4 mb-4"
       style={{
-        background: 'rgba(20, 28, 50, 0.4)',
-        border: '1px solid rgba(100, 120, 180, 0.15)',
+        border: '1px solid #e8eaed',
+        boxShadow: '0 1px 2px rgba(60, 64, 67, 0.08)',
       }}
     >
       <div className="flex items-center gap-2 mb-3">
@@ -61,8 +61,8 @@ function SectionCard({
           <span
             className="ml-auto text-xs px-2 py-0.5 rounded-full"
             style={{
-              background: 'rgba(88, 166, 255, 0.15)',
-              color: 'rgb(88, 166, 255)',
+              background: '#e8f0fe',
+              color: '#1a73e8',
             }}
           >
             {badge}
@@ -76,7 +76,7 @@ function SectionCard({
 
 function KVRow({ label, value, mono }: { label: string; value: string | number; mono?: boolean }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-white/5 last:border-0">
+    <div className="flex items-center justify-between py-1.5 border-b border-border-subtle last:border-0">
       <span className="text-xs text-text-secondary">{label}</span>
       <span className={`text-xs text-text-primary ${mono ? 'font-mono' : ''}`}>{String(value)}</span>
     </div>
@@ -146,9 +146,9 @@ function SyscallsSection({ data }: { data: Record<string, unknown> }) {
                 key={cat}
                 className="text-xs px-2 py-0.5 rounded-full"
                 style={{
-                  background: 'rgba(88, 166, 255, 0.1)',
-                  border: '1px solid rgba(88, 166, 255, 0.2)',
-                  color: 'rgb(140, 180, 255)',
+                  background: '#e8f0fe',
+                  border: '1px solid #d2e3fc',
+                  color: '#174ea6',
                 }}
               >
                 {cat}: {String(count)}
@@ -161,7 +161,7 @@ function SyscallsSection({ data }: { data: Record<string, unknown> }) {
         <div className="max-h-48 overflow-y-auto scrollbar-dark">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-text-muted border-b border-white/10">
+              <tr className="text-text-muted border-b border-border-subtle">
                 <th className="text-left py-1 pr-2">Name</th>
                 <th className="text-left py-1 pr-2">Category</th>
                 <th className="text-right py-1">Address</th>
@@ -171,7 +171,7 @@ function SyscallsSection({ data }: { data: Record<string, unknown> }) {
               {syscalls.slice(0, 50).map((sc, i) => {
                 const s = asRecord(sc);
                 return (
-                  <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                  <tr key={i} className="border-b border-border-subtle hover:bg-bg-hover">
                     <td className="py-1 pr-2 text-text-primary font-mono">{asString(s.name || s.syscall, '?')}</td>
                     <td className="py-1 pr-2 text-text-secondary">{asString(s.category, '-')}</td>
                     <td className="py-1 text-right text-text-muted font-mono">
@@ -210,7 +210,7 @@ function MemorySection({ data }: { data: Record<string, unknown> }) {
         <div className="max-h-40 overflow-y-auto scrollbar-dark">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-text-muted border-b border-white/10">
+              <tr className="text-text-muted border-b border-border-subtle">
                 <th className="text-left py-1 pr-2">Type</th>
                 <th className="text-left py-1 pr-2">Address</th>
                 <th className="text-right py-1">Size</th>
@@ -220,7 +220,7 @@ function MemorySection({ data }: { data: Record<string, unknown> }) {
               {events.slice(0, 30).map((ev, i) => {
                 const e = asRecord(ev);
                 return (
-                  <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                  <tr key={i} className="border-b border-border-subtle hover:bg-bg-hover">
                     <td className="py-1 pr-2 text-text-primary">{asString(e.type || e.event_type, '?')}</td>
                     <td className="py-1 pr-2 text-text-muted font-mono">
                       {(() => {
@@ -285,7 +285,7 @@ function NetworkSection({ data }: { data: Record<string, unknown> }) {
                 <div
                   key={i}
                   className="text-xs font-mono text-text-primary px-2 py-1 rounded"
-                  style={{ background: 'rgba(255, 100, 100, 0.08)' }}
+                  style={{ background: '#fce8e6' }}
                 >
                   {asString(c.protocol || c.type, 'TCP')} {asString(c.destination || c.address || c.ip, '?')}:{String(c.port || '?')}
                 </div>
@@ -301,7 +301,7 @@ function NetworkSection({ data }: { data: Record<string, unknown> }) {
             {dnsQueries.map((q, i) => {
               const d = asRecord(q);
               return (
-                <div key={i} className="text-xs font-mono text-text-primary px-2 py-1 rounded" style={{ background: 'rgba(255, 180, 50, 0.08)' }}>
+                <div key={i} className="text-xs font-mono text-text-primary px-2 py-1 rounded" style={{ background: '#fff4e5' }}>
                   {asString(d.domain || d.query, '?')} ({asString(d.type, 'A')})
                 </div>
               );
@@ -343,9 +343,9 @@ function EvasionSection({ data }: { data: Record<string, unknown> }) {
                 key={i}
                 className="text-xs px-2 py-0.5 rounded-full"
                 style={{
-                  background: 'rgba(255, 100, 100, 0.1)',
-                  border: '1px solid rgba(255, 100, 100, 0.2)',
-                  color: 'rgb(255, 140, 140)',
+                  background: '#fce8e6',
+                  border: '1px solid #fad2cf',
+                  color: '#d93025',
                 }}
               >
                 {String(t)}
@@ -362,7 +362,7 @@ function EvasionSection({ data }: { data: Record<string, unknown> }) {
               <div
                 key={i}
                 className="text-xs p-2 rounded"
-                style={{ background: 'rgba(255, 100, 100, 0.05)', border: '1px solid rgba(255, 100, 100, 0.1)' }}
+                style={{ background: '#fce8e6', border: '1px solid #fad2cf' }}
               >
                 <span className="text-text-primary font-medium">{asString(t.name || t.technique, 'Unknown')}</span>
                 {t.description ? (
@@ -424,9 +424,9 @@ function InstructionTraceSection({ data }: { data: Record<string, unknown> }) {
                   key={i}
                   className="text-xs px-2 py-0.5 rounded-full font-mono"
                   style={{
-                    background: 'rgba(88, 166, 255, 0.1)',
-                    border: '1px solid rgba(88, 166, 255, 0.2)',
-                    color: 'rgb(140, 180, 255)',
+                    background: '#e8f0fe',
+                    border: '1px solid #d2e3fc',
+                    color: '#174ea6',
                   }}
                 >
                   {asString(item.mnemonic, '?')}: {fmtInt(asNumber(item.count))}
@@ -442,7 +442,7 @@ function InstructionTraceSection({ data }: { data: Record<string, unknown> }) {
         <div className="max-h-64 overflow-y-auto scrollbar-dark">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-text-muted border-b border-white/10">
+              <tr className="text-text-muted border-b border-border-subtle">
                 <th className="text-left py-1 pr-2">Address</th>
                 <th className="text-left py-1 pr-2">Mnemonic</th>
                 <th className="text-left py-1 pr-2">Operands</th>
@@ -453,7 +453,7 @@ function InstructionTraceSection({ data }: { data: Record<string, unknown> }) {
               {instructions.slice(0, 200).map((insn, i) => {
                 const ins = asRecord(insn);
                 return (
-                  <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                  <tr key={i} className="border-b border-border-subtle hover:bg-bg-hover">
                     <td className="py-1 pr-2 text-accent-blue font-mono">
                       {asString(ins.address, '?')}
                     </td>
@@ -491,7 +491,7 @@ function ApiCallsSection({ data }: { data: Record<string, unknown> }) {
       <div className="max-h-48 overflow-y-auto scrollbar-dark">
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-text-muted border-b border-white/10">
+            <tr className="text-text-muted border-b border-border-subtle">
               <th className="text-left py-1 pr-2">Function</th>
               <th className="text-left py-1 pr-2">Module</th>
               <th className="text-right py-1">Return</th>
@@ -501,7 +501,7 @@ function ApiCallsSection({ data }: { data: Record<string, unknown> }) {
             {calls.slice(0, 50).map((c, i) => {
               const call = asRecord(c);
               return (
-                <tr key={i} className="border-b border-white/5 hover:bg-white/5">
+                <tr key={i} className="border-b border-border-subtle hover:bg-bg-hover">
                   <td className="py-1 pr-2 text-text-primary font-mono">{asString(call.name || call.function, '?')}</td>
                   <td className="py-1 pr-2 text-text-secondary">{asString(call.module, '-')}</td>
                   <td className="py-1 text-right text-text-muted font-mono">{call.return_value != null ? String(call.return_value) : '-'}</td>

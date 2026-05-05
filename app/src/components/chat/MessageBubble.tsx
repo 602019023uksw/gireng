@@ -31,14 +31,13 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
-        className="flex justify-end mb-4"
+        className="flex justify-end mb-5"
       >
         <div
-          className="max-w-[80%] rounded-2xl rounded-tr-sm px-4 py-3"
+          className="max-w-[80%] rounded-3xl rounded-tr-lg px-5 py-3"
           style={{
-            background: 'linear-gradient(135deg, rgba(35, 45, 75, 0.6) 0%, rgba(25, 32, 55, 0.5) 100%)',
-            border: '1px solid rgba(100, 120, 180, 0.2)',
-            backdropFilter: 'blur(8px)',
+            background: '#e8f0fe',
+            border: '1px solid #d2e3fc',
           }}
         >
           <p className="text-text-primary text-sm whitespace-pre-wrap">{message.content}</p>
@@ -55,24 +54,24 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
-      className="flex gap-3 mb-4"
+      className="flex gap-4 mb-6"
     >
       {/* AI Avatar */}
       <div
-        className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-1"
+        className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mt-1"
         style={{
           background: agent
-            ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.2) 0%, rgba(168, 85, 247, 0.05) 100%)'
-            : 'linear-gradient(135deg, rgba(88, 166, 255, 0.2) 0%, rgba(88, 166, 255, 0.05) 100%)',
+            ? '#f3e8fd'
+            : '#e8f0fe',
           border: agent
-            ? '1px solid rgba(168, 85, 247, 0.3)'
-            : '1px solid rgba(88, 166, 255, 0.3)',
+            ? '1px solid #e9d2fd'
+            : '1px solid #d2e3fc',
         }}
       >
         {agent ? (
-          <Bot className="w-3.5 h-3.5 text-accent-purple" />
+          <Bot className="w-4 h-4 text-accent-purple" />
         ) : (
-          <Sparkles className="w-3.5 h-3.5 text-accent-blue" />
+          <Sparkles className="w-4 h-4 text-accent-blue" />
         )}
       </div>
 
@@ -82,11 +81,11 @@ export function MessageBubble({ message, onViewAnalysis }: MessageBubbleProps) {
           {/* Agent Badge */}
           {agent && (
             <span
-              className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1"
+              className="text-xs px-2.5 py-1 rounded-full flex items-center gap-1"
               style={{
-                background: 'rgba(168, 85, 247, 0.15)',
-                border: '1px solid rgba(168, 85, 247, 0.25)',
-                color: '#a855f7',
+                background: '#f3e8fd',
+                border: '1px solid #e9d2fd',
+                color: '#6750a4',
               }}
             >
               <Bot className="w-3 h-3" />

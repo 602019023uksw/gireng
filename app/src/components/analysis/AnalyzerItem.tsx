@@ -21,13 +21,13 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
-    <div className="border-b border-white/10 last:border-b-0"
-      style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+    <div className="border-b last:border-b-0"
+      style={{ borderColor: '#e8eaed' }}
     >
       {/* Header Row */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-4 py-4 hover:bg-white/5 transition-colors duration-150"
+        className="w-full flex items-center justify-between px-5 py-4 hover:bg-bg-hover transition-colors duration-150"
       >
         <div className="flex items-center gap-3">
           <motion.div
@@ -73,7 +73,7 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
             className="overflow-hidden"
             style={{
-              background: 'rgba(8, 10, 18, 0.6)',
+              background: '#f8fafd',
             }}
           >
             <div className="px-12 py-6 space-y-6">
@@ -123,8 +123,8 @@ export function AnalyzerItem({ analyzer }: AnalyzerItemProps) {
               </section>
 
               {/* Execution Logs */}
-              <div className="pt-4 border-t border-white/10"
-                style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+              <div className="pt-4 border-t"
+                style={{ borderColor: '#e8eaed' }}
               >
                 <p className="text-xs font-medium text-text-muted uppercase tracking-wider mb-2">
                   EXECUTION LOGS

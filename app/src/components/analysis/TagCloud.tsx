@@ -33,11 +33,11 @@ export function TagCloud({ tags, maxVisible }: TagCloudProps) {
             visible: { opacity: 1, scale: 1 },
           }}
           transition={{ duration: 0.2 }}
-          className="px-2.5 py-1 text-xs font-medium rounded-full transition-all duration-150 cursor-default backdrop-blur-sm"
+          className="px-2.5 py-1 text-xs font-medium rounded-full transition-all duration-150 cursor-default"
           style={{
-            background: 'rgba(88, 166, 255, 0.08)',
-            border: '1px solid rgba(88, 166, 255, 0.15)',
-            color: 'rgba(160, 168, 184, 0.9)',
+            background: '#e8f0fe',
+            border: '1px solid #d2e3fc',
+            color: '#174ea6',
           }}
         >
           {tag}
@@ -50,11 +50,11 @@ export function TagCloud({ tags, maxVisible }: TagCloudProps) {
             visible: { opacity: 1, scale: 1 },
           }}
           transition={{ duration: 0.2 }}
-          className="px-2.5 py-1 text-xs font-medium rounded-full backdrop-blur-sm"
+          className="px-2.5 py-1 text-xs font-medium rounded-full"
           style={{
-            background: 'rgba(100, 120, 180, 0.1)',
-            border: '1px solid rgba(100, 120, 180, 0.2)',
-            color: 'rgba(160, 168, 184, 0.7)',
+            background: '#f1f3f4',
+            border: '1px solid #e8eaed',
+            color: '#5f6368',
           }}
         >
           +{remainingCount}

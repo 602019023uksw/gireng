@@ -129,15 +129,14 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2, ease: [0.4, 0, 0.2, 1] as const }}
-        className="relative backdrop-blur-xl rounded-2xl transition-all duration-200"
+        className="relative rounded-3xl transition-all duration-200 bg-white"
         style={{
-          background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.6) 0%, rgba(15, 20, 35, 0.4) 100%)',
-          border: isFocused 
-            ? '1px solid rgba(168, 85, 247, 0.5)' 
-            : '1px solid rgba(100, 120, 180, 0.2)',
-          boxShadow: isFocused 
-            ? '0 0 0 3px rgba(168, 85, 247, 0.1), 0 4px 24px -1px rgba(0, 0, 0, 0.3)' 
-            : '0 4px 24px -1px rgba(0, 0, 0, 0.25)',
+          border: isFocused
+            ? '1px solid #1a73e8'
+            : '1px solid #dadce0',
+          boxShadow: isFocused
+            ? '0 0 0 4px rgba(26, 115, 232, 0.14), 0 8px 24px rgba(60, 64, 67, 0.12)'
+            : '0 1px 3px rgba(60, 64, 67, 0.16), 0 1px 2px rgba(60, 64, 67, 0.08)',
         }}
       >
         {/* Selected Agent Indicator */}
@@ -145,7 +144,7 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
           <div className="px-4 pt-3 flex items-center gap-2">
             <span className="text-xs text-text-muted">Using agent:</span>
             <span 
-              className="text-xs px-2 py-0.5 rounded-full bg-accent-purple/20 text-accent-purple border border-accent-purple/30"
+              className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-accent-blue border border-blue-100"
             >
               @{selectedAgentId}
             </span>
@@ -175,9 +174,9 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
           <button
             onClick={handleSubmit}
             disabled={!message.trim()}
-            className={`w-8 h-8 rounded-lg flex items-center justify-center transition-all duration-150 ${
+            className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-150 ${
               message.trim()
-                ? 'text-accent-purple hover:bg-accent-purple/10'
+                ? 'text-white bg-accent-blue hover:bg-[#1557b0] shadow-glass'
                 : 'text-text-muted cursor-not-allowed'
             }`}
           >

@@ -58,7 +58,7 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
             const isBlock = Boolean(codeClassName);
             if (isBlock) {
               return (
-                <code className={`${codeClassName} font-mono text-xs text-[#F0F6FC]`}>
+                <code className={`${codeClassName} font-mono text-xs text-text-secondary`}>
                   {children}
                 </code>
               );
@@ -67,9 +67,9 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
               <code
                 className="px-1.5 py-0.5 rounded text-xs font-mono"
                 style={{
-                  background: 'rgba(88, 166, 255, 0.1)',
-                  border: '1px solid rgba(88, 166, 255, 0.2)',
-                  color: '#F0F6FC',
+                  background: '#e8f0fe',
+                  border: '1px solid #d2e3fc',
+                  color: '#174ea6',
                 }}
               >
                 {children}
@@ -80,8 +80,8 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
             <pre
               className={`${compact ? 'p-3' : 'p-4'} rounded-lg overflow-x-auto ${compact ? 'my-3' : 'my-4'}`}
               style={{
-                background: 'rgba(10, 14, 28, 0.6)',
-                border: '1px solid rgba(100, 120, 180, 0.15)',
+                background: '#f8fafd',
+                border: '1px solid #e8eaed',
               }}
             >
               {children}
@@ -95,7 +95,7 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
           blockquote: ({ children }) => (
             <blockquote
               className={`${compact ? 'my-3' : 'my-4'} pl-4 italic text-text-secondary`}
-              style={{ borderLeft: '3px solid rgba(88, 166, 255, 0.45)' }}
+              style={{ borderLeft: '3px solid #1a73e8' }}
             >
               {children}
             </blockquote>
@@ -103,27 +103,27 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
           hr: () => (
             <hr
               className={`${compact ? 'my-3' : 'my-4'}`}
-              style={{ borderColor: 'rgba(100, 120, 180, 0.2)' }}
+              style={{ borderColor: '#e8eaed' }}
             />
           ),
           table: ({ children }) => (
             <div className={`overflow-x-auto ${compact ? 'my-3' : 'my-4'}`}>
               <table
                 className="w-full text-left border-collapse"
-                style={{ border: '1px solid rgba(100, 120, 180, 0.2)' }}
+                style={{ border: '1px solid #e8eaed' }}
               >
                 {children}
               </table>
             </div>
           ),
           thead: ({ children }) => (
-            <thead style={{ background: 'rgba(20, 28, 50, 0.6)' }}>{children}</thead>
+            <thead style={{ background: '#f8fafd' }}>{children}</thead>
           ),
           tbody: ({ children }) => <tbody>{children}</tbody>,
           tr: ({ children }) => (
             <tr
               className="border-b"
-              style={{ borderColor: 'rgba(100, 120, 180, 0.12)' }}
+              style={{ borderColor: '#edf0f4' }}
             >
               {children}
             </tr>
@@ -131,7 +131,7 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
           th: ({ children }) => (
             <th
               className="px-3 py-2 text-xs font-semibold uppercase text-text-secondary"
-              style={{ borderBottom: '2px solid rgba(100, 120, 180, 0.25)' }}
+              style={{ borderBottom: '2px solid #e8eaed' }}
             >
               {children}
             </th>

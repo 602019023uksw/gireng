@@ -23,23 +23,22 @@ export function AnalysisCompletedCard({
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: 0.2 }}
-      className="rounded-xl overflow-hidden my-3"
+      className="rounded-2xl overflow-hidden my-3 bg-white"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.6) 0%, rgba(15, 20, 35, 0.4) 100%)',
-        border: '1px solid rgba(100, 120, 180, 0.2)',
-        backdropFilter: 'blur(8px)',
+        border: '1px solid #e8eaed',
+        boxShadow: '0 1px 3px rgba(60, 64, 67, 0.12)',
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5"
-        style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+      <div className="flex items-center justify-between px-4 py-3 border-b"
+        style={{ borderColor: '#e8eaed' }}
       >
         <div className="flex items-center gap-3">
           <div 
             className="w-6 h-6 rounded-full flex items-center justify-center"
             style={{
-              background: 'linear-gradient(135deg, rgba(63, 185, 80, 0.2) 0%, rgba(63, 185, 80, 0.1) 100%)',
-              border: '1px solid rgba(63, 185, 80, 0.3)',
+              background: '#e6f4ea',
+              border: '1px solid #ceead6',
             }}
           >
             <CheckCircle2 className="w-4 h-4 text-accent-green" />
@@ -74,14 +73,14 @@ export function AnalysisCompletedCard({
           </div>
           <div 
             className="h-1.5 rounded-full overflow-hidden"
-            style={{ background: 'rgba(8, 10, 18, 0.5)' }}
+            style={{ background: '#e8eaed' }}
           >
             <motion.div
               initial={{ width: 0 }}
               animate={{ width: `${progressPercent}%` }}
               transition={{ duration: 0.8, ease: [0.4, 0, 0.2, 1] }}
               className="h-full rounded-full"
-              style={{ background: 'linear-gradient(90deg, #58A6FF, #A371F7)' }}
+              style={{ background: '#1a73e8' }}
             />
           </div>
         </div>
@@ -97,11 +96,11 @@ export function AnalysisCompletedCard({
               href={getExportHtmlUrl(fileHash)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 hover:brightness-125"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors duration-150 hover:bg-blue-100"
               style={{
-                background: 'rgba(59, 130, 246, 0.12)',
-                color: 'rgb(147, 197, 253)',
-                border: '1px solid rgba(59, 130, 246, 0.25)',
+                background: '#e8f0fe',
+                color: '#1a73e8',
+                border: '1px solid #d2e3fc',
               }}
             >
               <FileCode className="w-3.5 h-3.5" />
@@ -111,11 +110,11 @@ export function AnalysisCompletedCard({
               href={getExportPdfUrl(fileHash)}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 hover:brightness-125"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors duration-150 hover:bg-red-100"
               style={{
-                background: 'rgba(239, 68, 68, 0.12)',
-                color: 'rgb(252, 165, 165)',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
+                background: '#fce8e6',
+                color: '#d93025',
+                border: '1px solid #fad2cf',
               }}
             >
               <FileType className="w-3.5 h-3.5" />

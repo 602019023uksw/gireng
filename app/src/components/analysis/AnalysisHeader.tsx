@@ -14,11 +14,10 @@ export function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] as const }}
-      className="backdrop-blur-xl rounded-2xl p-6"
+      className="rounded-3xl bg-white p-7"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.6) 0%, rgba(15, 20, 35, 0.4) 100%)',
-        border: '1px solid rgba(100, 120, 180, 0.2)',
-        boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.03) inset',
+        border: '1px solid #e8eaed',
+        boxShadow: '0 8px 24px rgba(60, 64, 67, 0.12), 0 2px 6px rgba(60, 64, 67, 0.08)',
       }}
     >
       {/* Top Row: Progress and File Info */}
@@ -37,7 +36,7 @@ export function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-4">
             <div className="flex-1 min-w-0">
-              <h2 className="text-xl font-semibold text-text-primary font-mono break-all">
+              <h2 className="text-xl font-semibold text-text-primary font-mono break-all tracking-tight">
                 {analysis.hash}
               </h2>
               <p className="text-sm text-text-muted mt-1 font-mono">
@@ -54,8 +53,8 @@ export function AnalysisHeader({ analysis }: AnalysisHeaderProps) {
       </div>
 
       {/* Metadata Grid */}
-      <div className="grid grid-cols-4 gap-4 mb-6 py-4 border-y border-white/10"
-        style={{ borderColor: 'rgba(100, 120, 180, 0.15)' }}
+      <div className="grid grid-cols-4 gap-4 mb-6 py-4 border-y"
+        style={{ borderColor: '#e8eaed' }}
       >
         <div>
           <p className="text-xs text-text-muted uppercase tracking-wider mb-1">STATUS</p>

@@ -44,11 +44,11 @@ export function AgentSelector({ selectedAgentId, onSelect }: AgentSelectorProps)
     <div ref={dropdownRef} className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-all duration-150"
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-all duration-150"
         style={{
-          background: 'rgba(20, 28, 50, 0.5)',
-          border: '1px solid rgba(100, 120, 180, 0.2)',
-          color: '#A0A8B8',
+          background: '#ffffff',
+          border: '1px solid #dadce0',
+          color: '#5f6368',
         }}
       >
         <Bot className="w-4 h-4" />
@@ -63,12 +63,10 @@ export function AgentSelector({ selectedAgentId, onSelect }: AgentSelectorProps)
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
-            className="absolute top-full left-0 mt-2 w-64 rounded-xl overflow-hidden z-50"
+            className="absolute top-full left-0 mt-2 w-64 rounded-2xl overflow-hidden z-50 bg-white"
             style={{
-              background: 'rgba(15, 22, 40, 0.95)',
-              backdropFilter: 'blur(16px)',
-              border: '1px solid rgba(100, 120, 180, 0.2)',
-              boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.5)',
+              border: '1px solid #e8eaed',
+              boxShadow: '0 8px 24px rgba(60, 64, 67, 0.16)',
             }}
           >
             <div className="py-2">
@@ -82,7 +80,7 @@ export function AgentSelector({ selectedAgentId, onSelect }: AgentSelectorProps)
                     onSelect(agent.id);
                     setIsOpen(false);
                   }}
-                  className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-all duration-150 hover:bg-white/5"
+                  className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-all duration-150 hover:bg-bg-hover"
                 >
                   <div className="mt-0.5">
                     {agent.id === selectedAgentId ? (

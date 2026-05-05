@@ -73,7 +73,7 @@ export function ResizablePanel({
       <div
         onMouseDown={handleMouseDown}
         className={`w-1 h-full cursor-col-resize transition-all duration-150 ${
-          isResizing ? 'bg-accent-blue' : 'bg-transparent hover:bg-accent-blue/50'
+          isResizing ? 'bg-accent-blue' : 'bg-transparent hover:bg-blue-100'
         }`}
         style={{
           position: 'absolute',
@@ -89,7 +89,7 @@ export function ResizablePanel({
             isResizing ? 'opacity-100' : 'opacity-0 hover:opacity-100'
           }`}
           style={{
-            background: 'rgba(88, 166, 255, 0.5)',
+            background: '#1a73e8',
           }}
         />
       </div>

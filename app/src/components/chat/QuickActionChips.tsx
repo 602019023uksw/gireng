@@ -43,11 +43,10 @@ export function QuickActionChips({ actions, onActionClick }: QuickActionChipsPro
             }}
             transition={{ duration: 0.3 }}
             onClick={() => onActionClick?.(action.id)}
-            className="flex items-center gap-2 px-3 py-2 rounded-full text-text-secondary text-sm whitespace-nowrap transition-all duration-150 hover:text-text-primary hover:scale-[1.02]"
+            className="flex items-center gap-2 px-4 py-2 rounded-full text-text-secondary text-sm whitespace-nowrap transition-all duration-150 hover:text-accent-blue hover:shadow-glass"
             style={{
-              background: 'rgba(20, 28, 50, 0.4)',
-              border: '1px solid rgba(100, 120, 180, 0.2)',
-              backdropFilter: 'blur(8px)',
+              background: '#ffffff',
+              border: '1px solid #dadce0',
             }}
           >
             <Icon className="w-4 h-4" />
