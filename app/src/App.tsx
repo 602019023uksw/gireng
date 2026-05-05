@@ -52,6 +52,7 @@ import {
   getHexDump,
   getDisassembly,
   getExportHtmlUrl,
+  getViewHtmlUrl,
   getQAHistory,
   getChatMessages,
   saveChatMessage,
@@ -1348,7 +1349,7 @@ function App() {
                           {activeReport?.html_url ? (
                             <div className="w-full" style={{ height: '70vh', minHeight: '500px' }}>
                               <iframe
-                                src={activeReport.html_url}
+                                src={currentAnalysis?.hash ? getViewHtmlUrl(currentAnalysis.hash) : activeReport.html_url}
                                 className="w-full h-full rounded-xl border border-border-default"
                                 style={{ background: '#ffffff' }}
                                 title="Analysis Report"
