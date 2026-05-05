@@ -267,6 +267,14 @@ export function getViewHtmlUrl(hash: string): string {
   return `${API_BASE}/api/analysis/${hash}/view/html${token ? sep + 'token=' + encodeURIComponent(token) : ''}`;
 }
 
+export function withAuthToken(url: string): string {
+  const token = getStoredToken();
+  if (!token) return url;
+  const [baseUrl, fragment] = url.split('#', 2);
+  const separator = baseUrl.includes('?') ? '&' : '?';
+  return `${baseUrl}${separator}token=${encodeURIComponent(token)}${fragment ? `#${fragment}` : ''}`;
+}
+
 // Export report as text — returns the URL to open
 export function getExportTextUrl(hash: string): string {
   const token = getStoredToken();
