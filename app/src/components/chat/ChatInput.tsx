@@ -129,14 +129,14 @@ export function ChatInput({ onSend, placeholder }: ChatInputProps) {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2, ease: [0.4, 0, 0.2, 1] as const }}
-        className="relative rounded-3xl transition-all duration-200 bg-white"
+        className="relative rounded-2xl overflow-hidden transition-all duration-200 bg-white"
         style={{
           border: isFocused
             ? '1px solid #1a73e8'
-            : '1px solid #dadce0',
+            : '1px solid #e8eaed',
           boxShadow: isFocused
-            ? '0 0 0 4px rgba(26, 115, 232, 0.14), 0 8px 24px rgba(60, 64, 67, 0.12)'
-            : '0 1px 3px rgba(60, 64, 67, 0.16), 0 1px 2px rgba(60, 64, 67, 0.08)',
+            ? '0 1px 3px rgba(60, 64, 67, 0.12), 0 0 0 3px rgba(26, 115, 232, 0.12)'
+            : '0 1px 3px rgba(60, 64, 67, 0.12)',
         }}
       >
         {/* Selected Agent Indicator */}
