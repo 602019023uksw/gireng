@@ -42,11 +42,13 @@ export function ChatInterface({ messages, onSendMessage, onViewAnalysis }: ChatI
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] as const }}
-        className="absolute bottom-0 left-0 right-0 border-t bg-white px-4 py-5 z-50"
-        style={{ borderColor: '#e8eaed' }}
+        className="absolute bottom-0 left-0 right-0 px-4 py-5 z-50 pointer-events-none"
       >
-        <div className="max-w-4xl mx-auto">
-          <ChatInput onSend={(msg, agentId) => onSendMessage(msg, agentId)} />
+        <div className="max-w-4xl mx-auto flex gap-4 pointer-events-auto">
+          <div className="w-8 flex-shrink-0" />
+          <div className="flex-1 max-w-[85%]">
+            <ChatInput onSend={(msg, agentId) => onSendMessage(msg, agentId)} />
+          </div>
         </div>
       </motion.div>
     </div>
