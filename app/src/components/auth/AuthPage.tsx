@@ -40,7 +40,13 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
 
   return (
     <div className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'linear-gradient(135deg, #0a0e1a 0%, #111827 50%, #0f172a 100%)' }}
+      style={{
+        background: `
+          radial-gradient(ellipse at 16% 12%, rgba(66, 133, 244, 0.10) 0%, transparent 38%),
+          radial-gradient(ellipse at 86% 8%, rgba(52, 168, 83, 0.08) 0%, transparent 34%),
+          linear-gradient(180deg, #f8fafd 0%, #eef3fb 100%)
+        `,
+      }}
     >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -50,35 +56,34 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
       >
         {/* Logo / Brand */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-4"
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-3xl mb-4 bg-white"
             style={{
-              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.2), rgba(139, 92, 246, 0.2))',
-              border: '1px solid rgba(100, 120, 180, 0.3)',
+              border: '1px solid #e8eaed',
+              boxShadow: '0 8px 24px rgba(60, 64, 67, 0.12)',
             }}
           >
-            <Shield className="w-8 h-8 text-blue-400" />
+            <Shield className="w-8 h-8 text-accent-blue" />
           </div>
-          <h1 className="text-2xl font-bold text-white">gireng</h1>
-          <p className="text-sm text-gray-400 mt-1">Malware Analysis Platform</p>
+          <h1 className="text-3xl font-semibold tracking-tight text-text-primary">gireng</h1>
+          <p className="text-sm text-text-secondary mt-1">Malware Analysis Platform</p>
         </div>
 
         {/* Card */}
-        <div className="backdrop-blur-xl rounded-2xl p-8"
+        <div className="rounded-3xl bg-white p-8"
           style={{
-            background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.8) 0%, rgba(15, 20, 35, 0.6) 100%)',
-            border: '1px solid rgba(100, 120, 180, 0.2)',
-            boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.5)',
+            border: '1px solid #e8eaed',
+            boxShadow: '0 8px 24px rgba(60, 64, 67, 0.12), 0 2px 6px rgba(60, 64, 67, 0.08)',
           }}
         >
           {/* Tabs */}
-          <div className="flex mb-6 rounded-lg overflow-hidden"
-            style={{ background: 'rgba(255,255,255,0.05)' }}
+          <div className="flex mb-6 rounded-full overflow-hidden border border-border-default p-1"
+            style={{ background: '#f8fafd' }}
           >
             <button
               className={`flex-1 py-2.5 text-sm font-medium transition-all ${
                 isLogin
-                  ? 'text-white bg-blue-600/30'
-                  : 'text-gray-400 hover:text-gray-300'
+                  ? 'text-accent-blue bg-blue-50 rounded-full'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
               onClick={() => { setIsLogin(true); setError(''); }}
             >
@@ -87,8 +92,8 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
             <button
               className={`flex-1 py-2.5 text-sm font-medium transition-all ${
                 !isLogin
-                  ? 'text-white bg-blue-600/30'
-                  : 'text-gray-400 hover:text-gray-300'
+                  ? 'text-accent-blue bg-blue-50 rounded-full'
+                  : 'text-text-secondary hover:text-text-primary'
               }`}
               onClick={() => { setIsLogin(false); setError(''); }}
             >
@@ -99,7 +104,7 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Email */}
             <div>
-              <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs text-text-secondary uppercase tracking-wider mb-1.5">
                 Email
               </label>
               <input
@@ -108,10 +113,10 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                className="w-full px-4 py-2.5 rounded-lg text-sm text-white placeholder-gray-500 outline-none transition-all focus:ring-2 focus:ring-blue-500/40"
+                className="w-full px-4 py-2.5 rounded-xl text-sm text-text-primary placeholder:text-text-muted outline-none transition-all focus:ring-4 focus:ring-blue-100"
                 style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(100, 120, 180, 0.2)',
+                  background: '#ffffff',
+                  border: '1px solid #dadce0',
                 }}
                 placeholder="you@example.com"
               />
@@ -124,7 +129,7 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
               >
-                <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs text-text-secondary uppercase tracking-wider mb-1.5">
                   Username
                 </label>
                 <input
@@ -132,10 +137,10 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   autoComplete="username"
-                  className="w-full px-4 py-2.5 rounded-lg text-sm text-white placeholder-gray-500 outline-none transition-all focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full px-4 py-2.5 rounded-xl text-sm text-text-primary placeholder:text-text-muted outline-none transition-all focus:ring-4 focus:ring-blue-100"
                   style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(100, 120, 180, 0.2)',
+                    background: '#ffffff',
+                    border: '1px solid #dadce0',
                   }}
                   placeholder="analyst42"
                 />
@@ -144,7 +149,7 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
 
             {/* Password */}
             <div>
-              <label className="block text-xs text-gray-400 uppercase tracking-wider mb-1.5">
+              <label className="block text-xs text-text-secondary uppercase tracking-wider mb-1.5">
                 Password
               </label>
               <div className="relative">
@@ -154,17 +159,17 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   autoComplete={isLogin ? 'current-password' : 'new-password'}
-                  className="w-full px-4 py-2.5 pr-10 rounded-lg text-sm text-white placeholder-gray-500 outline-none transition-all focus:ring-2 focus:ring-blue-500/40"
+                  className="w-full px-4 py-2.5 pr-10 rounded-xl text-sm text-text-primary placeholder:text-text-muted outline-none transition-all focus:ring-4 focus:ring-blue-100"
                   style={{
-                    background: 'rgba(255,255,255,0.06)',
-                    border: '1px solid rgba(100, 120, 180, 0.2)',
+                    background: '#ffffff',
+                    border: '1px solid #dadce0',
                   }}
                   placeholder="••••••••"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary"
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -176,7 +181,7 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2"
+                className="text-sm text-accent-red bg-red-50 border border-red-100 rounded-xl px-3 py-2"
               >
                 {error}
               </motion.div>
@@ -186,12 +191,12 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-2.5 rounded-lg text-sm font-medium text-white transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full py-2.5 rounded-full text-sm font-medium text-white transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-glass"
               style={{
                 background: loading
-                  ? 'rgba(59, 130, 246, 0.3)'
-                  : 'linear-gradient(135deg, rgba(59, 130, 246, 0.6), rgba(139, 92, 246, 0.6))',
-                border: '1px solid rgba(59, 130, 246, 0.3)',
+                  ? '#aecbfa'
+                  : '#1a73e8',
+                border: '1px solid #1a73e8',
               }}
             >
               {loading ? (
@@ -212,14 +217,14 @@ export function AuthPage({ onLogin, onRegister }: AuthPageProps) {
         </div>
 
         {/* Footer hint */}
-        <p className="text-center text-xs text-gray-500 mt-4">
+        <p className="text-center text-xs text-text-muted mt-4">
           {isLogin ? (
             <>Don&apos;t have an account?{' '}
-              <button onClick={() => setIsLogin(false)} className="text-blue-400 hover:underline">Register</button>
+              <button onClick={() => setIsLogin(false)} className="text-accent-blue hover:underline">Register</button>
             </>
           ) : (
             <>Already have an account?{' '}
-              <button onClick={() => setIsLogin(true)} className="text-blue-400 hover:underline">Sign In</button>
+              <button onClick={() => setIsLogin(true)} className="text-accent-blue hover:underline">Sign In</button>
             </>
           )}
         </p>

@@ -33,22 +33,22 @@ export function CodeBlock({ code, language = 'python', filename }: CodeBlockProp
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="rounded-xl overflow-hidden my-4"
+      className="rounded-2xl overflow-hidden my-4"
       style={{
-        background: 'rgba(10, 14, 28, 0.8)',
-        border: '1px solid rgba(100, 120, 180, 0.15)',
+        background: '#f8fafd',
+        border: '1px solid #e8eaed',
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-white/5"
-        style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+      <div className="flex items-center justify-between px-4 py-2 border-b"
+        style={{ borderColor: '#e8eaed' }}
       >
         <span className="text-sm text-text-secondary capitalize">
           {filename || language}
         </span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-md text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-150"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-full text-xs text-text-secondary hover:text-accent-blue hover:bg-bg-hover transition-all duration-150"
         >
           {copied ? (
             <>

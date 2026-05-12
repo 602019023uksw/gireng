@@ -87,17 +87,16 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
         className="absolute bottom-full left-0 right-0 mb-2 z-50"
       >
         <div
-          className="backdrop-blur-xl rounded-xl overflow-hidden max-h-80"
+          className="rounded-2xl overflow-hidden max-h-80 bg-white"
           style={{
-            background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.95) 0%, rgba(15, 20, 35, 0.95) 100%)',
-            border: '1px solid rgba(100, 120, 180, 0.25)',
-            boxShadow: '0 8px 32px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.03) inset',
+            border: '1px solid #e8eaed',
+            boxShadow: '0 8px 24px rgba(60, 64, 67, 0.16)',
           }}
         >
           {/* Header */}
           <div 
             className="px-3 py-2 border-b flex items-center justify-between"
-            style={{ borderColor: 'rgba(100, 120, 180, 0.15)' }}
+            style={{ borderColor: '#e8eaed' }}
           >
             <span className="text-xs text-text-muted uppercase tracking-wider font-medium">
               Agents
@@ -120,21 +119,21 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
                   onClick={() => onSelect(agent.id)}
                   onMouseEnter={() => setSelectedIndex(index)}
                   className={`w-full text-left px-3 py-3 flex items-start gap-3 transition-all duration-150 ${
-                    isSelected 
-                      ? 'bg-accent-purple/10' 
-                      : 'hover:bg-white/5'
+                    isSelected
+                      ? 'bg-blue-50'
+                      : 'hover:bg-bg-hover'
                   }`}
                   style={{
-                    borderLeft: isSelected ? '2px solid #a855f7' : '2px solid transparent',
+                    borderLeft: isSelected ? '2px solid #1a73e8' : '2px solid transparent',
                   }}
                 >
                   {/* Icon */}
                   <div 
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                      isSelected ? 'bg-accent-purple/20' : 'bg-white/5'
+                    className={`w-9 h-9 rounded-2xl flex items-center justify-center flex-shrink-0 ${
+                      isSelected ? 'bg-blue-100' : 'bg-slate-100'
                     }`}
                   >
-                    <Icon className={`w-4 h-4 ${isSelected ? 'text-accent-purple' : 'text-text-secondary'}`} />
+                    <Icon className={`w-4 h-4 ${isSelected ? 'text-accent-blue' : 'text-text-secondary'}`} />
                   </div>
 
                   {/* Content */}
@@ -143,7 +142,7 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
                       <span className={`font-medium text-sm ${isSelected ? 'text-text-primary' : 'text-text-secondary'}`}>
                         {agent.name}
                       </span>
-                      <span className="text-xs text-text-muted px-1.5 py-0.5 rounded bg-white/5">
+                      <span className="text-xs text-text-muted px-1.5 py-0.5 rounded-full bg-slate-100">
                         @{agent.id}
                       </span>
                     </div>
@@ -156,13 +155,13 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
                       {agent.capabilities.slice(0, 3).map((cap, i) => (
                         <span 
                           key={i}
-                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-text-muted"
+                          className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-text-muted"
                         >
                           {cap}
                         </span>
                       ))}
                       {agent.capabilities.length > 3 && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/5 text-text-muted">
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-text-muted">
                           +{agent.capabilities.length - 3}
                         </span>
                       )}
@@ -176,18 +175,18 @@ export function AgentPicker({ isOpen, searchQuery, onSelect, onClose }: AgentPic
           {/* Footer - Keyboard hints */}
           <div 
             className="px-3 py-2 border-t flex items-center gap-4"
-            style={{ borderColor: 'rgba(100, 120, 180, 0.15)' }}
+            style={{ borderColor: '#e8eaed' }}
           >
             <div className="flex items-center gap-1.5">
-              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-text-muted">↑↓</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] text-text-muted">↑↓</kbd>
               <span className="text-[10px] text-text-muted">Navigate</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-text-muted">Enter</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] text-text-muted">Enter</kbd>
               <span className="text-[10px] text-text-muted">Select</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <kbd className="px-1.5 py-0.5 rounded bg-white/10 text-[10px] text-text-muted">Esc</kbd>
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-100 text-[10px] text-text-muted">Esc</kbd>
               <span className="text-[10px] text-text-muted">Close</span>
             </div>
           </div>

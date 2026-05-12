@@ -24,9 +24,9 @@ export function ChatInterface({ messages, onSendMessage, onViewAnalysis }: ChatI
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto scrollbar-dark px-4 py-6 pb-32"
+        className="flex-1 overflow-y-auto scrollbar-dark px-4 py-8 pb-36"
       >
-        <div className="max-w-3xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           {messages.map((message) => (
             <MessageBubble
               key={message.id}
@@ -42,11 +42,13 @@ export function ChatInterface({ messages, onSendMessage, onViewAnalysis }: ChatI
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] as const }}
-        className="absolute bottom-0 left-0 right-0 border-t border-white/10 bg-bg-primary/90 backdrop-blur-xl px-4 py-4 z-50"
-        style={{ borderColor: 'rgba(100, 120, 180, 0.12)' }}
+        className="absolute bottom-0 left-0 right-0 px-4 py-5 z-50 pointer-events-none"
       >
-        <div className="max-w-3xl mx-auto">
-          <ChatInput onSend={(msg, agentId) => onSendMessage(msg, agentId)} />
+        <div className="max-w-4xl mx-auto flex gap-4 pointer-events-auto">
+          <div className="w-8 flex-shrink-0" />
+          <div className="flex-1 max-w-[85%]">
+            <ChatInput onSend={(msg, agentId) => onSendMessage(msg, agentId)} />
+          </div>
         </div>
       </motion.div>
     </div>

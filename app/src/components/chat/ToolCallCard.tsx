@@ -30,17 +30,16 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: 0.1, ease: [0.4, 0, 0.2, 1] as const }}
-      className="rounded-xl overflow-hidden mb-3"
+      className="rounded-2xl overflow-hidden mb-3 bg-white"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.5) 0%, rgba(15, 20, 35, 0.35) 100%)',
-        border: '1px solid rgba(100, 120, 180, 0.15)',
-        backdropFilter: 'blur(8px)',
+        border: '1px solid #e8eaed',
+        boxShadow: '0 1px 3px rgba(60, 64, 67, 0.12)',
       }}
     >
       {/* Card Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors duration-150"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-bg-hover transition-colors duration-150"
       >
         <div className="flex items-center gap-3">
           <Code2 className="w-5 h-5 text-text-secondary" />
@@ -68,10 +67,10 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
             <div className="px-4 pb-4">
               {/* Status */}
               <div 
-                className="rounded-lg p-3 mb-3"
+                className="rounded-xl p-3 mb-3"
                 style={{
-                  background: 'rgba(8, 10, 18, 0.5)',
-                  border: '1px solid rgba(100, 120, 180, 0.1)',
+                  background: '#f8fafd',
+                  border: '1px solid #e8eaed',
                 }}
               >
                 <p className="text-sm text-text-primary">
@@ -95,14 +94,14 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
                   </div>
                   <div 
                     className="h-1.5 rounded-full overflow-hidden"
-                    style={{ background: 'rgba(8, 10, 18, 0.5)' }}
+                    style={{ background: '#e8eaed' }}
                   >
                     <motion.div
                       initial={{ width: 0 }}
                       animate={{ width: `${(tool.progress / (tool.maxProgress || 7)) * 100}%` }}
                       transition={{ duration: 0.5, ease: [0.4, 0, 0.2, 1] as const }}
                       className="h-full rounded-full"
-                      style={{ background: 'linear-gradient(90deg, #58A6FF, #A371F7)' }}
+                      style={{ background: '#1a73e8' }}
                     />
                   </div>
                 </div>
@@ -111,10 +110,10 @@ export function ToolCallCard({ tool }: ToolCallCardProps) {
               {/* Result Preview */}
               {tool.status === 'completed' && resultFileId && (
                 <div 
-                  className="flex items-center gap-3 p-3 rounded-lg"
+                  className="flex items-center gap-3 p-3 rounded-xl"
                   style={{
-                    background: 'rgba(8, 10, 18, 0.5)',
-                    border: '1px solid rgba(100, 120, 180, 0.1)',
+                    background: '#f8fafd',
+                    border: '1px solid #e8eaed',
                   }}
                 >
                   <FileText className="w-5 h-5 text-text-secondary" />

@@ -15,25 +15,27 @@ export function AnalysisTabs({ activeTab, onTabChange, hasDynamicData }: Analysi
   ] as const;
 
   return (
-    <div className="relative flex items-center gap-6 border-b border-border-default">
+    <div className="relative flex items-center gap-2 rounded-full border border-border-default bg-white p-1 shadow-xs">
       {tabs.map((tab) => (
         <button
           key={tab.id}
           onClick={() => onTabChange(tab.id)}
-          className={`relative py-3 text-sm font-medium transition-colors duration-150 ${
+          className={`relative rounded-full px-4 py-2 text-sm font-medium transition-colors duration-150 ${
             activeTab === tab.id
-              ? 'text-text-primary'
-              : 'text-text-secondary hover:text-text-primary'
+              ? 'text-accent-blue'
+              : 'text-text-secondary hover:text-text-primary hover:bg-bg-hover'
           }`}
         >
-          {tab.label}
           {activeTab === tab.id && (
             <motion.div
-              layoutId="tab-underline"
-              className="absolute bottom-0 left-0 right-0 h-0.5 bg-accent-blue"
+              layoutId="tab-pill"
+              className="absolute inset-0 rounded-full bg-blue-50"
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             />
           )}
+          <span className="relative z-10">
+          {tab.label}
+          </span>
         </button>
       ))}
     </div>

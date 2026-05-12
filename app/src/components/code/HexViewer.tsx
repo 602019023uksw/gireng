@@ -7,7 +7,7 @@ export function HexViewer({ lines }: HexViewerProps) {
     <div className="p-4">
       <pre className="text-sm font-mono text-text-secondary leading-6">
         {lines.map((line, i) => (
-          <div key={i} className="whitespace-pre hover:bg-white/5">
+          <div key={i} className="whitespace-pre hover:bg-bg-hover">
             {line}
           </div>
         ))}

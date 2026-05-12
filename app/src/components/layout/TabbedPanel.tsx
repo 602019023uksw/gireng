@@ -57,7 +57,7 @@ function FileTreeItem({ node, level = 0, onFileClick }: FileTreeItemProps) {
     <div>
       <button
         onClick={handleClick}
-        className="w-full flex items-center gap-2 py-1.5 text-left hover:bg-white/5 rounded-md transition-colors duration-150"
+        className="w-full flex items-center gap-2 py-1.5 text-left hover:bg-bg-hover rounded-lg transition-colors duration-150"
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
         {hasChildren && (
@@ -109,15 +109,15 @@ function Section({ title, icon: Icon, count, children, defaultExpanded = true }:
 
   return (
     <div
-      className="rounded-xl overflow-hidden mb-3"
+      className="rounded-2xl overflow-hidden mb-3 bg-white"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.4) 0%, rgba(15, 20, 35, 0.25) 100%)',
-        border: '1px solid rgba(100, 120, 180, 0.15)',
+        border: '1px solid #e8eaed',
+        boxShadow: '0 1px 2px rgba(60, 64, 67, 0.08)',
       }}
     >
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors duration-150"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-bg-hover transition-colors duration-150"
       >
         <div className="flex items-center gap-3">
           <Icon className="w-5 h-5 text-text-secondary" />
@@ -143,7 +143,7 @@ function Section({ title, icon: Icon, count, children, defaultExpanded = true }:
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="overflow-hidden"
           >
-            <div className="p-4" style={{ background: 'rgba(8, 10, 18, 0.4)' }}>
+            <div className="p-4" style={{ background: '#f8fafd' }}>
               {children}
             </div>
           </motion.div>
@@ -175,11 +175,11 @@ function ExportDropdown({ hash }: { hash: string }) {
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150"
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors duration-150"
         style={{
-          background: 'rgba(59, 130, 246, 0.15)',
-          color: 'rgb(147, 197, 253)',
-          border: '1px solid rgba(59, 130, 246, 0.3)',
+          background: '#e8f0fe',
+          color: '#1a73e8',
+          border: '1px solid #d2e3fc',
         }}
         title="Export report"
       >
@@ -190,11 +190,10 @@ function ExportDropdown({ hash }: { hash: string }) {
 
       {open && (
         <div
-          className="absolute right-0 mt-1 z-50 rounded-lg shadow-xl overflow-hidden min-w-[160px]"
+          className="absolute right-0 mt-1 z-50 rounded-2xl shadow-xl overflow-hidden min-w-[160px]"
           style={{
-            background: 'rgba(15, 20, 35, 0.95)',
-            border: '1px solid rgba(100, 120, 180, 0.25)',
-            backdropFilter: 'blur(12px)',
+            background: '#ffffff',
+            border: '1px solid #e8eaed',
           }}
         >
           {items.map((item) => (
@@ -204,7 +203,7 @@ function ExportDropdown({ hash }: { hash: string }) {
               target="_blank"
               rel="noopener noreferrer"
               onClick={() => setOpen(false)}
-              className="flex items-center gap-2 px-4 py-2.5 text-xs text-text-secondary hover:text-text-primary hover:bg-white/5 transition-colors duration-150"
+              className="flex items-center gap-2 px-4 py-2.5 text-xs text-text-secondary hover:text-text-primary hover:bg-bg-hover transition-colors duration-150"
             >
               <Download className="w-3.5 h-3.5" />
               {item.label}
@@ -259,17 +258,17 @@ export function TabbedPanel({
               {analyses.map((analysis) => (
                 <div
                   key={analysis.id}
-                  className="flex items-start gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors duration-150"
+                  className="flex items-start gap-3 p-3 rounded-2xl hover:bg-bg-hover transition-colors duration-150"
                   style={{
-                    background: 'rgba(20, 28, 50, 0.4)',
-                    border: '1px solid rgba(100, 120, 180, 0.15)',
+                    background: '#ffffff',
+                    border: '1px solid #e8eaed',
                   }}
                 >
                   <div
-                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
                     style={{
-                      background: 'rgba(20, 28, 50, 0.6)',
-                      border: '1px solid rgba(100, 120, 180, 0.2)',
+                      background: '#f8fafd',
+                      border: '1px solid #e8eaed',
                     }}
                   >
                     <FileText className="w-5 h-5 text-text-secondary" />
@@ -308,7 +307,7 @@ export function TabbedPanel({
                     if (onReportSelect) onReportSelect(report.id);
                     onTabChange('report');
                   }}
-                  className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg transition-colors duration-150 text-left"
+                  className="w-full flex items-center gap-3 p-3 hover:bg-bg-hover rounded-xl transition-colors duration-150 text-left"
                 >
                   <FileText className="w-5 h-5 text-text-secondary" />
                   <span className="text-sm text-text-primary">{report.name}</span>
@@ -322,17 +321,17 @@ export function TabbedPanel({
         return (
           <div className="flex flex-col h-full">
             {/* View Mode Toggle */}
-            <div className="flex items-center gap-1 px-2 py-1.5 border-b border-white/10"
-              style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+            <div className="flex items-center gap-1 px-3 py-2 border-b"
+              style={{ borderColor: '#e8eaed' }}
             >
               {(['decompiled', 'disassembly', 'hex'] as const).map((mode) => (
                 <button
                   key={mode}
                   onClick={() => onCodeViewModeChange?.(mode)}
-                  className={`px-2 py-1 rounded text-xs font-medium capitalize transition-all ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-all ${
                     (codeViewMode || 'decompiled') === mode
-                      ? 'text-text-primary bg-white/10'
-                      : 'text-text-muted hover:text-text-secondary'
+                      ? 'text-accent-blue bg-blue-50'
+                      : 'text-text-muted hover:text-text-primary hover:bg-bg-hover'
                   }`}
                 >
                   {mode}
@@ -341,24 +340,24 @@ export function TabbedPanel({
             </div>
 
             {/* Code File Tabs */}
-            <div className="flex items-center gap-1 px-2 py-2 border-b border-white/10 overflow-x-auto scrollbar-hide"
-              style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+            <div className="flex items-center gap-1 px-3 py-2 border-b overflow-x-auto scrollbar-hide"
+              style={{ borderColor: '#e8eaed' }}
             >
               {codeFiles.map((file) => (
                 <button
                   key={file.id}
                   onClick={() => onCodeFileChange(file.id)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-all duration-150 ${
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all duration-150 ${
                     file.id === activeCodeFileId
-                      ? 'text-text-primary'
+                      ? 'text-accent-blue'
                       : 'text-text-secondary hover:text-text-primary'
                   }`}
                   style={{
                     background: file.id === activeCodeFileId
-                      ? 'rgba(88, 166, 255, 0.15)'
+                      ? '#e8f0fe'
                       : 'transparent',
                     border: file.id === activeCodeFileId
-                      ? '1px solid rgba(88, 166, 255, 0.3)'
+                      ? '1px solid #d2e3fc'
                       : '1px solid transparent',
                   }}
                 >
@@ -429,27 +428,27 @@ export function TabbedPanel({
   };
 
   return (
-    <div className="h-full flex flex-col backdrop-blur-xl"
+    <div className="h-full flex flex-col"
       style={{
-        background: 'rgba(12, 16, 32, 0.9)',
+        background: 'rgba(255, 255, 255, 0.96)',
       }}
     >
       {/* Header with Tabs */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10"
-        style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+      <div className="flex items-center justify-between px-4 py-3 border-b"
+        style={{ borderColor: '#e8eaed' }}
       >
         <div className="flex items-center gap-1">
           {/* Resources Tab */}
           <button
             onClick={() => onTabChange('resources')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 ${
               activeTab === 'resources'
-                ? 'text-text-primary'
+                ? 'text-accent-blue'
                 : 'text-text-secondary hover:text-text-primary'
             }`}
             style={{
               background: activeTab === 'resources'
-                ? 'rgba(88, 166, 255, 0.15)'
+                ? '#e8f0fe'
                 : 'transparent',
             }}
           >
@@ -460,14 +459,14 @@ export function TabbedPanel({
           {/* Analysis Tab */}
           <button
             onClick={() => onTabChange('code')}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+            className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 ${
               activeTab === 'code'
-                ? 'text-text-primary'
+                ? 'text-accent-blue'
                 : 'text-text-secondary hover:text-text-primary'
             }`}
             style={{
               background: activeTab === 'code'
-                ? 'rgba(88, 166, 255, 0.15)'
+                ? '#e8f0fe'
                 : 'transparent',
             }}
           >
@@ -484,14 +483,14 @@ export function TabbedPanel({
           {qilingResults && (
             <button
               onClick={() => onTabChange('dynamic')}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all duration-150 ${
                 activeTab === 'dynamic'
-                  ? 'text-text-primary'
+                  ? 'text-accent-blue'
                   : 'text-text-secondary hover:text-text-primary'
               }`}
               style={{
                 background: activeTab === 'dynamic'
-                  ? 'rgba(88, 166, 255, 0.15)'
+                  ? '#e8f0fe'
                   : 'transparent',
               }}
             >
@@ -503,7 +502,7 @@ export function TabbedPanel({
 
         <button
           onClick={onClose}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-150"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:text-accent-blue hover:bg-bg-hover transition-all duration-150"
         >
           <X className="w-4 h-4" />
         </button>

@@ -45,16 +45,16 @@ export function WelcomeScreen({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.4, ease: [0.4, 0, 0.2, 1] as const }}
-      className="flex flex-col items-center justify-center h-full px-4 py-8 overflow-y-auto"
+      className="flex flex-col items-center justify-center h-full px-6 py-10 overflow-y-auto"
       onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
     >
       {/* Drag overlay */}
       {isDragging && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-bg-primary/80 backdrop-blur-sm">
-          <div className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-accent-purple rounded-2xl">
-            <Upload className="w-12 h-12 text-accent-purple" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 backdrop-blur-sm">
+          <div className="flex flex-col items-center gap-3 p-8 border-2 border-dashed border-accent-blue rounded-3xl bg-white shadow-glass-strong">
+            <Upload className="w-12 h-12 text-accent-blue" />
             <p className="text-lg text-text-primary">Drop binary file to analyze</p>
           </div>
         </div>
@@ -86,16 +86,19 @@ export function WelcomeScreen({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.15, ease: [0.4, 0, 0.2, 1] as const }}
-        className="text-center mb-8"
+        className="text-center mb-10 max-w-3xl"
       >
-        <h1 className="text-4xl font-semibold text-text-primary">
+        <p className="mb-4 inline-flex items-center rounded-full bg-blue-50 px-4 py-1.5 text-sm font-medium text-accent-blue border border-blue-100">
+          AI malware analysis workspace
+        </p>
+        <h1 className="text-5xl font-semibold tracking-tight text-text-primary">
           {userName ? (
-            <>Welcome, <span className="text-accent-purple">{userName}</span></>
+            <>Welcome, <span className="text-accent-blue">{userName}</span></>
           ) : (
             'Welcome to gireng'
           )}
         </h1>
-        <p className="mt-2 text-text-secondary">
+        <p className="mt-4 text-base text-text-secondary">
           AI-powered malware analysis and reverse engineering
         </p>
       </motion.div>
@@ -105,13 +108,13 @@ export function WelcomeScreen({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.18, ease: [0.4, 0, 0.2, 1] as const }}
-        className="w-full max-w-2xl mb-6"
+        className="w-full max-w-3xl mb-6"
       >
         <button
           onClick={() => fileInputRef.current?.click()}
-          className="w-full flex items-center justify-center gap-3 px-6 py-4 border border-dashed border-border-default rounded-xl hover:border-accent-purple/50 hover:bg-accent-purple/5 transition-all duration-200 group"
+          className="w-full flex items-center justify-center gap-3 px-6 py-6 border border-dashed border-border-default rounded-3xl bg-white hover:border-accent-blue hover:bg-blue-50/60 hover:shadow-glass transition-all duration-200 group"
         >
-          <Upload className="w-5 h-5 text-text-muted group-hover:text-accent-purple transition-colors" />
+          <Upload className="w-5 h-5 text-text-muted group-hover:text-accent-blue transition-colors" />
           <span className="text-text-secondary group-hover:text-text-primary transition-colors">
             Upload a binary file to analyze, or drag and drop
           </span>
@@ -123,7 +126,7 @@ export function WelcomeScreen({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2, ease: [0.4, 0, 0.2, 1] as const }}
-        className="w-full max-w-2xl"
+        className="w-full max-w-3xl"
       >
         <ChatInput onSend={onSendMessage} />
       </motion.div>
@@ -133,7 +136,7 @@ export function WelcomeScreen({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.25, ease: [0.4, 0, 0.2, 1] as const }}
-        className="w-full max-w-2xl mt-4"
+        className="w-full max-w-3xl mt-4"
       >
         <QuickActionChips actions={quickActions} onActionClick={onQuickAction} />
       </motion.div>

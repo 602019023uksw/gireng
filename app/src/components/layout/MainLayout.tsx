@@ -9,7 +9,7 @@ interface MainLayoutProps {
 
 export function MainLayout({ children, sidebar, rightPanel }: MainLayoutProps) {
   return (
-    <div className="flex h-screen bg-bg-primary overflow-hidden">
+    <div className="flex h-screen bg-bg-primary overflow-hidden text-text-primary">
       {/* Sidebar */}
       <motion.div
         initial={{ x: -20, opacity: 0 }}

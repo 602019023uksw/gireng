@@ -36,15 +36,15 @@ function ResourceSection({ title, icon: Icon, count, children, defaultExpanded =
 
   return (
     <div 
-      className="rounded-xl overflow-hidden mb-3"
+      className="rounded-2xl overflow-hidden mb-3 bg-white"
       style={{
-        background: 'linear-gradient(135deg, rgba(20, 28, 50, 0.4) 0%, rgba(15, 20, 35, 0.25) 100%)',
-        border: '1px solid rgba(100, 120, 180, 0.15)',
+        border: '1px solid #e8eaed',
+        boxShadow: '0 1px 2px rgba(60, 64, 67, 0.08)',
       }}
     >
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/5 transition-colors duration-150"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-bg-hover transition-colors duration-150"
       >
         <div className="flex items-center gap-3">
           <Icon className="w-5 h-5 text-text-secondary" />
@@ -70,7 +70,7 @@ function ResourceSection({ title, icon: Icon, count, children, defaultExpanded =
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
             className="overflow-hidden"
           >
-            <div className="p-4" style={{ background: 'rgba(8, 10, 18, 0.4)' }}>
+            <div className="p-4" style={{ background: '#f8fafd' }}>
               {children}
             </div>
           </motion.div>
@@ -108,7 +108,7 @@ function FileTreeItem({ node, level = 0, onFileClick }: FileTreeItemProps) {
     <div>
       <button
         onClick={handleClick}
-        className="w-full flex items-center gap-2 py-1.5 text-left hover:bg-white/5 rounded-md transition-colors duration-150"
+        className="w-full flex items-center gap-2 py-1.5 text-left hover:bg-bg-hover rounded-lg transition-colors duration-150"
         style={{ paddingLeft: `${level * 16 + 8}px` }}
       >
         {hasChildren && (
@@ -164,22 +164,23 @@ export function ResourcesPanel({
       animate={{ x: 0, opacity: 1 }}
       exit={{ x: 300, opacity: 0 }}
       transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
-      className="w-[360px] h-screen backdrop-blur-xl flex flex-col flex-shrink-0"
+      className="w-[380px] h-screen flex flex-col flex-shrink-0"
       style={{
-        background: 'rgba(12, 16, 32, 0.85)',
-        borderLeft: '1px solid rgba(100, 120, 180, 0.12)',
+        background: 'rgba(255, 255, 255, 0.96)',
+        borderLeft: '1px solid #e8eaed',
+        boxShadow: '-1px 0 2px rgba(60, 64, 67, 0.06)',
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10"
-        style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+      <div className="flex items-center justify-between px-5 py-4 border-b"
+        style={{ borderColor: '#e8eaed' }}
       >
         <div className="flex items-center gap-3">
           <div 
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-full"
             style={{
-              background: 'rgba(20, 28, 50, 0.5)',
-              border: '1px solid rgba(100, 120, 180, 0.2)',
+              background: '#f8fafd',
+              border: '1px solid #e8eaed',
             }}
           >
             <LayoutGrid className="w-4 h-4 text-text-secondary" />
@@ -191,7 +192,7 @@ export function ResourcesPanel({
         </div>
         <button
           onClick={onClose}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-150"
+          className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:text-accent-blue hover:bg-bg-hover transition-all duration-150"
         >
           <X className="w-4 h-4" />
         </button>
@@ -215,17 +216,17 @@ export function ResourcesPanel({
           {analyses.map((analysis) => (
             <div
               key={analysis.id}
-              className="flex items-start gap-3 p-3 rounded-xl hover:bg-white/5 transition-colors duration-150"
+              className="flex items-start gap-3 p-3 rounded-2xl hover:bg-bg-hover transition-colors duration-150"
               style={{
-                background: 'rgba(20, 28, 50, 0.4)',
-                border: '1px solid rgba(100, 120, 180, 0.15)',
+                background: '#ffffff',
+                border: '1px solid #e8eaed',
               }}
             >
               <div 
-                className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+                className="w-10 h-10 rounded-2xl flex items-center justify-center flex-shrink-0"
                 style={{
-                  background: 'rgba(20, 28, 50, 0.6)',
-                  border: '1px solid rgba(100, 120, 180, 0.2)',
+                  background: '#f8fafd',
+                  border: '1px solid #e8eaed',
                 }}
               >
                 <FileText className="w-5 h-5 text-text-secondary" />
@@ -261,7 +262,7 @@ export function ResourcesPanel({
             <button
               key={report.id}
               onClick={() => onReportClick?.(report.id)}
-              className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-lg transition-colors duration-150 text-left"
+              className="w-full flex items-center gap-3 p-3 hover:bg-bg-hover rounded-xl transition-colors duration-150 text-left"
             >
               <FileText className="w-5 h-5 text-text-secondary" />
               <span className="text-sm text-text-primary">{report.name}</span>

@@ -21,10 +21,9 @@ export function DataTable({ columns, rows }: DataTableProps) {
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="rounded-xl overflow-hidden my-4"
+      className="rounded-2xl overflow-hidden my-4 bg-white"
       style={{
-        background: 'rgba(10, 14, 28, 0.6)',
-        border: '1px solid rgba(100, 120, 180, 0.15)',
+        border: '1px solid #e8eaed',
       }}
     >
       <div className="overflow-x-auto">
@@ -32,8 +31,8 @@ export function DataTable({ columns, rows }: DataTableProps) {
           <thead>
             <tr
               style={{
-                background: 'rgba(20, 28, 50, 0.5)',
-                borderBottom: '1px solid rgba(100, 120, 180, 0.15)',
+                background: '#f8fafd',
+                borderBottom: '1px solid #e8eaed',
               }}
             >
               {columns.map((col) => (
@@ -51,10 +50,10 @@ export function DataTable({ columns, rows }: DataTableProps) {
             {rows.map((row, rowIndex) => (
               <tr
                 key={rowIndex}
-                className="hover:bg-white/5 transition-colors duration-150"
+                className="hover:bg-bg-hover transition-colors duration-150"
                 style={{
-                  borderBottom: rowIndex < rows.length - 1 
-                    ? '1px solid rgba(100, 120, 180, 0.1)' 
+                  borderBottom: rowIndex < rows.length - 1
+                    ? '1px solid #edf0f4'
                     : 'none',
                 }}
               >

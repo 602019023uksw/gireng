@@ -274,16 +274,16 @@ function GraphVisualization({ panel }: { panel: CallGraphPanel }) {
     <div className={isFullscreen ? 'fixed inset-0 z-50 bg-bg-primary p-4' : ''}>
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-2">
-        <button onClick={zoomIn} className="p-1.5 rounded-md hover:bg-white/10 text-text-secondary" title="Zoom in">
+        <button onClick={zoomIn} className="p-1.5 rounded-full hover:bg-bg-hover text-text-secondary" title="Zoom in">
           <ZoomIn size={14} />
         </button>
-        <button onClick={zoomOut} className="p-1.5 rounded-md hover:bg-white/10 text-text-secondary" title="Zoom out">
+        <button onClick={zoomOut} className="p-1.5 rounded-full hover:bg-bg-hover text-text-secondary" title="Zoom out">
           <ZoomOut size={14} />
         </button>
-        <button onClick={resetView} className="p-1.5 rounded-md hover:bg-white/10 text-text-secondary" title="Reset view">
+        <button onClick={resetView} className="p-1.5 rounded-full hover:bg-bg-hover text-text-secondary" title="Reset view">
           <RotateCcw size={14} />
         </button>
-        <button onClick={() => setIsFullscreen((f) => !f)} className="p-1.5 rounded-md hover:bg-white/10 text-text-secondary" title="Fullscreen">
+        <button onClick={() => setIsFullscreen((f) => !f)} className="p-1.5 rounded-full hover:bg-bg-hover text-text-secondary" title="Fullscreen">
           {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
         </button>
         <span className="text-[10px] text-text-muted ml-auto">
@@ -300,8 +300,8 @@ function GraphVisualization({ panel }: { panel: CallGraphPanel }) {
 
       <div
         ref={containerRef}
-        className="rounded-xl overflow-hidden border border-white/10"
-        style={{ background: 'rgba(5, 8, 18, 0.6)', cursor: dragging ? 'grabbing' : 'grab' }}
+        className="rounded-2xl overflow-hidden border border-border-subtle"
+        style={{ background: '#f8fafd', cursor: dragging ? 'grabbing' : 'grab' }}
       >
         <svg
           width={dimensions.width}
@@ -431,7 +431,7 @@ function AdjacencyTable({ rows }: { rows: AdjacencyRow[] }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter functions…"
-          className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs bg-white/5 border border-white/10 text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent-blue/40"
+          className="w-full pl-8 pr-3 py-1.5 rounded-full text-xs bg-white border border-border-default text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-4 focus:ring-blue-100"
         />
       </div>
       <div className="max-h-80 overflow-y-auto pr-1 space-y-0.5">
@@ -441,7 +441,7 @@ function AdjacencyTable({ rows }: { rows: AdjacencyRow[] }) {
             <div key={row.function}>
               <button
                 onClick={() => toggle(row.function)}
-                className="w-full flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/5 text-left"
+                className="w-full flex items-center gap-1.5 px-2 py-1 rounded-lg hover:bg-bg-hover text-left"
               >
                 {row.calls.length > 0 ? (
                   isOpen ? (
@@ -466,7 +466,7 @@ function AdjacencyTable({ rows }: { rows: AdjacencyRow[] }) {
                     transition={{ duration: 0.15 }}
                     className="overflow-hidden"
                   >
-                    <div className="ml-7 pl-2 border-l border-white/10 space-y-0.5 py-1">
+                    <div className="ml-7 pl-2 border-l border-border-subtle space-y-0.5 py-1">
                       {row.calls.map((callee) => (
                         <div key={callee} className="font-mono text-[11px] text-accent-blue/80 truncate">
                           → {callee}
@@ -506,7 +506,7 @@ function CyclesList({ cycles }: { cycles: string[][] }) {
       {cycles.slice(0, 40).map((cycle, idx) => (
         <div
           key={idx}
-          className="flex items-start gap-2 px-2.5 py-1.5 rounded-lg bg-yellow-500/5 border border-yellow-500/15"
+          className="flex items-start gap-2 px-2.5 py-1.5 rounded-xl bg-orange-50 border border-orange-100"
         >
           <AlertTriangle size={12} className="text-yellow-500 flex-shrink-0 mt-0.5" />
           <span className="font-mono text-[11px] text-text-secondary break-all">
@@ -531,10 +531,10 @@ function ChainsList({ chains }: { chains: AttackChain[] }) {
   const display = showAll ? chains : chains.slice(0, 20);
 
   const categoryColors: Record<string, string> = {
-    Execution: 'text-red-400 bg-red-500/10 border-red-500/20',
-    Network: 'text-orange-400 bg-orange-500/10 border-orange-500/20',
-    'File I/O': 'text-amber-400 bg-amber-500/10 border-amber-500/20',
-    Crypto: 'text-purple-400 bg-purple-500/10 border-purple-500/20',
+    Execution: 'text-accent-red bg-red-50 border-red-100',
+    Network: 'text-accent-orange bg-orange-50 border-orange-100',
+    'File I/O': 'text-yellow-700 bg-yellow-50 border-yellow-100',
+    Crypto: 'text-accent-purple bg-purple-50 border-purple-100',
   };
 
   if (chains.length === 0) {
@@ -548,9 +548,9 @@ function ChainsList({ chains }: { chains: AttackChain[] }) {
   return (
     <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
       {display.map((chain, idx) => {
-        const colorCls = categoryColors[chain.category] || 'text-slate-400 bg-slate-500/10 border-slate-500/20';
+        const colorCls = categoryColors[chain.category] || 'text-text-secondary bg-slate-100 border-slate-200';
         return (
-          <div key={idx} className="px-2.5 py-1.5 rounded-lg bg-white/[0.02] border border-white/10">
+          <div key={idx} className="px-2.5 py-1.5 rounded-xl bg-white border border-border-subtle">
             <div className="flex items-center gap-2 mb-0.5">
               <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border ${colorCls}`}>
                 {chain.category}
@@ -618,10 +618,10 @@ export default function CallGraphView({ panels }: Props) {
             <button
               key={p.source}
               onClick={() => setActiveSource(i)}
-              className={`px-3 py-1 rounded-lg text-xs font-medium transition-colors ${
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
                 i === activeSource
-                  ? 'bg-accent-blue/20 text-accent-blue border border-accent-blue/30'
-                  : 'bg-white/5 text-text-secondary hover:bg-white/10 border border-transparent'
+                  ? 'bg-blue-50 text-accent-blue border border-blue-100'
+                  : 'bg-white text-text-secondary hover:bg-bg-hover border border-transparent'
               }`}
             >
               {p.source}
@@ -632,10 +632,9 @@ export default function CallGraphView({ panels }: Props) {
 
       {/* Stats bar */}
       <div
-        className="rounded-xl px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1"
+        className="rounded-2xl px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1 bg-white"
         style={{
-          background: 'rgba(10, 16, 28, 0.45)',
-          border: '1px solid rgba(100, 120, 180, 0.18)',
+          border: '1px solid #e8eaed',
         }}
       >
         <h4 className="text-sm font-semibold text-text-primary">{panel.source}</h4>
@@ -651,15 +650,15 @@ export default function CallGraphView({ panels }: Props) {
       </div>
 
       {/* Sub-tabs */}
-      <div className="flex gap-1 border-b border-white/10 pb-px">
+      <div className="flex gap-1 border-b border-border-subtle pb-px">
         {subTabs.map((t) => (
           <button
             key={t.key}
             onClick={() => setSubTab(t.key)}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-t-lg transition-colors ${
               subTab === t.key
-                ? 'bg-white/10 text-text-primary border-b-2 border-accent-blue'
-                : 'text-text-muted hover:text-text-secondary hover:bg-white/5'
+                ? 'bg-blue-50 text-accent-blue border-b-2 border-accent-blue'
+                : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
             }`}
           >
             {t.icon}

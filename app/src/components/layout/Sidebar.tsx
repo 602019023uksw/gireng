@@ -69,9 +69,9 @@ export function Sidebar({
 
   const verdictIcon = (verdict: string | null) => {
     switch (verdict?.toLowerCase()) {
-      case 'malware': return <ShieldAlert className="w-4 h-4 text-red-400" />;
-      case 'suspicious': return <ShieldQuestion className="w-4 h-4 text-yellow-400" />;
-      case 'clean': return <ShieldCheck className="w-4 h-4 text-green-400" />;
+      case 'malware': return <ShieldAlert className="w-4 h-4 text-accent-red" />;
+      case 'suspicious': return <ShieldQuestion className="w-4 h-4 text-accent-orange" />;
+      case 'clean': return <ShieldCheck className="w-4 h-4 text-accent-green" />;
       default: return <Shield className="w-4 h-4 text-text-muted" />;
     }
   };
@@ -104,11 +104,12 @@ export function Sidebar({
         initial={{ x: -20, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] as const }}
-        className="h-screen backdrop-blur-xl flex flex-shrink-0"
+        className="h-screen flex flex-shrink-0"
         style={{
-          width: isCollapsed ? '48px' : '260px',
-          background: 'rgba(12, 16, 32, 0.85)',
-          borderRight: '1px solid rgba(100, 120, 180, 0.12)',
+          width: isCollapsed ? '56px' : '280px',
+          background: 'rgba(255, 255, 255, 0.96)',
+          borderRight: '1px solid #e8eaed',
+          boxShadow: '1px 0 2px rgba(60, 64, 67, 0.06)',
           transition: 'width 0.3s ease',
         }}
       >
@@ -117,7 +118,7 @@ export function Sidebar({
           <div className="flex flex-col items-center py-4 w-full">
             <button
               onClick={() => setIsCollapsed(false)}
-              className="w-10 h-10 rounded-xl flex items-center justify-center text-text-secondary hover:text-accent-blue hover:bg-white/5 transition-all duration-150"
+              className="w-10 h-10 rounded-full flex items-center justify-center text-text-secondary hover:text-accent-blue hover:bg-bg-hover transition-all duration-150"
               title="Show History"
             >
               <Clock className="w-5 h-5" />
@@ -136,13 +137,13 @@ export function Sidebar({
               className="flex-1 flex flex-col min-w-0 overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b border-white/10"
-                style={{ borderColor: 'rgba(100, 120, 180, 0.1)' }}
+              <div className="flex items-center justify-between px-5 py-4 border-b"
+                style={{ borderColor: '#e8eaed' }}
               >
-                <h2 className="text-lg font-semibold text-text-primary">History</h2>
+                <h2 className="text-base font-semibold text-text-primary tracking-tight">History</h2>
                 <button 
                   onClick={() => setIsCollapsed(true)}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary transition-all duration-150 hover:bg-white/5"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:text-accent-blue transition-all duration-150 hover:bg-bg-hover"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
@@ -152,10 +153,10 @@ export function Sidebar({
               <div className="px-4 py-3">
                 <button
                   onClick={onNewChat}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-text-primary text-sm font-medium transition-all duration-150 hover:scale-[1.02]"
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full text-white text-sm font-medium transition-all duration-150 hover:shadow-glass"
                   style={{
-                    background: 'linear-gradient(135deg, rgba(88, 166, 255, 0.15) 0%, rgba(88, 166, 255, 0.05) 100%)',
-                    border: '1px solid rgba(88, 166, 255, 0.2)',
+                    background: '#1a73e8',
+                    border: '1px solid #1a73e8',
                   }}
                 >
                   <Edit3 className="w-4 h-4" />
@@ -172,10 +173,10 @@ export function Sidebar({
                     placeholder="Search analyses..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-9 pr-3 py-2 rounded-xl text-sm text-text-primary placeholder:text-text-muted focus:outline-none transition-all duration-150"
+                    className="w-full pl-9 pr-3 py-2.5 rounded-full text-sm text-text-primary placeholder:text-text-muted focus:outline-none transition-all duration-150 focus:ring-4 focus:ring-blue-100"
                     style={{
-                      background: 'rgba(10, 14, 28, 0.6)',
-                      border: '1px solid rgba(100, 120, 180, 0.2)',
+                      background: '#f8fafd',
+                      border: '1px solid #dadce0',
                     }}
                   />
                 </div>
@@ -198,7 +199,7 @@ export function Sidebar({
                     {historyItems.map((item) => (
                       <div
                         key={item.id}
-                        className="group relative px-3 py-2.5 rounded-xl text-sm transition-all duration-150 cursor-pointer hover:bg-white/5"
+                        className="group relative px-3 py-3 rounded-2xl text-sm transition-all duration-150 cursor-pointer hover:bg-bg-hover"
                         style={{
                           border: '1px solid transparent',
                         }}
@@ -219,9 +220,9 @@ export function Sidebar({
                           </span>
                           <span className="opacity-40">|</span>
                           <span className={
-                            item.status === 'completed' ? 'text-green-400' :
-                            item.status === 'error' ? 'text-red-400' :
-                            item.status === 'running' ? 'text-yellow-400' :
+                            item.status === 'completed' ? 'text-accent-green' :
+                            item.status === 'error' ? 'text-accent-red' :
+                            item.status === 'running' ? 'text-accent-orange' :
                             'text-text-muted'
                           }>
                             {item.status}
@@ -232,10 +233,10 @@ export function Sidebar({
                         {item.verdict && (
                           <div className="mt-1">
                             <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                              item.verdict.toLowerCase() === 'malware' ? 'bg-red-500/20 text-red-300' :
-                              item.verdict.toLowerCase() === 'suspicious' ? 'bg-yellow-500/20 text-yellow-300' :
-                              item.verdict.toLowerCase() === 'clean' ? 'bg-green-500/20 text-green-300' :
-                              'bg-gray-500/20 text-gray-300'
+                              item.verdict.toLowerCase() === 'malware' ? 'bg-red-50 text-accent-red border border-red-100' :
+                              item.verdict.toLowerCase() === 'suspicious' ? 'bg-orange-50 text-accent-orange border border-orange-100' :
+                              item.verdict.toLowerCase() === 'clean' ? 'bg-green-50 text-accent-green border border-green-100' :
+                              'bg-slate-100 text-text-secondary border border-slate-200'
                             }`}>
                               {item.verdict}
                               {item.threat_score != null ? ` (${item.threat_score}/100)` : ''}
@@ -247,7 +248,7 @@ export function Sidebar({
                         <div className="absolute right-2 top-2 hidden group-hover:flex gap-1">
                           <button
                             onClick={(e) => { e.stopPropagation(); handleDelete(item); }}
-                            className="w-6 h-6 rounded-md flex items-center justify-center text-text-muted hover:text-red-400 hover:bg-red-500/10 transition-all"
+                            className="w-6 h-6 rounded-full flex items-center justify-center text-text-muted hover:text-accent-red hover:bg-red-50 transition-all"
                             title="Delete"
                           >
                             <Trash2 className="w-3 h-3" />

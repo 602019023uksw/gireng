@@ -1129,9 +1129,9 @@ function App() {
                 key={i}
                 className="px-2 py-0.5 rounded text-xs"
                 style={{
-                  background: 'rgba(168, 85, 247, 0.1)',
-                  border: '1px solid rgba(168, 85, 247, 0.2)',
-                  color: '#a855f7',
+                  background: '#f3e8fd',
+                  border: '1px solid #e9d2fd',
+                  color: '#6750a4',
                 }}
               >
                 {label}
@@ -1146,7 +1146,7 @@ function App() {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg-primary">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400" />
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-blue" />
       </div>
     );
   }
@@ -1160,9 +1160,9 @@ function App() {
             className="absolute inset-0"
             style={{
               background: `
-                radial-gradient(ellipse at 20% 20%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
-                radial-gradient(ellipse at 80% 80%, rgba(34, 211, 238, 0.04) 0%, transparent 50%),
-                linear-gradient(180deg, #0a0a0f 0%, #0d0d14 100%)
+                radial-gradient(ellipse at 16% 12%, rgba(66, 133, 244, 0.10) 0%, transparent 38%),
+                radial-gradient(ellipse at 86% 8%, rgba(52, 168, 83, 0.08) 0%, transparent 34%),
+                linear-gradient(180deg, #f8fafd 0%, #eef3fb 100%)
               `,
             }}
           />
@@ -1180,9 +1180,9 @@ function App() {
           className="absolute inset-0"
           style={{
             background: `
-              radial-gradient(ellipse at 20% 20%, rgba(168, 85, 247, 0.06) 0%, transparent 50%),
-              radial-gradient(ellipse at 80% 80%, rgba(34, 211, 238, 0.04) 0%, transparent 50%),
-              linear-gradient(180deg, #0a0a0f 0%, #0d0d14 100%)
+              radial-gradient(ellipse at 16% 12%, rgba(66, 133, 244, 0.10) 0%, transparent 38%),
+              radial-gradient(ellipse at 86% 8%, rgba(52, 168, 83, 0.08) 0%, transparent 34%),
+              linear-gradient(180deg, #f8fafd 0%, #eef3fb 100%)
             `,
           }}
         />
@@ -1200,30 +1200,24 @@ function App() {
         }
         rightPanel={renderRightPanel()}
       >
-        {/* Top Header - Glass Terminal Style */}
+        {/* Top Header */}
         <header
-          className="h-14 flex items-center justify-between px-4 flex-shrink-0 backdrop-blur-xl relative z-30"
+          className="min-h-16 flex items-center justify-between gap-3 px-4 sm:px-5 flex-shrink-0 relative z-30"
           style={{
-            background: 'rgba(8, 8, 14, 0.85)',
-            borderBottom: '1px solid rgba(100, 100, 150, 0.1)',
+            background: 'rgba(255, 255, 255, 0.92)',
+            borderBottom: '1px solid #e8eaed',
+            boxShadow: '0 1px 2px rgba(60, 64, 67, 0.08)',
           }}
         >
-          <div className="flex items-center gap-4">
-            {/* Terminal Dots */}
-            <div className="flex items-center gap-1.5 mr-2">
-              <div className="w-3 h-3 rounded-full bg-terminal-red shadow-[0_0_6px_#ff5f56]" />
-              <div className="w-3 h-3 rounded-full bg-terminal-yellow shadow-[0_0_6px_#ffbd2e]" />
-              <div className="w-3 h-3 rounded-full bg-terminal-green shadow-[0_0_6px_#27c93f]" />
-            </div>
-
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
             {/* Back Button (when in analysis view) */}
             {viewState === 'analysis' && (
               <button
                 onClick={handleBackToChat}
-                className="flex items-center gap-2 px-3 py-1.5 text-text-secondary hover:text-text-primary rounded-lg transition-all duration-150 hover:bg-white/5"
+                className="flex min-w-0 items-center gap-2 px-3 sm:px-4 py-2 text-text-secondary hover:text-accent-blue rounded-full transition-all duration-150 hover:bg-bg-hover"
               >
-                <ArrowLeft className="w-4 h-4" />
-                <span className="text-sm">Back to Chat</span>
+                <ArrowLeft className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm truncate">Back to Chat</span>
               </button>
             )}
 
@@ -1231,10 +1225,10 @@ function App() {
             {!rightPanelOpen && (
               <button
                 onClick={() => setRightPanelOpen(true)}
-                className="flex items-center gap-2 px-3 py-1.5 text-text-secondary hover:text-text-primary rounded-lg transition-all duration-150 hover:bg-white/5"
+                className="flex min-w-0 items-center gap-2 px-3 sm:px-4 py-2 text-text-secondary hover:text-accent-blue rounded-full transition-all duration-150 hover:bg-bg-hover"
               >
-                <PanelRight className="w-4 h-4" />
-                <span className="text-sm">Resources</span>
+                <PanelRight className="w-4 h-4 flex-shrink-0" />
+                <span className="text-sm truncate">Resources</span>
               </button>
             )}
 
@@ -1247,7 +1241,7 @@ function App() {
             )}
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-shrink-0 items-center gap-2">
             {user && (
               <UserMenu
                 user={user}
@@ -1308,7 +1302,7 @@ function App() {
                 transition={{ duration: 0.3 }}
                 className="h-full overflow-y-auto scrollbar-dark"
               >
-                <div className="max-w-5xl mx-auto p-6">
+                <div className="max-w-6xl mx-auto p-8">
                   {/* Analysis Header */}
                   <AnalysisHeader analysis={currentAnalysis} />
 
@@ -1344,17 +1338,7 @@ function App() {
 
                         {/* Analysis Summary */}
                         <AnalysisSection title="Analysis Summary">
-                          {activeReport?.html_url ? (
-                            <div className="w-full" style={{ height: '70vh', minHeight: '500px' }}>
-                              <iframe
-                                src={activeReport.html_url}
-                                className="w-full h-full rounded-lg border-0"
-                                style={{ background: '#050915' }}
-                                title="Analysis Report"
-                                sandbox="allow-scripts allow-same-origin"
-                              />
-                            </div>
-                          ) : activeReport?.content ? (
+                          {activeReport?.content ? (
                             <MarkdownContent content={activeReport.content} compact />
                           ) : (
                             <p className="text-sm text-text-muted italic">

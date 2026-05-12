@@ -41,11 +41,10 @@ export function ShareModal({ isOpen, onClose, chatTitle = 'VirusTotal File Analy
             className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg z-50"
           >
             <div
-              className="rounded-2xl p-6"
+              className="rounded-3xl bg-white p-6"
               style={{
-                background: 'linear-gradient(135deg, rgba(25, 32, 55, 0.95) 0%, rgba(15, 20, 35, 0.95) 100%)',
-                border: '1px solid rgba(100, 120, 180, 0.2)',
-                boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)',
+                border: '1px solid #e8eaed',
+                boxShadow: '0 24px 48px rgba(60, 64, 67, 0.20)',
               }}
             >
               {/* Header */}
@@ -55,7 +54,7 @@ export function ShareModal({ isOpen, onClose, chatTitle = 'VirusTotal File Analy
                 </h2>
                 <button
                   onClick={onClose}
-                  className="w-8 h-8 rounded-lg flex items-center justify-center text-text-secondary hover:text-text-primary hover:bg-white/5 transition-all duration-150"
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-text-secondary hover:text-accent-blue hover:bg-bg-hover transition-all duration-150"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -72,8 +71,8 @@ export function ShareModal({ isOpen, onClose, chatTitle = 'VirusTotal File Analy
                 <div
                   className="flex-1 px-4 py-3 rounded-xl font-mono text-sm text-text-secondary truncate"
                   style={{
-                    background: 'rgba(10, 14, 28, 0.6)',
-                    border: '1px solid rgba(100, 120, 180, 0.2)',
+                    background: '#f8fafd',
+                    border: '1px solid #e8eaed',
                   }}
                 >
                   {shareUrl}
@@ -83,11 +82,11 @@ export function ShareModal({ isOpen, onClose, chatTitle = 'VirusTotal File Analy
               {/* Create URL Button */}
               <button
                 onClick={handleCopy}
-                className="w-full py-3 px-4 rounded-xl font-medium text-sm transition-all duration-150 flex items-center justify-center gap-2"
+                className="w-full py-3 px-4 rounded-full font-medium text-sm transition-all duration-150 flex items-center justify-center gap-2"
                 style={{
-                  background: 'linear-gradient(135deg, rgba(88, 166, 255, 0.2) 0%, rgba(88, 166, 255, 0.1) 100%)',
-                  border: '1px solid rgba(88, 166, 255, 0.3)',
-                  color: '#58A6FF',
+                  background: '#e8f0fe',
+                  border: '1px solid #d2e3fc',
+                  color: '#1a73e8',
                 }}
               >
                 {copied ? (
