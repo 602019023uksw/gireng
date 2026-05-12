@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 """HTML report generation."""
+# ruff: noqa: F403, F405
 
-import logging
 import re
 from datetime import datetime, timezone
 from html import escape
 from typing import Any, Dict
 
 from ghidra_agent.evidence_correlator import build_evidence_correlation
+from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state
 from ghidra_agent.reporting.common import *
-from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
+
 
 def build_report_html(state: Dict[str, Any]) -> str:
     """Build HTML report using a modern analyst-focused template."""
@@ -74,7 +75,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         fallback = re.sub(r'^#{2,3}\s+.*$', '', summary_text[:2000], flags=re.MULTILINE).strip()
         exec_summary = fallback or summary_text[:2000]
 
-    
+
     mitre_md = _extract_section(summary_text, "Threat Intel & MITRE ATT&CK")
     if not mitre_md:
         mitre_md = _extract_section(summary_text, "MITRE ATT&CK Tactics & Techniques")
@@ -100,19 +101,19 @@ def build_report_html(state: Dict[str, Any]) -> str:
 
     # --- Verdict display config ---
     _VERDICT_CFG = {
-        "malicious": ("Critical", "fa-skull-crossbones", "bg-red-100 dark:bg-red-900/30", "text-red-800 dark:text-red-300", "border-red-200 dark:border-red-800"),
-        "suspicious": ("High Risk", "fa-exclamation-triangle", "bg-orange-100 dark:bg-orange-900/30", "text-orange-800 dark:text-orange-300", "border-orange-200 dark:border-orange-800"),
-        "clean": ("Low Risk", "fa-check-circle", "bg-green-100 dark:bg-green-900/30", "text-green-800 dark:text-green-300", "border-green-200 dark:border-green-800"),
-        "unknown": ("Unknown", "fa-question-circle", "bg-slate-100 dark:bg-slate-800", "text-slate-700 dark:text-slate-300", "border-[#131e36]"),
+        "malicious": ("Critical", "fa-skull-crossbones", "bg-red-100", "text-red-800", "border-red-200"),
+        "suspicious": ("High Risk", "fa-exclamation-triangle", "bg-orange-100", "text-orange-800", "border-orange-200"),
+        "clean": ("Low Risk", "fa-check-circle", "bg-green-100", "text-green-800", "border-green-200"),
+        "unknown": ("Unknown", "fa-question-circle", "bg-slate-100", "text-slate-700", "border-slate-200"),
     }
     v_label, v_icon, v_badge_bg, v_badge_text, v_badge_border = _VERDICT_CFG.get(verdict_class, _VERDICT_CFG["unknown"])
 
     # Risk box gradient per verdict
     _RISK_GRADIENT = {
-        "malicious": "background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);",
-        "suspicious": "background: linear-gradient(135deg, #ea580c 0%, #9a3412 100%);",
-        "clean": "background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);",
-        "unknown": "background: linear-gradient(135deg, #475569 0%, #334155 100%);",
+        "malicious": "background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); color: #991b1b;",
+        "suspicious": "background: linear-gradient(135deg, #fff7ed 0%, #ffedd5 100%); color: #9a3412;",
+        "clean": "background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); color: #166534;",
+        "unknown": "background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); color: #334155;",
     }
     risk_gradient = _RISK_GRADIENT.get(verdict_class, _RISK_GRADIENT["unknown"])
 
@@ -176,22 +177,22 @@ def build_report_html(state: Dict[str, Any]) -> str:
 
     # Conclusion gradient colors
     _CC = {
-        "malicious": ("from-red-50 to-orange-50 dark:from-red-900/20 dark:to-orange-900/10",
-                       "border-red-200 dark:border-red-800/50", "text-red-900 dark:text-red-100",
-                       "text-red-800 dark:text-red-200", "bg-red-100 dark:bg-red-800/50",
-                       "text-red-600 dark:text-red-400"),
-        "suspicious": ("from-orange-50 to-yellow-50 dark:from-orange-900/20 dark:to-yellow-900/10",
-                        "border-orange-200 dark:border-orange-800/50", "text-orange-900 dark:text-orange-100",
-                        "text-orange-800 dark:text-orange-200", "bg-orange-100 dark:bg-orange-800/50",
-                        "text-orange-600 dark:text-orange-400"),
-        "clean": ("from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/10",
-                   "border-green-200 dark:border-green-800/50", "text-green-900 dark:text-green-100",
-                   "text-green-800 dark:text-green-200", "bg-green-100 dark:bg-green-800/50",
-                   "text-green-600 dark:text-green-400"),
-        "unknown": ("from-slate-50 to-slate-100 dark:from-slate-900/20 dark:to-slate-800/10",
-                     "border-slate-200 dark:border-slate-700/50", "text-slate-900 dark:text-slate-100",
-                     "text-slate-800 dark:text-slate-200", "bg-slate-100 dark:bg-slate-800/50",
-                     "text-slate-600 dark:text-slate-400"),
+        "malicious": ("from-red-50 to-orange-50",
+                       "border-red-200", "text-red-900",
+                       "text-red-800", "bg-red-100",
+                       "text-red-600"),
+        "suspicious": ("from-orange-50 to-yellow-50",
+                        "border-orange-200", "text-orange-900",
+                        "text-orange-800", "bg-orange-100",
+                        "text-orange-600"),
+        "clean": ("from-green-50 to-emerald-50",
+                   "border-green-200", "text-green-900",
+                   "text-green-800", "bg-green-100",
+                   "text-green-600"),
+        "unknown": ("from-slate-50 to-slate-100",
+                     "border-slate-200", "text-slate-900",
+                     "text-slate-800", "bg-slate-100",
+                     "text-slate-600"),
     }
     cc_grad, cc_border, cc_title, cc_body, cc_icon_bg, cc_icon_txt = _CC.get(verdict_class, _CC["unknown"])
 
@@ -199,33 +200,33 @@ def build_report_html(state: Dict[str, Any]) -> str:
     _stripped_val = r2_binary.get('stripped', 'unknown')
     _stripped_str = 'Yes' if _stripped_val is True else ('No' if _stripped_val is False else str(_stripped_val))
     binary_rows = f'''
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400 w-1/4">SHA256</td>
+                                    <tr><td class="font-semibold text-slate-600 w-1/4">SHA256</td>
                                         <td class="text-xs break-all">{escape(program_hash)}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Architecture</td>
+                                    <tr><td class="font-semibold text-slate-600">Architecture</td>
                                         <td>{escape(str(arch))} ({bits}-bit)</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Format</td>
+                                    <tr><td class="font-semibold text-slate-600">Format</td>
                                         <td>{escape(fmt_str)}  --  {escape(str(os_name))}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Image Base</td>
+                                    <tr><td class="font-semibold text-slate-600">Image Base</td>
                                         <td class="font-mono">{escape(str(binary.get('image_base', 'unknown')))}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Entry Points</td>
+                                    <tr><td class="font-semibold text-slate-600">Entry Points</td>
                                         <td class="font-mono text-xs">{escape(_format_entry_points(binary.get('entry_points', ['unknown'])))}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Compiler</td>
+                                    <tr><td class="font-semibold text-slate-600">Compiler</td>
                                         <td class="text-xs">{escape(_sanitize_compiler(binary.get('compiler', r2_binary.get('compiler', 'unknown'))))}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Stripped</td>
+                                    <tr><td class="font-semibold text-slate-600">Stripped</td>
                                         <td>{_stripped_str}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Endianness</td>
+                                    <tr><td class="font-semibold text-slate-600">Endianness</td>
                                         <td>{escape(str(r2_binary.get('endian', 'unknown')))}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Imports</td>
+                                    <tr><td class="font-semibold text-slate-600">Imports</td>
                                         <td class="text-xs">{escape(_format_import_export_list(binary.get('imports', [])))}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Exports</td>
+                                    <tr><td class="font-semibold text-slate-600">Exports</td>
                                         <td>{len(binary.get('exports', []))} symbols</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Functions</td>
+                                    <tr><td class="font-semibold text-slate-600">Functions</td>
                                         <td>Ghidra: {len(funcs.get('functions', []))} ({len(state.get('decompilation_cache', {}))}&nbsp;decompiled) &middot; R2: {len(r2_funcs.get('functions', []))} ({len(state.get('r2_decompilation_cache', {}))}&nbsp;decompiled)</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Strings</td>
+                                    <tr><td class="font-semibold text-slate-600">Strings</td>
                                         <td>Ghidra: {len(strings_data.get('strings', []))} &middot; R2: {len(r2_strings.get('strings', []))} extracted</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Analysis Started</td>
+                                    <tr><td class="font-semibold text-slate-600">Analysis Started</td>
                                         <td>{started_str}</td></tr>
-                                    <tr><td class="font-semibold text-slate-600 dark:text-slate-400">Analysis Completed</td>
+                                    <tr><td class="font-semibold text-slate-600">Analysis Completed</td>
                                         <td>{completed_str}</td></tr>'''
 
     has_qiling = bool(qiling_results)
@@ -256,7 +257,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         '<p class="section-subtitle">Breakpoint-driven investigation strategy and reasoning recorded by the analysis planner.</p>'
         '</div>'
         '</div>'
-        '<div class="section-body md-content text-slate-700 dark:text-slate-300 leading-relaxed space-y-4 text-base">'
+        '<div class="section-body md-content text-slate-700 leading-relaxed space-y-4 text-base">'
         '<p class="mb-3">' + _markdown_to_html(state.get("investigation_trace", "")) + '</p>'
         '</div>'
         '</section>'
@@ -269,7 +270,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         else ""
     )
     qiling_mobile_link = (
-        '<a href="#qiling-dynamic" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Qiling</a>'
+        '<a href="#qiling-dynamic" class="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-xs uppercase font-bold tracking-wide">Qiling</a>'
         if has_qiling
         else ""
     )
@@ -278,12 +279,12 @@ def build_report_html(state: Dict[str, Any]) -> str:
     if dynamic_analysis_html:
         dynamic_narrative_block = (
             '<div class="mb-6">'
-            '<h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">'
-            '<i class="fas fa-brain mr-2 text-cyan-400"></i>AI Analysis Narrative</h3>'
+            '<h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">'
+            '<i class="fas fa-brain mr-2 text-blue-600"></i>AI Analysis Narrative</h3>'
             f'{dynamic_analysis_html}'
             '</div>'
-            '<h3 class="text-sm font-bold text-slate-400 uppercase tracking-wider mb-3">'
-            '<i class="fas fa-chart-bar mr-2 text-cyan-400"></i>Raw Telemetry Data</h3>'
+            '<h3 class="text-sm font-bold text-slate-500 uppercase tracking-wider mb-3">'
+            '<i class="fas fa-chart-bar mr-2 text-blue-600"></i>Raw Telemetry Data</h3>'
         )
 
     qiling_section_html = (
@@ -322,7 +323,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
 
     # --- Assemble full HTML ---
     html = f'''<!DOCTYPE html>
-<html lang="en" class="scroll-smooth dark">
+<html lang="en" class="scroll-smooth">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -346,15 +347,16 @@ def build_report_html(state: Dict[str, Any]) -> str:
     </script>
     <style>
         :root {{
-            --bg-0: #050915;
-            --bg-1: #08142f;
-            --surface-1: rgba(10, 20, 43, 0.9);
-            --surface-2: rgba(13, 26, 52, 0.88);
-            --line: rgba(108, 136, 180, 0.38);
-            --line-soft: rgba(108, 136, 180, 0.24);
-            --text-0: #f8fbff;
-            --text-1: #dce7f7;
-            --text-2: #a7bad5;
+            --bg-0: #f8fafd;
+            --bg-1: #eef3fb;
+            --surface-1: #ffffff;
+            --surface-2: #f8fafd;
+            --line: #dfe5ee;
+            --line-soft: #e8eaed;
+            --text-0: #202124;
+            --text-1: #3c4043;
+            --text-2: #5f6368;
+            --accent: #1a73e8;
         }}
         html, body {{
             min-height: 100%;
@@ -362,10 +364,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         body {{
             margin: 0;
             color: var(--text-1);
-            background:
-                radial-gradient(950px 480px at -12% -12%, rgba(34, 211, 238, 0.22), transparent 65%),
-                radial-gradient(760px 420px at 110% -10%, rgba(244, 114, 182, 0.2), transparent 58%),
-                linear-gradient(180deg, var(--bg-0) 0%, #081027 52%, #050916 100%);
+            background: linear-gradient(180deg, var(--bg-0) 0%, #eef3fb 100%);
         }}
         .report-bg-grid {{
             position: fixed;
@@ -385,8 +384,8 @@ def build_report_html(state: Dict[str, Any]) -> str:
         @media print {{
             @page {{ size: A4; margin: 6mm 8mm; }}
             html, body {{
-                background: #0b1325 !important;
-                color: #e2e8f0 !important;
+                background: #ffffff !important;
+                color: #202124 !important;
                 font-size: 9pt !important;
                 min-height: 0 !important;
             }}
@@ -487,15 +486,12 @@ def build_report_html(state: Dict[str, Any]) -> str:
             .rounded-xl {{ border-radius: 0.3rem !important; }}
         }}
         .report-shell {{
-            background: linear-gradient(180deg, rgba(10, 20, 43, 0.95), rgba(7, 14, 31, 0.92));
+            background: var(--surface-1);
             border: 1px solid var(--line);
-            box-shadow: 0 24px 56px rgba(2, 8, 23, 0.52);
+            box-shadow: 0 8px 28px rgba(60, 64, 67, 0.12);
         }}
         .hero-panel {{
-            background:
-                radial-gradient(circle at 8% 8%, rgba(34, 211, 238, 0.2), transparent 42%),
-                radial-gradient(circle at 92% 0%, rgba(244, 114, 182, 0.17), transparent 36%),
-                linear-gradient(180deg, rgba(8, 18, 39, 0.97), rgba(8, 15, 33, 0.94));
+            background: linear-gradient(180deg, #ffffff, #f8fafd);
             border-bottom: 1px solid var(--line-soft);
         }}
         .badge-chip {{
@@ -512,14 +508,14 @@ def build_report_html(state: Dict[str, Any]) -> str:
         }}
         .stat-card {{
             border: 1px solid var(--line-soft);
-            background: linear-gradient(180deg, rgba(14, 26, 50, 0.9), rgba(10, 18, 36, 0.92));
+            background: #ffffff;
             border-radius: 0.8rem;
         }}
         .section-card {{
             border: 1px solid var(--line-soft);
             border-radius: 0.95rem;
-            background: linear-gradient(180deg, rgba(13, 24, 47, 0.95), rgba(10, 18, 37, 0.94));
-            box-shadow: 0 14px 32px rgba(2, 8, 23, 0.34);
+            background: #ffffff;
+            box-shadow: 0 1px 3px rgba(60, 64, 67, 0.12);
         }}
         .section-title-wrap {{
             display: flex;
@@ -536,12 +532,12 @@ def build_report_html(state: Dict[str, Any]) -> str:
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            background: rgba(22, 38, 70, 0.82);
-            color: #d3e5ff;
+            background: #e8f0fe;
+            color: #174ea6;
         }}
         .section-eyebrow {{
             margin: 0;
-            color: #8ea6cb;
+            color: #5f6368;
             text-transform: uppercase;
             font-size: 0.65rem;
             letter-spacing: 0.14em;
@@ -550,13 +546,13 @@ def build_report_html(state: Dict[str, Any]) -> str:
         .section-headline {{
             margin: 0.18rem 0 0;
             font-family: 'Space Grotesk', sans-serif;
-            color: #f8fbff;
+            color: var(--text-0);
             font-size: 1.23rem;
             font-weight: 700;
         }}
         .section-subtitle {{
             margin-top: 0.34rem;
-            color: #9bb1d1;
+            color: var(--text-2);
             font-size: 0.84rem;
             line-height: 1.5;
         }}
@@ -568,8 +564,8 @@ def build_report_html(state: Dict[str, Any]) -> str:
             border-collapse: collapse;
         }}
         table.data-table th {{
-            background: rgba(29, 44, 75, 0.95);
-            color: #d8e6f9;
+            background: #f8fafd;
+            color: #5f6368;
             font-weight: 700;
             text-align: left;
             padding: 0.62rem 0.85rem;
@@ -580,24 +576,24 @@ def build_report_html(state: Dict[str, Any]) -> str:
         }}
         table.data-table td {{
             padding: 0.68rem 0.85rem;
-            border-bottom: 1px solid rgba(71, 85, 105, 0.44);
+            border-bottom: 1px solid var(--line-soft);
             font-size: 0.84rem;
             font-family: 'IBM Plex Mono', monospace;
-            color: #d5e3f6;
+            color: var(--text-1);
         }}
         .flow-container {{ display: flex; align-items: center; gap: 0.5rem; overflow-x: auto; padding: 1rem 0; }}
-        .flow-item {{ flex-shrink: 0; background: rgba(15, 26, 50, 0.96); border: 1px solid var(--line); padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: #dbe8fb; white-space: nowrap; }}
-        .flow-item.active {{ background: #dc2626; color: white; border-color: #dc2626; }}
-        .flow-arrow {{ color: #9ca3af; font-size: 1.25rem; flex-shrink: 0; }}
+        .flow-item {{ flex-shrink: 0; background: #f8fafd; border: 1px solid var(--line); padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--text-1); white-space: nowrap; }}
+        .flow-item.active {{ background: #e8f0fe; color: #174ea6; border-color: #d2e3fc; }}
+        .flow-arrow {{ color: #9aa0a6; font-size: 1.25rem; flex-shrink: 0; }}
         .function-box {{ border: 1px solid var(--line-soft); transition: all 0.2s; }}
-        .function-box:hover {{ border-color: rgba(251, 146, 60, 0.75); box-shadow: 0 8px 20px rgba(3, 7, 18, 0.45); }}
+        .function-box:hover {{ border-color: #d2e3fc; box-shadow: 0 4px 12px rgba(60, 64, 67, 0.14); }}
         .evidence-compact {{ border-left: 3px solid #ef4444; transition: all 0.2s; }}
         .evidence-compact:hover {{ background-color: rgba(15, 26, 50, 0.85); padding-left: 1.25rem; }}
         .capability-card, .tech-card, .func-card, .evidence-card, .rec-card {{
             transition: all 0.25s ease;
         }}
         .evidence-card:hover {{ transform: translateX(4px); }}
-        .rec-card:hover {{ transform: translateY(-2px); box-shadow: 0 14px 30px rgba(2, 8, 23, 0.45); }}
+        .rec-card:hover {{ transform: translateY(-2px); box-shadow: 0 4px 14px rgba(60, 64, 67, 0.14); }}
         .tlp-banner {{
             background: repeating-linear-gradient(45deg, #f59e0b, #f59e0b 10px, #d97706 10px, #d97706 20px);
             color: white;
@@ -622,41 +618,42 @@ def build_report_html(state: Dict[str, Any]) -> str:
             background: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.06) 10px, rgba(255,255,255,0.06) 20px);
         }}
         @keyframes slide {{ 0% {{ transform: translateX(0); }} 100% {{ transform: translateX(40px); }} }}
-        .md-content p {{ margin-bottom: 0.8rem; line-height: 1.72; color: #d4e1f4; }}
-        .md-content ul {{ list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.8rem; color: #d4e1f4; }}
-        .md-content ol {{ list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.8rem; color: #d4e1f4; }}
+        .md-content p {{ margin-bottom: 0.8rem; line-height: 1.72; color: var(--text-1); }}
+        .md-content ul {{ list-style-type: disc; padding-left: 1.5rem; margin-bottom: 0.8rem; color: var(--text-1); }}
+        .md-content ol {{ list-style-type: decimal; padding-left: 1.5rem; margin-bottom: 0.8rem; color: var(--text-1); }}
         .md-content li {{ margin-bottom: 0.35rem; }}
-        .md-content pre {{ background: #0f172a; border: 1px solid rgba(71, 85, 105, 0.7); border-radius: 0.5rem; padding: 0.9rem; overflow-x: auto; font-size: 0.8rem; margin: 0.95rem 0; color: #e2e8f0; }}
-        .md-content code {{ font-family: 'IBM Plex Mono', monospace; background: rgba(30, 58, 92, 0.58); padding: 0.125rem 0.375rem; font-size: 0.85em; color: #bae6fd; border: 1px solid rgba(125, 211, 252, 0.35); border-radius: 0.25rem; }}
-        .md-content pre code {{ color: #e2e8f0; background: none; padding: 0; border: none; }}
+        .md-content pre {{ background: #f8fafd; border: 1px solid var(--line-soft); border-radius: 0.5rem; padding: 0.9rem; overflow-x: auto; font-size: 0.8rem; margin: 0.95rem 0; color: #3c4043; }}
+        .md-content code {{ font-family: 'IBM Plex Mono', monospace; background: #e8f0fe; padding: 0.125rem 0.375rem; font-size: 0.85em; color: #174ea6; border: 1px solid #d2e3fc; border-radius: 0.25rem; }}
+        .md-content pre code {{ color: #3c4043; background: none; padding: 0; border: none; }}
         .md-content h3 {{ font-size: 1.08rem; font-weight: 700; margin-top: 1.35rem; margin-bottom: 0.65rem; }}
         .md-content h4 {{ font-size: 0.98rem; font-weight: 600; margin-top: 1.2rem; margin-bottom: 0.5rem; }}
         .md-content table {{ width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 0.875rem; }}
-        .md-content th {{ background: rgba(29, 44, 75, 0.95); font-weight: 700; text-transform: uppercase; font-size: 0.7rem; padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--line-soft); }}
-        .md-content td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(71, 85, 105, 0.45); }}
+        .md-content th {{ background: #f8fafd; font-weight: 700; text-transform: uppercase; font-size: 0.7rem; padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid var(--line-soft); color: #5f6368; }}
+        .md-content td {{ padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--line-soft); }}
         /* ── Contrast bump ── */
-        .text-slate-700, .text-slate-600 {{ color: #d4e1f4 !important; }}
-        .text-slate-500 {{ color: #a7bad5 !important; }}
-        .text-slate-400 {{ color: #bdd0e8 !important; }}
-        .text-slate-300 {{ color: #e0ecf8 !important; }}
-        .text-white {{ color: #f8fbff !important; }}
-        [class*="bg-[#0B1324]"], [class*="bg-[#060B14]"], .capability-card, .tech-card, .func-card, .evidence-card, .evidence-row, .rec-card, .function-box {{
-            background: linear-gradient(180deg, rgba(15, 27, 52, 0.95), rgba(11, 20, 40, 0.93)) !important;
-            border-color: rgba(102, 131, 176, 0.4) !important;
+        .text-slate-700, .text-slate-600 {{ color: #3c4043 !important; }}
+        .text-slate-500 {{ color: #5f6368 !important; }}
+        .text-slate-400 {{ color: #5f6368 !important; }}
+        .text-slate-300 {{ color: #3c4043 !important; }}
+        .text-white {{ color: #202124 !important; }}
+        .hover\\:bg-slate-50:hover, .dark\\:hover\\:bg-slate-800\\/50:hover {{ background: #f8fafd !important; }}
+        .capability-card, .tech-card, .func-card, .evidence-card, .evidence-row, .rec-card, .function-box {{
+            background: #ffffff !important;
+            border-color: var(--line-soft) !important;
         }}
         [class*="border-[#131e36]"] {{
-            border-color: rgba(102, 131, 176, 0.4) !important;
+            border-color: var(--line-soft) !important;
         }}
         /* ── Navigation ── */
         .nav-link {{
             display: flex; align-items: center; gap: 0.6rem;
-            color: #8ea6cb; font-size: 0.84rem; font-weight: 500;
+            color: #5f6368; font-size: 0.84rem; font-weight: 500;
             transition: all 0.18s; text-decoration: none;
         }}
-        .nav-link:hover {{ color: #e2ecfa; background: rgba(34, 211, 238, 0.08); }}
+        .nav-link:hover {{ color: #174ea6; background: #e8f0fe; }}
         .nav-link.is-active {{
-            color: #00f0ff; background: rgba(0, 240, 255, 0.1);
-            border-left: 2px solid #00f0ff; font-weight: 700;
+            color: #174ea6; background: #e8f0fe;
+            border-left: 2px solid var(--accent); font-weight: 700;
         }}
         .nav-link i {{ width: 1.1rem; text-align: center; font-size: 0.76rem; }}
         /* ── Entity chips ── */
@@ -683,15 +680,15 @@ def build_report_html(state: Dict[str, Any]) -> str:
         .hamburger-btn {{
             display: none; position: fixed; top: 1rem; left: 1rem; z-index: 50;
             width: 2.5rem; height: 2.5rem; border-radius: 0.5rem;
-            background: rgba(10,20,43,0.92); border: 1px solid rgba(102,131,176,0.4);
-            color: #e2ecfa; cursor: pointer; align-items: center; justify-content: center;
+            background: #ffffff; border: 1px solid var(--line-soft);
+            color: #174ea6; cursor: pointer; align-items: center; justify-content: center;
             font-size: 1.1rem;
         }}
         @media (max-width: 1023px) {{ .hamburger-btn {{ display: flex; }} }}
         .section-card {{ padding: 1.75rem; }}
     </style>
 </head>
-<body class="font-sans antialiased text-slate-200">
+<body class="font-sans antialiased text-slate-700">
     <div class="report-bg-grid"></div>
 
     <!-- Floating Tools -->
@@ -710,10 +707,10 @@ def build_report_html(state: Dict[str, Any]) -> str:
     </button>
 
     <!-- Navigation Sidebar -->
-    <nav id="report-nav" class="fixed left-0 top-0 h-full w-72 bg-[#0B1324]/95 border-r border-[#131e36] overflow-y-auto z-40 transform -translate-x-full lg:translate-x-0 transition-transform no-print shadow-xl backdrop-blur-md" role="navigation" aria-label="Report sections">
-        <div class="p-6 border-b border-[#131e36]">
+    <nav id="report-nav" class="fixed left-0 top-0 h-full w-72 bg-white border-r border-slate-200 overflow-y-auto z-40 transform -translate-x-full lg:translate-x-0 transition-transform no-print shadow-xl" role="navigation" aria-label="Report sections">
+        <div class="p-6 border-b border-slate-200">
             <div class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.22em] mb-1">Reverse Engineering</div>
-            <div class="font-mono text-sm font-bold text-white break-all">{file_name}</div>
+            <div class="font-mono text-sm font-bold text-slate-900 break-all">{file_name}</div>
             <div class="text-[11px] text-slate-500 mt-2">SHA256: {escape(hash_short)}</div>
         </div>
         <div class="p-4 space-y-1 text-sm">
@@ -740,13 +737,13 @@ def build_report_html(state: Dict[str, Any]) -> str:
     <div class="lg:ml-72 min-h-screen px-4 py-4 lg:p-6">
         <div class="max-w-6xl mx-auto space-y-4">
             <div class="flex lg:hidden gap-2 overflow-x-auto whitespace-nowrap no-print pb-1">
-                <a href="#executive-summary" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Summary</a>
-                <a href="#capabilities" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Capabilities</a>
-                <a href="#technical-analysis" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Technical</a>
-                <a href="#functions-analysis" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Functions</a>
+                <a href="#executive-summary" class="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-xs uppercase font-bold tracking-wide">Summary</a>
+                <a href="#capabilities" class="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-xs uppercase font-bold tracking-wide">Capabilities</a>
+                <a href="#technical-analysis" class="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-xs uppercase font-bold tracking-wide">Technical</a>
+                <a href="#functions-analysis" class="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-xs uppercase font-bold tracking-wide">Functions</a>
                 {qiling_mobile_link}
-                <a href="#evidence-correlation" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">Evidence Links</a>
-                <a href="#iocs" class="px-3 py-1.5 rounded-full border border-slate-600/40 bg-slate-900/60 text-xs uppercase font-bold tracking-wide">IOCs</a>
+                <a href="#evidence-correlation" class="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-xs uppercase font-bold tracking-wide">Evidence Links</a>
+                <a href="#iocs" class="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-slate-700 text-xs uppercase font-bold tracking-wide">IOCs</a>
             </div>
             <div class="report-shell rounded-xl overflow-hidden">
 
@@ -754,31 +751,31 @@ def build_report_html(state: Dict[str, Any]) -> str:
                 <header class="hero-panel p-6 lg:p-8" role="banner">
                     <div class="grid lg:grid-cols-[1fr_260px] gap-6 items-start">
                         <div>
-                            <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300/90 mb-2">{escape(report_scope_label)}</p>
-                            <h1 class="text-3xl lg:text-4xl font-display font-bold text-white mb-2 tracking-tight">Reverse Engineering Report</h1>
-                            <p class="text-sm lg:text-[15px] text-slate-300 max-w-3xl leading-relaxed">
+                            <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-blue-700 mb-2">{escape(report_scope_label)}</p>
+                            <h1 class="text-3xl lg:text-4xl font-display font-bold text-slate-900 mb-2 tracking-tight">Reverse Engineering Report</h1>
+                            <p class="text-sm lg:text-[15px] text-slate-600 max-w-3xl leading-relaxed">
                                 {escape(report_fusion_copy)}
                             </p>
                             <div class="flex flex-wrap items-center gap-2 mt-4">
                                 <span class="badge-chip {v_badge_bg} {v_badge_text} border {v_badge_border}"><i class="fas {v_icon}"></i>{escape(v_label)}</span>
-                                <span class="badge-chip bg-slate-900/70 border border-slate-600/50 text-slate-200"><i class="fas fa-microchip"></i>{escape(format_badge)}</span>
+                                <span class="badge-chip bg-slate-100 border border-slate-200 text-slate-700"><i class="fas fa-microchip"></i>{escape(format_badge)}</span>
                                 <span class="tlp-banner rounded"><i class="fas fa-lock"></i> TLP:AMBER</span>
                             </div>
                         </div>
                         <div class="stat-card p-4">
-                            <div class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 mb-2">Analysis Metadata</div>
+                            <div class="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 mb-2">Analysis Metadata</div>
                             <div class="space-y-2 text-xs">
-                                <div class="flex justify-between gap-3"><span class="text-slate-400">Sample</span><span class="font-mono text-slate-200 break-all text-right">{file_name}</span></div>
-                                <div class="flex justify-between gap-3"><span class="text-slate-400">Session</span><span class="font-mono text-slate-200">{escape(task_id)}</span></div>
-                                <div class="flex justify-between gap-3"><span class="text-slate-400">Generated</span><span class="font-mono text-slate-200">{escape(timestamp)}</span></div>
-                                <div class="flex justify-between gap-3"><span class="text-slate-400">Verdict</span><span class="font-semibold text-white">{escape(verdict)}</span></div>
+                                <div class="flex justify-between gap-3"><span class="text-slate-500">Sample</span><span class="font-mono text-slate-700 break-all text-right">{file_name}</span></div>
+                                <div class="flex justify-between gap-3"><span class="text-slate-500">Session</span><span class="font-mono text-slate-700">{escape(task_id)}</span></div>
+                                <div class="flex justify-between gap-3"><span class="text-slate-500">Generated</span><span class="font-mono text-slate-700">{escape(timestamp)}</span></div>
+                                <div class="flex justify-between gap-3"><span class="text-slate-500">Verdict</span><span class="font-semibold text-slate-900">{escape(verdict)}</span></div>
                             </div>
                         </div>
                     </div>
                 </header>
 
                 <!-- Risk Banner -->
-                <div class="risk-box p-5 text-center relative border-y border-[#131e36]" role="status" aria-label="Risk assessment: {escape(v_label)}, score {score}/100">
+                <div class="risk-box p-5 text-center relative border-y border-slate-200" role="status" aria-label="Risk assessment: {escape(v_label)}, score {score}/100">
                     <div class="relative z-10 flex items-center justify-center gap-3 flex-wrap">
                         <i class="fas {v_icon} text-2xl opacity-80"></i>
                         <div class="text-2xl font-bold uppercase tracking-wider">{escape(v_label)}</div>
@@ -790,29 +787,29 @@ def build_report_html(state: Dict[str, Any]) -> str:
                 <div class="px-6 lg:px-8 pt-6">
                     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
                         <div class="stat-card p-3">
-                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">Functions</div>
-                            <div class="text-xl font-display font-bold text-white mt-1">{total_functions}</div>
-                            <div class="text-[11px] text-slate-400">Discovered across both engines</div>
+                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold">Functions</div>
+                            <div class="text-xl font-display font-bold text-slate-900 mt-1">{total_functions}</div>
+                            <div class="text-[11px] text-slate-500">Discovered across both engines</div>
                         </div>
                         <div class="stat-card p-3">
-                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">Decompiled</div>
-                            <div class="text-xl font-display font-bold text-white mt-1">{decompiled_total}</div>
-                            <div class="text-[11px] text-slate-400">{coverage_pct}% function coverage</div>
+                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold">Decompiled</div>
+                            <div class="text-xl font-display font-bold text-slate-900 mt-1">{decompiled_total}</div>
+                            <div class="text-[11px] text-slate-500">{coverage_pct}% function coverage</div>
                         </div>
                         <div class="stat-card p-3">
-                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">Interesting</div>
-                            <div class="text-xl font-display font-bold text-white mt-1">{interesting_total}</div>
-                            <div class="text-[11px] text-slate-400">{_interesting_label}</div>
+                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold">Interesting</div>
+                            <div class="text-xl font-display font-bold text-slate-900 mt-1">{interesting_total}</div>
+                            <div class="text-[11px] text-slate-500">{_interesting_label}</div>
                         </div>
                         <div class="stat-card p-3">
-                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">{_chain_label}</div>
-                            <div class="text-xl font-display font-bold text-white mt-1">{chain_total}</div>
-                            <div class="text-[11px] text-slate-400">{_chain_desc}</div>
+                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold">{_chain_label}</div>
+                            <div class="text-xl font-display font-bold text-slate-900 mt-1">{chain_total}</div>
+                            <div class="text-[11px] text-slate-500">{_chain_desc}</div>
                         </div>
                         <div class="stat-card p-3">
-                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-400 font-bold">IOCs</div>
-                            <div class="text-xl font-display font-bold text-white mt-1">{ioc_total}</div>
-                            <div class="text-[11px] text-slate-400">{total_strings} strings reviewed</div>
+                            <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 font-bold">IOCs</div>
+                            <div class="text-xl font-display font-bold text-slate-900 mt-1">{ioc_total}</div>
+                            <div class="text-[11px] text-slate-500">{total_strings} strings reviewed</div>
                         </div>
                     </div>
                 </div>
@@ -829,7 +826,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                                 <p class="section-subtitle">High-level assessment and impact synopsis grounded in extracted code evidence.</p>
                             </div>
                         </div>
-                        <div class="section-body md-content text-slate-700 dark:text-slate-300 leading-relaxed space-y-4 text-base">
+                        <div class="section-body md-content text-slate-700 leading-relaxed space-y-4 text-base">
                             {_markdown_to_html(exec_summary)}
                         </div>
                     </section>
@@ -837,7 +834,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                     <!-- 1b. Investigation Trace -->
                     {investigation_trace_html}
 
-                    
+
                     <!-- MITRE ATT&CK -->
                     {('<section id="mitre-attack" class="scroll-mt-20 section-card"><div class="section-title-wrap"><div class="section-icon"><i class="fas fa-spider"></i></div><div><p class="section-eyebrow">03 · Threat Context</p><h2 class="section-headline">Threat Intel &amp; MITRE ATT&amp;CK</h2><p class="section-subtitle">Mapped tactics and techniques linked to concrete static-analysis artifacts.</p></div></div><div class="section-body">' + mitre_html + '</div></section>') if mitre_html else ''}
 
@@ -864,7 +861,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                                 <p class="section-subtitle">Core metadata baseline from toolchain output before behavior interpretation.</p>
                             </div>
                         </div>
-                        <div class="section-body overflow-hidden rounded-lg border border-[#131e36]">
+                        <div class="section-body overflow-hidden rounded-lg border border-slate-200">
                             <table class="data-table">
                                 <thead>
                                     <tr><th>Field</th><th>Value</th></tr>
@@ -923,7 +920,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
                                 <p class="section-subtitle">Exact decompiled lines where suspicious APIs are invoked.</p>
                             </div>
                         </div>
-                        <p class="text-sm text-slate-500 dark:text-slate-400 mb-4 italic">Application logic is prioritized over library internals to reduce noise.</p>
+                        <p class="text-sm text-slate-500 mb-4 italic">Application logic is prioritized over library internals to reduce noise.</p>
                         <div class="section-body">{code_evidence_html}</div>
                     </section>
 
@@ -965,16 +962,16 @@ def build_report_html(state: Dict[str, Any]) -> str:
                                 <p class="section-subtitle">Actionable observables for SIEM, EDR, and threat-hunting detections.</p>
                             </div>
                         </div>
-                        <div class="section-body bg-[#0B1324] rounded-lg shadow-sm border border-[#131e36] overflow-hidden">
+                        <div class="section-body bg-white rounded-lg shadow-sm border border-slate-200 overflow-hidden">
                             <table class="w-full text-left">
                                 <thead>
-                                    <tr class="text-xs uppercase tracking-[0.1em] text-slate-400 bg-[#060B14]">
+                                    <tr class="text-xs uppercase tracking-[0.1em] text-slate-500 bg-slate-50">
                                         <th class="px-6 py-3">Type</th>
                                         <th class="px-6 py-3">Indicator</th>
                                         <th class="w-10 no-print"></th>
                                     </tr>
                                 </thead>
-                                <tbody class="divide-y divide-slate-200 dark:divide-slate-700 text-sm">
+                                <tbody class="divide-y divide-slate-200 text-sm">
                                     {iocs_rows}
                                 </tbody>
                             </table>
@@ -1022,8 +1019,8 @@ def build_report_html(state: Dict[str, Any]) -> str:
                 </div>
 
                 <!-- Footer -->
-                <footer class="bg-[#060B14] border-t border-[#131e36] p-6 mt-6">
-                    <div class="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-slate-500 dark:text-slate-400">
+                <footer class="bg-slate-50 border-t border-slate-200 p-6 mt-6">
+                    <div class="flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-slate-500">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-lock"></i>
                             <span>Confidential &amp; Proprietary &mdash; Do Not Distribute Without Authorization</span>
@@ -1068,7 +1065,7 @@ def build_report_html(state: Dict[str, Any]) -> str:
         function copyToClipboard(text) {{
             navigator.clipboard.writeText(text).then(() => {{
                 const toast = document.createElement('div');
-                toast.className = 'fixed bottom-24 right-6 bg-slate-800 text-white px-4 py-2 rounded-lg shadow-lg z-50 text-sm flex items-center gap-2';
+                toast.className = 'fixed bottom-24 right-6 bg-white text-slate-900 border border-slate-200 px-4 py-2 rounded-lg shadow-lg z-50 text-sm flex items-center gap-2';
                 toast.innerHTML = '<i class="fas fa-check text-emerald-400"></i> Copied';
                 document.body.appendChild(toast);
                 setTimeout(() => toast.remove(), 1700);
@@ -1105,7 +1102,12 @@ def build_report_html(state: Dict[str, Any]) -> str:
 </html>'''
 
     _set_report_tone('neutral')
-    return html
+    return _strip_tailwind_dark_classes(html)
+
+
+def _strip_tailwind_dark_classes(html: str) -> str:
+    """Remove Tailwind dark-mode variants from standalone light reports."""
+    return re.sub(r"\s+dark:[A-Za-z0-9_\-/.[\]#:]+", "", html)
 
 
 def build_agent_report_html(state: Dict[str, Any], agent: str) -> str:

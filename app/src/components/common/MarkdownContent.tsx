@@ -8,7 +8,7 @@ interface MarkdownContentProps {
 }
 
 function normalizeMarkdown(content: string): string {
-  return content
+  let normalized = content
     .replace(/\r\n/g, '\n')
     .replace(/\u2022/g, '- ')
     .replace(/â€¢/g, '- ')
@@ -17,6 +17,16 @@ function normalizeMarkdown(content: string): string {
     .replace(/â€”/g, '--')
     .replace(/\u00A0/g, ' ')
     .trim();
+
+  const lines = normalized.split('\n');
+  const summaryIndex = lines.findIndex((line) => /^##\s+Summary\s*$/i.test(line.trim()));
+  if (summaryIndex > 0) {
+    const title = lines.slice(0, summaryIndex).join('\n').trim();
+    const rest = lines.slice(summaryIndex).join('\n').trim();
+    normalized = `${title}\n\n---\n\n${rest}`;
+  }
+
+  return normalized;
 }
 
 export function MarkdownContent({ content, compact = false, className = '' }: MarkdownContentProps) {
@@ -25,11 +35,11 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
     ? 'text-sm text-text-secondary leading-relaxed mb-3'
     : 'text-base text-text-secondary leading-relaxed mb-4';
   const heading1Class = compact
-    ? 'text-lg font-semibold text-text-primary mt-5 mb-3'
-    : 'text-xl font-semibold text-text-primary mt-6 mb-4';
+    ? 'text-xl font-semibold text-text-primary mt-2 mb-2 tracking-tight'
+    : 'text-2xl font-semibold text-text-primary mt-3 mb-3 tracking-tight';
   const heading2Class = compact
-    ? 'text-base font-semibold text-text-primary mt-4 mb-2'
-    : 'text-lg font-semibold text-text-primary mt-5 mb-3';
+    ? 'text-base font-semibold text-text-primary mt-5 mb-3 pb-2 border-b'
+    : 'text-lg font-semibold text-text-primary mt-6 mb-4 pb-2 border-b';
   const heading3Class = compact
     ? 'text-sm font-semibold text-text-primary mt-3 mb-2'
     : 'text-base font-semibold text-text-primary mt-4 mb-2';
@@ -40,16 +50,16 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
         remarkPlugins={[remarkGfm]}
         components={{
           h1: ({ children }) => <h1 className={heading1Class}>{children}</h1>,
-          h2: ({ children }) => <h2 className={heading2Class}>{children}</h2>,
+          h2: ({ children }) => <h2 className={heading2Class} style={{ borderColor: '#e8eaed' }}>{children}</h2>,
           h3: ({ children }) => <h3 className={heading3Class}>{children}</h3>,
           p: ({ children }) => <p className={paragraphClass}>{children}</p>,
           strong: ({ children }) => <strong className="text-text-primary font-semibold">{children}</strong>,
           em: ({ children }) => <em className="italic text-text-secondary">{children}</em>,
           ul: ({ children }) => (
-            <ul className={`list-disc pl-5 ${compact ? 'mb-3' : 'mb-4'} text-text-secondary`}>{children}</ul>
+            <ul className={`list-disc pl-5 ${compact ? 'mb-3' : 'mb-4'} space-y-1 text-text-secondary`}>{children}</ul>
           ),
           ol: ({ children }) => (
-            <ol className={`list-decimal pl-5 ${compact ? 'mb-3' : 'mb-4'} text-text-secondary`}>{children}</ol>
+            <ol className={`list-decimal pl-5 ${compact ? 'mb-3' : 'mb-4'} space-y-1 text-text-secondary`}>{children}</ol>
           ),
           li: ({ children }) => (
             <li className={`${compact ? 'text-sm' : 'text-base'} leading-relaxed mb-1`}>{children}</li>
@@ -107,10 +117,15 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
             />
           ),
           table: ({ children }) => (
-            <div className={`overflow-x-auto ${compact ? 'my-3' : 'my-4'}`}>
+            <div
+              className={`overflow-x-auto ${compact ? 'my-3' : 'my-4'} rounded-xl`}
+              style={{
+                border: '1px solid #e8eaed',
+                boxShadow: '0 1px 2px rgba(60,64,67,0.08)',
+              }}
+            >
               <table
                 className="w-full text-left border-collapse"
-                style={{ border: '1px solid #e8eaed' }}
               >
                 {children}
               </table>
@@ -131,13 +146,13 @@ export function MarkdownContent({ content, compact = false, className = '' }: Ma
           th: ({ children }) => (
             <th
               className="px-3 py-2 text-xs font-semibold uppercase text-text-secondary"
-              style={{ borderBottom: '2px solid #e8eaed' }}
+              style={{ borderBottom: '1px solid #e8eaed' }}
             >
               {children}
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-3 py-2 text-sm text-text-secondary">{children}</td>
+            <td className="px-3 py-2 align-top text-sm text-text-secondary">{children}</td>
           ),
         }}
       >
