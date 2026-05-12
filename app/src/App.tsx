@@ -52,7 +52,6 @@ import {
   getHexDump,
   getDisassembly,
   getExportHtmlUrl,
-  withAuthToken,
   getQAHistory,
   getChatMessages,
   saveChatMessage,
@@ -1339,17 +1338,7 @@ function App() {
 
                         {/* Analysis Summary */}
                         <AnalysisSection title="Analysis Summary">
-                          {activeReport?.html_url ? (
-                            <div className="w-full" style={{ height: '70vh', minHeight: '500px' }}>
-                              <iframe
-                                src={withAuthToken(activeReport.html_url)}
-                                className="w-full h-full rounded-xl border border-border-default"
-                                style={{ background: '#ffffff' }}
-                                title="Analysis Report"
-                                sandbox="allow-scripts allow-same-origin"
-                              />
-                            </div>
-                          ) : activeReport?.content ? (
+                          {activeReport?.content ? (
                             <MarkdownContent content={activeReport.content} compact />
                           ) : (
                             <p className="text-sm text-text-muted italic">
