@@ -287,6 +287,18 @@ export function getExportPdfUrl(hash: string): string {
   return `${API_BASE}/api/analysis/${hash}/export/pdf${token ? '?token=' + encodeURIComponent(token) : ''}`;
 }
 
+export function getDecompiledDownloadUrl(hash: string, fileId: string): string {
+  const token = getStoredToken();
+  const encodedFile = encodeURIComponent(fileId);
+  return `${API_BASE}/api/analysis/${hash}/files/${encodedFile}/download/decompiled${token ? '?token=' + encodeURIComponent(token) : ''}`;
+}
+
+export function getDisassemblyDownloadUrl(hash: string, fileId: string): string {
+  const token = getStoredToken();
+  const encodedFile = encodeURIComponent(fileId);
+  return `${API_BASE}/api/analysis/${hash}/files/${encodedFile}/download/disassembly${token ? '?token=' + encodeURIComponent(token) : ''}`;
+}
+
 export async function getAnalyzers(hash: string) {
   const res = await authFetch(`${API_BASE}/api/analysis/${hash}/analyzers`);
   if (!res.ok) return [];

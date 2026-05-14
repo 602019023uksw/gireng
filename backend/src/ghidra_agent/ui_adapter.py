@@ -365,6 +365,90 @@ def build_code_file(state: AgentState, file_id: str) -> Dict[str, Any]:
     return {"id": file_id, "name": f"{file_id}.c", "language": "c", "content": content}
 
 
+def _code_file_base(file_id: str) -> str:
+    raw = str(file_id or "").strip()
+    if ":" in raw:
+        raw = raw.split(":", 1)[1]
+    if raw.endswith(".c") or raw.endswith(".asm"):
+        raw = raw.rsplit(".", 1)[0]
+    return raw
+
+
+def _safe_artifact_filename(name: str, suffix: str) -> str:
+    base = _code_file_base(name) or "artifact"
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".", "@") else "_" for ch in base)
+    return f"{safe or 'artifact'}{suffix}"
+
+
+def build_decompiled_artifact(state: AgentState, file_id: str) -> Dict[str, Any]:
+    """Return downloadable decompiled source content for a code file."""
+    base = _code_file_base(file_id)
+    if not base:
+        return {}
+
+    ghidra_cache = state.get("decompilation_cache", {})
+    r2_cache = state.get("r2_decompilation_cache", {})
+
+    source = "Ghidra"
+    content = ghidra_cache.get(base, "") if isinstance(ghidra_cache, dict) else ""
+    if (not content or str(file_id).startswith("r2:")) and isinstance(r2_cache, dict):
+        content = r2_cache.get(base, "")
+        source = "Radare2"
+
+    if not content:
+        return {}
+
+    return {
+        "id": file_id,
+        "source": source,
+        "filename": _safe_artifact_filename(base, ".c"),
+        "content": str(content),
+    }
+
+
+def _matches_function_name(candidate: str, target: str) -> bool:
+    if candidate == target:
+        return True
+    if candidate.startswith("sym.") and candidate[4:] == target:
+        return True
+    if target.startswith("sym.") and target[4:] == candidate:
+        return True
+    return False
+
+
+def _function_address_for_file(state: AgentState, file_id: str) -> str:
+    base = _code_file_base(file_id)
+    if not base:
+        return ""
+    if base.lower().startswith("0x"):
+        try:
+            return hex(int(base, 16))
+        except ValueError:
+            return ""
+    for collection in (
+        state.get("analysis_results", {}).get("functions", {}),
+        state.get("r2_analysis_results", {}).get("functions", {}),
+    ):
+        for func in _functions_list(collection):
+            name = str(func.get("name", ""))
+            if _matches_function_name(name, base):
+                return _format_addr(func)
+    return ""
+
+
+def build_disassembly_artifact_target(state: AgentState, file_id: str) -> Dict[str, Any]:
+    """Return metadata needed to generate a downloadable disassembly file."""
+    base = _code_file_base(file_id)
+    address = _function_address_for_file(state, file_id)
+    if not base or not address or address == "N/A":
+        return {}
+    return {
+        "id": file_id,
+        "filename": _safe_artifact_filename(base, ".asm"),
+        "address": address,
+    }
+
+
 def build_reports(state: AgentState) -> list[Dict[str, Any]]:
     reports = [{"id": "summary", "name": "Analysis Report", "timestamp": 0}]
     if state.get("analysis_results"):

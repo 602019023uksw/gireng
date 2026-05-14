@@ -6,7 +6,13 @@ import { TagCloud } from '@/components/analysis/TagCloud';
 import { ChevronRight, FolderOpen } from 'lucide-react';
 import { AnimatePresence } from 'framer-motion';
 import { MarkdownContent } from '@/components/common/MarkdownContent';
-import { getExportHtmlUrl, getExportTextUrl, getExportPdfUrl } from '@/lib/api';
+import {
+  getDecompiledDownloadUrl,
+  getDisassemblyDownloadUrl,
+  getExportHtmlUrl,
+  getExportPdfUrl,
+  getExportTextUrl,
+} from '@/lib/api';
 import type { AnalyzerRawResults } from '@/lib/api';
 import { QilingResultsView } from '@/components/analysis/QilingResultsView';
 import { HexViewer } from '@/components/code/HexViewer';
@@ -368,6 +374,53 @@ export function TabbedPanel({
 
             {/* Content Area */}
             <div className="flex-1 overflow-auto scrollbar-dark">
+              {programHash && activeCodeFile && (
+                <div
+                  className="flex flex-col gap-3 px-4 py-3 border-b sm:flex-row sm:items-center sm:justify-between"
+                  style={{ borderColor: '#e8eaed', background: '#f8fafd' }}
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium uppercase tracking-[0.16em] text-text-muted">
+                      Artifact Downloads
+                    </p>
+                    <p className="text-xs text-text-secondary truncate">
+                      {activeCodeFile.name}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                    <a
+                      href={getDecompiledDownloadUrl(programHash, activeCodeFile.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors duration-150"
+                      style={{
+                        background: '#e8f0fe',
+                        color: '#1a73e8',
+                        border: '1px solid #d2e3fc',
+                      }}
+                      title="Download decompiled source"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Decompiled
+                    </a>
+                    <a
+                      href={getDisassemblyDownloadUrl(programHash, activeCodeFile.id)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-colors duration-150"
+                      style={{
+                        background: '#e8f0fe',
+                        color: '#1a73e8',
+                        border: '1px solid #d2e3fc',
+                      }}
+                      title="Download disassembly"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      Disassembly
+                    </a>
+                  </div>
+                </div>
+              )}
               {(codeViewMode || 'decompiled') === 'hex' && activeCodeFile?.hexDump ? (
                 <HexViewer lines={activeCodeFile.hexDump.lines} />
               ) : (codeViewMode || 'decompiled') === 'disassembly' && activeCodeFile?.disassembly ? (
