@@ -52,6 +52,8 @@ from ghidra_agent.sessions import run_graph, store
 from ghidra_agent.ui_adapter import (
     build_analyzer_response,
     build_code_file,
+    build_decompiled_artifact,
+    build_disassembly_artifact_target,
     build_file_tree,
     build_model_list,
     build_report_content,
@@ -1112,6 +1114,70 @@ async def analysis_file_content(
     if state is None:
         return JSONResponse({"error": "not_found"}, status_code=404)
     return JSONResponse(build_code_file(state, file_id))
+
+
+@app.get("/api/analysis/{program_hash}/files/{file_id}/download/decompiled")
+async def download_decompiled_file(
+    program_hash: str,
+    file_id: str,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> PlainTextResponse:
+    state = await _resolve_by_hash(program_hash, user)
+    if state is None:
+        return PlainTextResponse("Analysis not found", status_code=404)
+    artifact = build_decompiled_artifact(state, file_id)
+    if not artifact:
+        return PlainTextResponse("Decompiled file not found", status_code=404)
+    filename = safe_basename(artifact["filename"])
+    return PlainTextResponse(
+        content=artifact["content"],
+        media_type="text/x-csrc",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/analysis/{program_hash}/files/{file_id}/download/disassembly")
+async def download_disassembly_file(
+    program_hash: str,
+    file_id: str,
+    count: int = 256,
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> PlainTextResponse:
+    state = await _resolve_by_hash(program_hash, user)
+    if state is None:
+        return PlainTextResponse("Analysis not found", status_code=404)
+    target = build_disassembly_artifact_target(state, file_id)
+    if not target:
+        return PlainTextResponse("Disassembly target not found", status_code=404)
+
+    binary_path = state.get("binary_path", "")
+    if not binary_path:
+        return PlainTextResponse("Binary path missing", status_code=404)
+
+    from ghidra_agent.r2_tools import get_runner
+    runner = get_runner()
+    safe_count = min(max(count, 1), 2048)
+    result = await runner.run_command(
+        Path(binary_path),
+        f"aa;s {target['address']};pd {safe_count}",
+    )
+    if not result.ok:
+        return PlainTextResponse(result.error or "Disassembly failed", status_code=500)
+
+    raw = str(result.payload.get("raw", "")).strip()
+    content = "\n".join([
+        f"; Disassembly for {target['id']}",
+        f"; Address: {target['address']}",
+        "",
+        raw,
+        "",
+    ])
+    filename = safe_basename(target["filename"])
+    return PlainTextResponse(
+        content=content,
+        media_type="text/plain",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/analysis/{program_hash}/reports")

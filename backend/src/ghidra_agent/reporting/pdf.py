@@ -1,15 +1,15 @@
 # -*- coding: utf-8 -*-
 """PDF report generation."""
 
-import logging
 import re
 from datetime import datetime, timezone
 from html import escape
 from typing import Any, Dict
 
-from ghidra_agent.reporting.common import *
-from ghidra_agent.ioc_extractor import extract_iocs_from_state, calculate_verdict
 from ghidra_agent.function_priority import is_library_function
+from ghidra_agent.ioc_extractor import calculate_verdict, extract_iocs_from_state
+from ghidra_agent.reporting.common import *
+
 
 def _pdf_md_to_html(text: str) -> str:
     """Lightweight markdown→HTML for PDF (light-mode, no Tailwind dark: classes)."""
@@ -369,7 +369,7 @@ def _build_pdf_html(state: Dict[str, Any]) -> str:
   body {{
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     font-size: 10pt;
-    color: #1e293b;
+    color: #202124;
     background: #ffffff;
     line-height: 1.5;
   }}
@@ -385,11 +385,11 @@ def _build_pdf_html(state: Dict[str, Any]) -> str:
 <div class="page">
 
   <!-- Header -->
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.8rem;padding-bottom:0.5rem;border-bottom:3px solid #0f172a;">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.8rem;padding-bottom:0.5rem;border-bottom:3px solid #1a73e8;">
     <div>
-      <div style="font-size:0.55rem;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;color:#64748b;">Reverse Engineering Intelligence Report</div>
-      <div style="font-size:1.4rem;font-weight:800;color:#0f172a;margin-top:0.1rem;">{file_name}</div>
-      <div style="font-size:0.6rem;color:#64748b;margin-top:0.15rem;">Ghidra &amp; Radare2 Dual-Engine Analysis</div>
+      <div style="font-size:0.55rem;font-weight:800;letter-spacing:0.15em;text-transform:uppercase;color:#1a73e8;">Reverse Engineering Intelligence Report</div>
+      <div style="font-size:1.4rem;font-weight:800;color:#202124;margin-top:0.1rem;">{file_name}</div>
+      <div style="font-size:0.6rem;color:#5f6368;margin-top:0.15rem;">Ghidra, Radare2 &amp; Qiling Analysis</div>
     </div>
     <div style="text-align:right;">
       <div style="display:inline-block;background:{v_bg};border:2px solid {v_color};border-radius:6px;padding:0.3rem 0.8rem;">
@@ -517,5 +517,4 @@ async def build_report_pdf(state: Dict[str, Any]) -> bytes:
         await browser.close()
 
     return pdf_bytes
-
 

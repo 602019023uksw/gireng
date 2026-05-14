@@ -518,6 +518,18 @@ class TestChargenUIAdapter:
         assert "main" in code["content"]
         assert "setup_socket" in code["content"]
 
+    def test_download_artifact_builders(self):
+        from ghidra_agent.ui_adapter import build_decompiled_artifact, build_disassembly_artifact_target
+        state = self._make_state()
+
+        decompiled = build_decompiled_artifact(state, "main")
+        assert decompiled["filename"] == "main.c"
+        assert "setup_socket" in decompiled["content"]
+
+        disassembly = build_disassembly_artifact_target(state, "main")
+        assert disassembly["filename"] == "main.asm"
+        assert disassembly["address"] == "0x00401190"
+
     def test_reports_list(self):
         from ghidra_agent.ui_adapter import build_reports
         state = self._make_state()

@@ -28,6 +28,67 @@ def _function_priority_key(func: Dict[str, Any]) -> tuple[float, float, float, s
     )
 
 
+def _md_cell(value: Any, limit: int = 120) -> str:
+    text = "N/A" if value is None or value == "" else str(value)
+    text = text.replace("\n", " ").replace("|", "\\|").strip()
+    if len(text) > limit:
+        return text[: limit - 1].rstrip() + "…"
+    return text
+
+
+def _md_table(headers: list[str], rows: list[list[Any]]) -> str:
+    if not rows:
+        return ""
+    lines = [
+        "| " + " | ".join(_md_cell(header, 80) for header in headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+    ]
+    for row in rows:
+        padded = row + [""] * (len(headers) - len(row))
+        lines.append("| " + " | ".join(_md_cell(value) for value in padded[: len(headers)]) + " |")
+    return "\n".join(lines)
+
+
+def _compact_list(values: Any, limit: int = 8) -> str:
+    if not isinstance(values, list) or not values:
+        return "None"
+    visible = [str(v) for v in values[:limit]]
+    if len(values) > limit:
+        visible.append(f"+{len(values) - limit} more")
+    return ", ".join(visible)
+
+
+def _format_addr(item: Dict[str, Any]) -> str:
+    raw_addr = item.get("address", item.get("addr", item.get("offset", "")))
+    if isinstance(raw_addr, int):
+        return hex(raw_addr)
+    return str(raw_addr) if raw_addr else "N/A"
+
+
+def _format_kv_map(value: Any, limit: int = 8) -> str:
+    if not isinstance(value, dict) or not value:
+        return "None"
+    items = list(value.items())[:limit]
+    text = ", ".join(f"{key}: {val}" for key, val in items)
+    if len(value) > limit:
+        text += f", +{len(value) - limit} more"
+    return text
+
+
+def _strings_list(strings: Any) -> list[Dict[str, Any]]:
+    if isinstance(strings, dict):
+        values = strings.get("strings", [])
+        return values if isinstance(values, list) else []
+    return strings if isinstance(strings, list) else []
+
+
+def _functions_list(functions: Any) -> list[Dict[str, Any]]:
+    if isinstance(functions, dict):
+        values = functions.get("functions", [])
+        return values if isinstance(values, list) else []
+    return functions if isinstance(functions, list) else []
+
+
 def _analyzer_details(state: AgentState) -> Dict[str, Any]:
     findings = state.get("analysis_results", {})
     logs = state.get("reasoning_trace", [])
@@ -304,8 +365,94 @@ def build_code_file(state: AgentState, file_id: str) -> Dict[str, Any]:
     return {"id": file_id, "name": f"{file_id}.c", "language": "c", "content": content}
 
 
+def _code_file_base(file_id: str) -> str:
+    raw = str(file_id or "").strip()
+    if ":" in raw:
+        raw = raw.split(":", 1)[1]
+    if raw.endswith(".c") or raw.endswith(".asm"):
+        raw = raw.rsplit(".", 1)[0]
+    return raw
+
+
+def _safe_artifact_filename(name: str, suffix: str) -> str:
+    base = _code_file_base(name) or "artifact"
+    safe = "".join(ch if ch.isalnum() or ch in ("-", "_", ".", "@") else "_" for ch in base)
+    return f"{safe or 'artifact'}{suffix}"
+
+
+def build_decompiled_artifact(state: AgentState, file_id: str) -> Dict[str, Any]:
+    """Return downloadable decompiled source content for a code file."""
+    base = _code_file_base(file_id)
+    if not base:
+        return {}
+
+    ghidra_cache = state.get("decompilation_cache", {})
+    r2_cache = state.get("r2_decompilation_cache", {})
+
+    source = "Ghidra"
+    content = ghidra_cache.get(base, "") if isinstance(ghidra_cache, dict) else ""
+    if (not content or str(file_id).startswith("r2:")) and isinstance(r2_cache, dict):
+        content = r2_cache.get(base, "")
+        source = "Radare2"
+
+    if not content:
+        return {}
+
+    return {
+        "id": file_id,
+        "source": source,
+        "filename": _safe_artifact_filename(base, ".c"),
+        "content": str(content),
+    }
+
+
+def _matches_function_name(candidate: str, target: str) -> bool:
+    if candidate == target:
+        return True
+    if candidate.startswith("sym.") and candidate[4:] == target:
+        return True
+    if target.startswith("sym.") and target[4:] == candidate:
+        return True
+    return False
+
+
+def _function_address_for_file(state: AgentState, file_id: str) -> str:
+    base = _code_file_base(file_id)
+    if not base:
+        return ""
+    if base.lower().startswith("0x"):
+        try:
+            return hex(int(base, 16))
+        except ValueError:
+            return ""
+    for collection in (
+        state.get("analysis_results", {}).get("functions", {}),
+        state.get("r2_analysis_results", {}).get("functions", {}),
+    ):
+        for func in _functions_list(collection):
+            name = str(func.get("name", ""))
+            if _matches_function_name(name, base):
+                return _format_addr(func)
+    return ""
+
+
+def build_disassembly_artifact_target(state: AgentState, file_id: str) -> Dict[str, Any]:
+    """Return metadata needed to generate a downloadable disassembly file."""
+    base = _code_file_base(file_id)
+    address = _function_address_for_file(state, file_id)
+    if not base or not address or address == "N/A":
+        return {}
+    return {
+        "id": file_id,
+        "filename": _safe_artifact_filename(base, ".asm"),
+        "address": address,
+    }
+
+
 def build_reports(state: AgentState) -> list[Dict[str, Any]]:
     reports = [{"id": "summary", "name": "Analysis Report", "timestamp": 0}]
+    if state.get("analysis_results"):
+        reports.append({"id": "ghidra_summary", "name": "Ghidra Report", "timestamp": 0})
     if state.get("r2_analysis_results"):
         reports.append({"id": "r2_summary", "name": "Radare2 Report", "timestamp": 0})
     if state.get("qiling_analysis_results"):
@@ -315,6 +462,9 @@ def build_reports(state: AgentState) -> list[Dict[str, Any]]:
 
 def build_report_content(state: AgentState, report_id: str) -> Dict[str, Any]:
     """Return report as markdown content for the UI viewer."""
+    if report_id == "ghidra_summary":
+        content = _build_ghidra_report_markdown(state)
+        return {"id": report_id, "name": "Ghidra Report", "timestamp": 0, "content": content}
     if report_id == "r2_summary":
         content = _build_r2_report_markdown(state)
         return {"id": report_id, "name": "Radare2 Report", "timestamp": 0, "content": content}
@@ -450,88 +600,206 @@ def _build_qiling_overview_markdown(qiling: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _build_ghidra_report_markdown(state: AgentState) -> str:
+    """Build a Ghidra-focused static/decompiler report."""
+    ghidra = state.get("analysis_results", {})
+    parts: list[str] = ["# Ghidra Analysis Report", ""]
+
+    binary = ghidra.get("binary", {})
+    functions = _functions_list(ghidra.get("functions", {}))
+    strings = _strings_list(ghidra.get("strings", {}))
+    decomp_cache = state.get("decompilation_cache", {})
+    call_graph = ghidra.get("call_graph_analysis", {})
+
+    parts.append("## Summary")
+    parts.append(
+        _md_table(
+            ["Metric", "Value"],
+            [
+                ["Architecture", binary.get("architecture", "unknown")],
+                ["Image Base", binary.get("image_base", "unknown")],
+                ["Entry Points", _compact_list(binary.get("entry_points", []), 6)],
+                ["Segments", _compact_list(binary.get("segments", []), 8)],
+                ["Compiler", binary.get("compiler", "unknown")],
+                ["Functions", len(functions)],
+                ["Decompiled Functions", len(decomp_cache)],
+                ["Strings", len(strings)],
+            ],
+        )
+    )
+    parts.append("")
+
+    if functions:
+        ranked_funcs = sorted(functions, key=_function_priority_key, reverse=True)
+        parts.append(f"## High-Priority Functions ({len(functions)} discovered)")
+        parts.append(
+            _md_table(
+                ["Function", "Address", "XRefs", "Size", "Priority"],
+                [
+                    [
+                        f"`{func.get('name', 'unknown')}`",
+                        f"`{_format_addr(func)}`",
+                        func.get("xrefs", 0),
+                        func.get("size", "?"),
+                        func.get("priority_score", 0),
+                    ]
+                    for func in ranked_funcs[:25]
+                ],
+            )
+        )
+        address_summary = "; ".join(
+            f"`{func.get('name', 'unknown')}` at `{_format_addr(func)}`" for func in ranked_funcs[:5]
+        )
+        if address_summary:
+            parts.append(f"\n> Address summary: {address_summary}")
+        if len(functions) > 25:
+            parts.append(f"\n> Showing top 25 functions. {len(functions) - 25} additional functions are available in raw results.")
+        parts.append("")
+
+    if strings:
+        parts.append(f"## Strings & Indicators ({len(strings)} extracted)")
+        parts.append(
+            _md_table(
+                ["Address", "String"],
+                [[f"`{item.get('address', 'N/A')}`", f"`{item.get('value', item.get('string', ''))}`"] for item in strings[:25]],
+            )
+        )
+        if len(strings) > 25:
+            parts.append(f"\n> Showing top 25 strings. {len(strings) - 25} additional strings are available in raw results.")
+        parts.append("")
+
+    if decomp_cache:
+        parts.append(f"## Decompiled Evidence ({len(decomp_cache)} functions)")
+        for fname, code in list(decomp_cache.items())[:5]:
+            parts.append(f"### `{fname}`")
+            parts.append(f"```c\n{code}\n```")
+            parts.append("")
+        if len(decomp_cache) > 5:
+            parts.append(f"> Showing first 5 decompiled functions. {len(decomp_cache) - 5} additional functions are available in code view.")
+            parts.append("")
+
+    call_graph_section = _build_call_graph_markdown("Ghidra", call_graph)
+    if call_graph_section:
+        parts.append(call_graph_section)
+        parts.append("")
+
+    if len(parts) <= 3:
+        parts.append("No Ghidra analysis data available for this session.")
+
+    return "\n".join(parts)
+
+
 def _build_r2_report_markdown(state: AgentState) -> str:
     """Build a distinct Radare2 report from R2-specific analysis data."""
     r2 = state.get("r2_analysis_results", {})
-    parts: list[str] = ["# Radare2 Analysis Report\n"]
+    parts: list[str] = ["# Radare2 Analysis Report", ""]
 
-    # Binary info
     binary = r2.get("binary", {})
-    if binary.get("ok"):
-        parts.append("## Binary Information")
-        parts.append(f"- **Architecture:** {binary.get('architecture', 'N/A')}")
-        parts.append(f"- **Image Base:** {binary.get('image_base', 'N/A')}")
-        entries = binary.get("entry_points", [])
-        if entries:
-            parts.append(f"- **Entry Points:** {', '.join(entries)}")
-        imports = binary.get("imports", [])
-        if imports:
-            parts.append(f"- **Imports:** {', '.join(imports[:30])}")
-        exports = binary.get("exports", [])
-        if exports:
-            parts.append(f"- **Exports:** {', '.join(exports[:30])}")
-        parts.append("")
-
-    # Functions
     funcs = r2.get("functions", {})
-    func_list = funcs if isinstance(funcs, list) else funcs.get("functions", [])
+    func_list = _functions_list(funcs)
+    strings = r2.get("strings", {})
+    str_list = _strings_list(strings)
+    r2_cache = state.get("r2_decompilation_cache", {})
+    syscalls = r2.get("syscalls", {})
+    sc_list = syscalls.get("syscalls", []) if isinstance(syscalls, dict) else []
+
+    parts.append("## Summary")
+    parts.append(
+        _md_table(
+            ["Metric", "Value"],
+            [
+                ["Architecture", binary.get("architecture", "unknown")],
+                ["Binary Type", binary.get("binary_type", "unknown")],
+                ["Image Base", binary.get("image_base", "unknown")],
+                ["Entry Points", _compact_list(binary.get("entry_points", []), 6)],
+                ["Imports", _compact_list(binary.get("imports", []), 10)],
+                ["Exports", _compact_list(binary.get("exports", []), 10)],
+                ["Functions", len(func_list)],
+                ["Decompiled Functions", len(r2_cache)],
+                ["Strings", len(str_list)],
+                ["Syscalls", len(sc_list)],
+            ],
+        )
+    )
+    parts.append("")
+
     if func_list:
         ranked_funcs = sorted(func_list, key=_function_priority_key, reverse=True)
         parts.append(f"## Functions Discovered ({len(func_list)})")
-        for f in ranked_funcs[:30]:
-            name = f.get("name", "unknown")
-            raw_addr = f.get("address", f.get("addr", f.get("offset", "")))
-            if isinstance(raw_addr, int):
-                addr = hex(raw_addr)
-            else:
-                addr = str(raw_addr) if raw_addr else "N/A"
-            size = f.get("size", "?")
-            parts.append(
-                f"- `{name}` at `{addr}` "
-                f"(score: {f.get('priority_score', 0)}, xrefs: {f.get('xrefs', 0)}, size: {size})"
+        parts.append(
+            _md_table(
+                ["Function", "Address", "XRefs", "Size", "Priority"],
+                [
+                    [
+                        f"`{func.get('name', 'unknown')}`",
+                        f"`{_format_addr(func)}`",
+                        func.get("xrefs", 0),
+                        func.get("size", "?"),
+                        func.get("priority_score", 0),
+                    ]
+                    for func in ranked_funcs[:30]
+                ],
             )
+        )
+        address_summary = "; ".join(
+            f"`{func.get('name', 'unknown')}` at `{_format_addr(func)}`" for func in ranked_funcs[:5]
+        )
+        if address_summary:
+            parts.append(f"\n> Address summary: {address_summary}")
         if len(func_list) > 30:
-            parts.append(f"- ... and {len(func_list) - 30} more functions")
+            parts.append(f"\n> Showing top 30 functions. {len(func_list) - 30} additional functions are available in raw results.")
         parts.append("")
 
-    # Strings
-    strings = r2.get("strings", {})
-    str_list = strings.get("strings", []) if isinstance(strings, dict) else []
     if str_list:
         parts.append(f"## Strings Extracted ({len(str_list)})")
-        for s in str_list[:40]:
-            val = s.get("value", "")
-            parts.append(f"- `{val}`")
-        if len(str_list) > 40:
-            parts.append(f"- ... and {len(str_list) - 40} more strings")
+        parts.append(
+            _md_table(
+                ["Address", "Type", "String"],
+                [
+                    [
+                        f"`{item.get('address', item.get('vaddr', 'N/A'))}`",
+                        item.get("type", "ascii"),
+                        f"`{item.get('value', item.get('string', ''))}`",
+                    ]
+                    for item in str_list[:30]
+                ],
+            )
+        )
+        if len(str_list) > 30:
+            parts.append(f"\n> Showing top 30 strings. {len(str_list) - 30} additional strings are available in raw results.")
         parts.append("")
 
-    # Decompiled code
-    r2_cache = state.get("r2_decompilation_cache", {})
     if r2_cache:
         parts.append(f"## Decompiled Functions ({len(r2_cache)})")
-        for fname, code in list(r2_cache.items())[:10]:
-            parts.append(f"### {fname}")
+        for fname, code in list(r2_cache.items())[:5]:
+            parts.append(f"### `{fname}`")
             parts.append(f"```c\n{code}\n```")
             parts.append("")
+        if len(r2_cache) > 5:
+            parts.append(f"> Showing first 5 decompiled functions. {len(r2_cache) - 5} additional functions are available in code view.")
+            parts.append("")
 
-    # Cross-references
     xrefs = r2.get("xrefs", {})
     if xrefs and xrefs.get("ok"):
         xref_list = xrefs.get("xrefs", [])
         if xref_list:
             parts.append(f"## Cross-References ({len(xref_list)})")
-            for x in xref_list[:20]:
-                parts.append(f"- `{x.get('from', '?')}` -> `{x.get('to', '?')}` ({x.get('type', '?')})")
+            parts.append(
+                _md_table(
+                    ["From", "To", "Type"],
+                    [[f"`{x.get('from', '?')}`", f"`{x.get('to', '?')}`", x.get("type", "?")] for x in xref_list[:20]],
+                )
+            )
             parts.append("")
 
-    # Syscalls
-    syscalls = r2.get("syscalls", {})
-    if syscalls.get("ok") and syscalls.get("syscalls"):
-        sc_list = syscalls.get("syscalls", [])
+    if isinstance(syscalls, dict) and syscalls.get("ok") and sc_list:
         parts.append(f"## Syscalls Detected ({len(sc_list)})")
-        for sc in sc_list[:30]:
-            parts.append(f"- `{sc.get('name', 'unknown')}` (#{sc.get('number', '?')}) at `{sc.get('address', 'N/A')}`")
+        parts.append(
+            _md_table(
+                ["Name", "Number", "Address"],
+                [[f"`{sc.get('name', 'unknown')}`", sc.get("number", "?"), f"`{sc.get('address', 'N/A')}`"] for sc in sc_list[:30]],
+            )
+        )
         parts.append("")
 
     call_graph_section = _build_call_graph_markdown("Radare2", r2.get("call_graph_analysis", {}))
@@ -548,86 +816,208 @@ def _build_r2_report_markdown(state: AgentState) -> str:
 def _build_qiling_report_markdown(state: AgentState) -> str:
     """Build a Qiling-focused dynamic analysis report."""
     ql = state.get("qiling_analysis_results", {})
-    parts: list[str] = ["# Qiling Dynamic Analysis Report\n"]
+    parts: list[str] = ["# Qiling Dynamic Analysis Report", ""]
 
     execution = ql.get("execution_trace", {})
+    syscalls = ql.get("syscalls", {})
+    summary = syscalls.get("summary", {}) if isinstance(syscalls, dict) else {}
+    calls = syscalls.get("syscalls", []) if isinstance(syscalls, dict) else []
+    network = ql.get("network_activity", {})
+    memory_events = ql.get("memory_events", {})
+    evasion = ql.get("evasion_techniques", {})
+
+    parts.append("## Summary")
+    parts.append(
+        _md_table(
+            ["Metric", "Value"],
+            [
+                ["Execution Success", execution.get("success", "unknown") if isinstance(execution, dict) else "unknown"],
+                ["Architecture", execution.get("arch", "unknown") if isinstance(execution, dict) else "unknown"],
+                ["OS", execution.get("os", "unknown") if isinstance(execution, dict) else "unknown"],
+                [
+                    "Instructions",
+                    execution.get("instructions_executed", 0) if isinstance(execution, dict) else 0,
+                ],
+                ["Duration", f"{execution.get('duration_ms', 0)} ms" if isinstance(execution, dict) else "0 ms"],
+                ["Exit Reason", execution.get("exit_reason", "unknown") if isinstance(execution, dict) else "unknown"],
+                [
+                    "Syscalls",
+                    summary.get("total_calls", len(calls)) if isinstance(summary, dict) else len(calls),
+                ],
+                [
+                    "Network Indicators",
+                    _compact_list(
+                        network.get("indicators", {}).get("c2_candidates", [])
+                        if isinstance(network, dict) and isinstance(network.get("indicators", {}), dict)
+                        else [],
+                        6,
+                    ),
+                ],
+                [
+                    "Memory Events",
+                    len(memory_events.get("events", []))
+                    if isinstance(memory_events, dict) and isinstance(memory_events.get("events", []), list)
+                    else 0,
+                ],
+                [
+                    "Evasion Risk",
+                    evasion.get("summary", {}).get("risk_level", "low")
+                    if isinstance(evasion, dict) and isinstance(evasion.get("summary", {}), dict)
+                    else "low",
+                ],
+            ],
+        )
+    )
+    parts.append("")
+
     if isinstance(execution, dict) and execution:
         parts.append("## Execution Trace")
-        parts.append(f"- **Success:** {execution.get('success')}")
-        parts.append(f"- **Architecture:** {execution.get('arch', 'unknown')}")
-        parts.append(f"- **OS:** {execution.get('os', 'unknown')}")
-        parts.append(f"- **Instructions:** {execution.get('instructions_executed', 0)}")
-        parts.append(f"- **Duration (ms):** {execution.get('duration_ms', 0)}")
-        parts.append(f"- **Exit Reason:** {execution.get('exit_reason', 'unknown')}")
+        rows = [
+            ["Success", execution.get("success")],
+            ["Binary Format", execution.get("binary_format", "unknown")],
+            ["Architecture", execution.get("arch", "unknown")],
+            ["OS", execution.get("os", "unknown")],
+            ["Bits", execution.get("bits", "unknown")],
+            ["Instructions", execution.get("instructions_executed", 0)],
+            ["Duration", f"{execution.get('duration_ms', 0)} ms"],
+            ["Exit Reason", execution.get("exit_reason", "unknown")],
+        ]
         if execution.get("error"):
-            parts.append(f"- **Error:** {execution.get('error')}")
+            rows.append(["Error", execution.get("error")])
+        parts.append(_md_table(["Property", "Value"], rows))
         parts.append("")
 
-    syscalls = ql.get("syscalls", {})
     if isinstance(syscalls, dict) and syscalls:
-        summary = syscalls.get("summary", {})
-        calls = syscalls.get("syscalls", [])
         parts.append("## Syscall Trace")
-        parts.append(f"- **Total Calls:** {summary.get('total_calls', 0) if isinstance(summary, dict) else len(calls)}")
         if isinstance(summary, dict):
-            parts.append(f"- **Categories:** {summary.get('categories', {})}")
+            parts.append(
+                _md_table(
+                    ["Metric", "Value"],
+                    [
+                        ["Total Calls", summary.get("total_calls", len(calls))],
+                        ["Categories", _format_kv_map(summary.get("categories", {}))],
+                        ["Unique Syscalls", _compact_list(summary.get("unique_syscalls", []), 12)],
+                    ],
+                )
+            )
             suspicious = summary.get("suspicious_calls", [])
             if suspicious:
                 parts.append("### Suspicious Calls")
-                for item in suspicious[:20]:
-                    parts.append(f"- `{item.get('name', 'unknown')}`: {item.get('reason', '')}")
+                parts.append(
+                    _md_table(
+                        ["Name", "Risk", "Reason"],
+                        [[f"`{item.get('name', 'unknown')}`", item.get("risk", "unknown"), item.get("reason", "")] for item in suspicious[:20]],
+                    )
+                )
         if isinstance(calls, list) and calls:
             parts.append("### Sample Syscalls")
-            for call in calls[:30]:
-                parts.append(
-                    f"- `{call.get('name', 'unknown')}` @ `{call.get('address', 'N/A')}` "
-                    f"(category: {call.get('category', 'unknown')})"
+            parts.append(
+                _md_table(
+                    ["Name", "Address", "Category", "Arguments"],
+                    [
+                        [
+                            f"`{call.get('name', 'unknown')}`",
+                            f"`{call.get('address', 'N/A')}`",
+                            call.get("category", "unknown"),
+                            _compact_list(call.get("args", []), 5),
+                        ]
+                        for call in calls[:25]
+                    ],
                 )
+            )
+            if len(calls) > 25:
+                parts.append(f"\n> Showing first 25 syscalls. {len(calls) - 25} additional calls are available in raw results.")
         parts.append("")
 
-    network = ql.get("network_activity", {})
     if isinstance(network, dict) and network:
         parts.append("## Network Activity")
         indicators = network.get("indicators", {})
-        parts.append(f"- **C2 Candidates:** {indicators.get('c2_candidates', []) if isinstance(indicators, dict) else []}")
-        parts.append(f"- **Protocols Used:** {indicators.get('protocols_used', []) if isinstance(indicators, dict) else []}")
+        parts.append(
+            _md_table(
+                ["Indicator", "Value"],
+                [
+                    ["C2 Candidates", _compact_list(indicators.get("c2_candidates", []), 10) if isinstance(indicators, dict) else "None"],
+                    ["DNS Domains", _compact_list(indicators.get("dns_domains", []), 10) if isinstance(indicators, dict) else "None"],
+                    ["Protocols Used", _compact_list(indicators.get("protocols_used", []), 10) if isinstance(indicators, dict) else "None"],
+                ],
+            )
+        )
         connections = network.get("connections", [])
         if isinstance(connections, list) and connections:
             parts.append("### Connections")
-            for conn in connections[:20]:
-                parts.append(
-                    f"- `{conn.get('type', 'unknown')}` -> `{conn.get('address', 'unknown')}:{conn.get('port', 0)}` "
-                    f"(t={conn.get('timestamp_ms', 0)}ms)"
+            parts.append(
+                _md_table(
+                    ["Type", "Destination", "Time"],
+                    [
+                        [
+                            f"`{conn.get('type', 'unknown')}`",
+                            f"`{conn.get('address', 'unknown')}:{conn.get('port', 0)}`",
+                            f"{conn.get('timestamp_ms', 0)} ms",
+                        ]
+                        for conn in connections[:20]
+                    ],
                 )
+            )
         parts.append("")
 
-    memory_events = ql.get("memory_events", {})
     if isinstance(memory_events, dict) and memory_events:
         parts.append("## Memory Behavior")
         indicators = memory_events.get("indicators", {})
-        parts.append(f"- **Indicators:** {indicators}")
+        parts.append(
+            _md_table(
+                ["Indicator", "Value"],
+                [[key, val] for key, val in indicators.items()] if isinstance(indicators, dict) else [["Indicators", indicators]],
+            )
+        )
         events = memory_events.get("events", [])
         if isinstance(events, list) and events:
-            parts.append("### Memory Events")
-            for event in events[:20]:
-                parts.append(
-                    f"- `{event.get('type', 'event')}` at `{event.get('target_address', event.get('address', 'N/A'))}` "
-                    f"(size: {event.get('size', 0)})"
+            parts.append("### Sample Memory Events")
+            parts.append(
+                _md_table(
+                    ["Type", "Address", "Size"],
+                    [
+                        [
+                            f"`{event.get('type', 'event')}`",
+                            f"`{event.get('target_address', event.get('address', 'N/A'))}`",
+                            event.get("size", 0),
+                        ]
+                        for event in events[:20]
+                    ],
                 )
+            )
+            if len(events) > 20:
+                parts.append(f"\n> Showing first 20 memory events. {len(events) - 20} additional events are available in raw results.")
         parts.append("")
 
-    evasion = ql.get("evasion_techniques", {})
     if isinstance(evasion, dict) and evasion:
         parts.append("## Evasion Techniques")
         summary = evasion.get("summary", {})
-        parts.append(f"- **Summary:** {summary}")
+        if isinstance(summary, dict):
+            parts.append(
+                _md_table(
+                    ["Metric", "Value"],
+                    [
+                        ["Total Techniques", summary.get("total_techniques", 0)],
+                        ["Risk Level", summary.get("risk_level", "low")],
+                        ["MITRE Tactics", _compact_list(summary.get("mitre_tactics", []), 8)],
+                    ],
+                )
+            )
         techniques = evasion.get("techniques", [])
         if isinstance(techniques, list):
-            for tech in techniques[:20]:
-                parts.append(
-                    f"- `{tech.get('technique', 'unknown')}` via `{tech.get('method', 'unknown')}` "
-                    f"({tech.get('mitre_id', 'N/A')})"
+            parts.append(
+                _md_table(
+                    ["Technique", "Method", "MITRE"],
+                    [
+                        [
+                            f"`{tech.get('technique', 'unknown')}`",
+                            tech.get("method", "unknown"),
+                            tech.get("mitre_id", "N/A"),
+                        ]
+                        for tech in techniques[:20]
+                    ],
                 )
+            )
         parts.append("")
 
     if ql.get("errors"):
